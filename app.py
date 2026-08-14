@@ -1120,8 +1120,10 @@ PRODUCTS = [
 ]
 
 # Shown in the footer of every page so it's always obvious which build
-# is running. Bumped with each piece.
-VERSION = "Piece 32.1"
+# is running. Bumped with each update. Reset to semantic versioning
+# (starting at 0.1) with the Vixinman household rebrand, replacing the
+# old solar-business "Piece N.N" build counter.
+VERSION = "0.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
