@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:2rem auto;">
+  <h1 style="text-align:center;">☀️ Sign in to Compendium</h1>
+  <form method="post" action="{{ url_for('login') }}" class="card">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <div class="field" style="margin-bottom:0.8rem;">
+      <label for="username">Username</label>
+      <input id="username" name="username" required autofocus autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
+    </div>
+    <div class="actions"><button type="submit" class="btn" style="width:100%;">Sign in</button></div>
+  </form>
+  <p style="text-align:center; font-size:0.9rem; margin-top:0.6rem;">
+    <a href="{{ url_for('forgot_password') }}">Forgot your password?</a></p>
+  <p class="muted" style="text-align:center; font-size:0.85rem;">
+    Ask an admin if you don't have a login yet.</p>
+</div>
+{% endblock %}

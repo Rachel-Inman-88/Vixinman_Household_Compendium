@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Rules Editor{% endblock %}
+{% block content %}
+<div style="margin-bottom: 0.8rem;">
+  {% if from_job %}
+  <a href="{{ url_for('job_detail', job_id=from_job['id']) }}" class="btn btn-secondary">← Back to {{ from_job["job_name"] or "Job #" ~ from_job["id"] }}</a>
+  {% else %}
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to clients</a>
+  {% endif %}
+</div>
+<div class="toolbar" style="align-items:flex-start;">
+  <h1 style="margin:0;">⚙️ Rules Editor</h1>
+  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse the L/P/C Directory →</a>
+</div>
+<p class="muted" style="margin-top:0.4rem;">Each rule says: when a job's
+<strong>field</strong> matches a <strong>value</strong>, the job needs this license,
+permit, compliance item, link, or phone number. Jobs read these rules live — add one
+here and every matching job page updates immediately, no code changes.
+To look up what applies to a given job type instead of editing, use the read-only
+<a href="{{ url_for('rule_directory') }}">L/P/C Directory</a>.</p>
+
+{% if can('rules.manage') %}
+{% set er = edit_rule %}
+<form method="post" id="rule-form"
+      action="{{ url_for('update_rule', rule_id=er['id']) if er else url_for('add_rule') }}" class="card">
+  {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
+  <h2 style="margin-top:0; font-size:1.05rem;">{{ "Edit rule" if er else "Add a rule" }}</h2>
+  <div class="form-grid">
+    <div class="field">
+      <label for="field_name">When this job field…</label>
+      <select id="field_name" name="field_name">
+        {% for f in job_fields %}
+        <option value="{{ f }}" {% if er and er['field_name'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="field_value">…matches this value</label>
+      <input id="field_value" name="field_value" required value="{{ er['field_value'] if er else '' }}"
+             placeholder="e.g. PV Systems, Torrance County, Off-grid">
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        {% for c in categories %}
+        <option value="{{ c }}" {% if er and er['category'] == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="verify_status">Verification callout</label>
+      <select id="verify_status" name="verify_status">
+        {% set cur_vs = (er['verify_status'] if er and 'verify_status' in er.keys() else '') or '' %}
+        <option value="" {% if cur_vs == '' %}selected{% endif %}>— none —</option>
+        <option value="verify" {% if cur_vs == 'verify' %}selected{% endif %}>⚠ Verify (confirm before relying on it)</option>
+        <option value="unverified" {% if cur_vs == 'unverified' %}selected{% endif %}>⚠ Unverified (couldn’t confirm online)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="field_name2">AND this field (optional)</label>
+      <select id="field_name2" name="field_name2">
+        <option value="">— no second condition —</option>
+        {% for f in job_fields %}
+        <option value="{{ f }}" {% if er and er['field_name2'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="field_value2">…matches this value</label>
+      <input id="field_value2" name="field_value2" value="{{ er['field_value2'] if er else '' }}"
+             placeholder="only if a second field is chosen">
+    </div>
+    <div class="field wide">
+      <label for="label">The job needs… (label) *</label>
+      <input id="label" name="label" required value="{{ er['label'] if er else '' }}"
+             placeholder="e.g. County flood-plain permit">
+    </div>
+    <div class="field wide">
+      <label for="source_text">Verbatim source text (optional)</label>
+      <textarea id="source_text" name="source_text" rows="2"
+                placeholder="Exact wording from the code/source — shown above the shorthand in the L/P/C Directory (esp. for compliance rules)">{{ er['source_text'] if er and 'source_text' in er.keys() else '' }}</textarea>
+    </div>
+    <div class="field">
+      <label for="url">Link (optional)</label>
+      <input id="url" name="url" value="{{ er['url'] if er else '' }}" placeholder="https://…">
+    </div>
+    <div class="field">
+      <label for="link_text">Link display name (optional)</label>
+      <input id="link_text" name="link_text" value="{{ er['link_text'] if er else '' }}" placeholder="e.g. NM CID Permit Portal">
+    </div>
+    <div class="field">
+      <label for="phone">Phone (optional)</label>
+      <input id="phone" name="phone" value="{{ er['phone'] if er else '' }}">
+    </div>
+    <div class="field">
+      <label for="notes">Notes (optional)</label>
+      <input id="notes" name="notes" value="{{ er['notes'] if er else '' }}" placeholder="e.g. per tech on site">
+    </div>
+    <div class="field">
+      <label for="allowed_formats">Accepted file formats (optional)</label>
+      <input id="allowed_formats" name="allowed_formats" list="format-list"
+             value="{{ er['allowed_formats'] if er and 'allowed_formats' in er.keys() else '' }}"
+             placeholder="blank = any · e.g. pdf, jpg, png">
+      <datalist id="format-list">
+        <option value="pdf"><option value="pdf, jpg, png"><option value="jpg, png, heic">
+        <option value="kmz, kml"><option value="docx, pdf"><option value="xlsx, csv">
+      </datalist>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">{{ "Save changes" if er else "Add rule" }}</button>
+    {% if er %}<a href="{{ url_for('rules_page', from_job=from_job['id'] if from_job else none) }}" class="btn btn-secondary">Cancel</a>{% endif %}
+  </div>
+</form>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Current rules ({{ rules|length }})</h2>
+  {% if groups %}
+  <div style="overflow-x:auto;">
+    {% for heading, items in groups %}
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1.2rem 0 0.3rem;">{{ heading }} <span class="sect-count">{{ items|length }}</span></h3>
+    <table>
+      <thead>
+        <tr><th style="width:32%;">When the job…</th><th>Requires</th><th>Notes</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in items %}
+        <tr>
+          <td class="muted" style="font-size:0.85rem;">
+            {{ field_labels.get(r["field_name"], r["field_name"]) }}
+            {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}
+            <strong>{{ r["field_value"] }}</strong>{% if r["field_name2"] %}<br><span style="font-size:0.8rem;">and {{ field_labels.get(r["field_name2"], r["field_name2"]) }}
+            {% if r["match_type2"] == "contains" %}includes{% else %}is{% endif %}
+            <strong>{{ r["field_value2"] }}</strong></span>{% endif %}
+          </td>
+          <td>
+            {{ r["label"] }}
+            {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}">{{ r["alert_text"] }}</span>{% endif %}
+            {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
+            {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+            {% if 'allowed_formats' in r.keys() and r["allowed_formats"] %}<br><span class="muted" style="font-size:0.78rem;">📎 accepts: {{ r["allowed_formats"] }}</span>{% endif %}
+          </td>
+          <td class="muted" style="font-size:0.85rem;">{{ r["notes"] }}</td>
+          <td style="white-space:nowrap;">
+            {% if can('rules.manage') %}
+            <a href="{{ url_for('rules_page', edit=r['id'], from_job=from_job['id'] if from_job else none) }}#rule-form"
+               class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+            {% endif %}
+            {% if can('delete') %}
+            <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
+                  onsubmit="return confirm('Send this rule to the trash?');" style="margin:0; display:inline;">
+              {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
+              <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">No rules yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

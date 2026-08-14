@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}v{{ version["version"] }} — {{ job["job_name"] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Version {{ version["version"] }} <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
+  <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Current job</a>
+</div>
+<div class="flash">📁 Archived snapshot from {{ version["saved_at"] }} — read-only,
+kept for recordkeeping. The live job profile may differ.</div>
+
+<div class="card">
+  <dl class="profile">
+    {% for f in job_fields %}
+    {% if data.get(f) %}
+    <dt>{{ field_labels.get(f, f) }}</dt><dd>{{ data[f] }}</dd>
+    {% endif %}
+    {% endfor %}
+  </dl>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Requirements as of this version</h2>
+  {% if groups %}
+    {% for heading, items in groups %}
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:0.9rem 0 0.3rem;">{{ heading }}</h3>
+    <ul style="margin:0; padding-left:1.2rem;">
+      {% for r in items %}
+      <li style="margin-bottom:0.25rem;">
+        {{ r["label"] }}
+        {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% else %}
+  <p class="empty">No requirements matched this version's selections.</p>
+  {% endif %}
+  <p class="muted" style="margin-bottom:0;">Note: computed against today's
+  rules — the rule list itself may have changed since this snapshot.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>🧾 Audit log</h1>
+<p class="muted">Every change made in Compendium — who (once logins exist), what,
+when, and the details submitted. Read-only. Showing the most recent
+{{ entries|length }} of {{ total }} entries.</p>
+
+<form method="get" class="card" id="filter_form">
+  <div class="form-grid">
+    <div class="field">
+      <label for="action">Filter by action</label>
+      <select id="action" name="action">
+        <option value="">All actions</option>
+        {% for a in actions %}
+        <option value="{{ a }}" {% if action == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% if action %}
+  <div class="actions"><a href="{{ url_for('audit_log_page') }}" class="btn btn-secondary">Clear filter</a></div>
+  {% endif %}
+</form>
+
+<div class="card">
+  {% if entries %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Details</th><th>Result</th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td style="white-space:nowrap;">{{ e.ts }}</td>
+        <td>{{ e.actor or "—" }}</td>
+        <td>{{ e.action }}</td>
+        <td>
+          {% if e.entity %}
+            {% for k, v in e.entity.items() %}<span class="muted" style="font-size:0.8rem;">{{ k }}={{ v }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+          {% else %}<span class="muted">—</span>{% endif %}
+          <br><span class="muted" style="font-size:0.75rem;">{{ e.path }}</span>
+        </td>
+        <td>
+          {% if e.detail %}
+          <details>
+            <summary style="cursor:pointer; font-size:0.85rem;">{{ e.detail|length }} field{{ "s" if e.detail|length != 1 }}</summary>
+            <dl class="profile" style="grid-template-columns:auto 1fr; gap:0.15rem 0.6rem; margin:0.35rem 0 0;">
+              {% for k, v in e.detail.items() %}
+              <dt style="font-size:0.8rem;">{{ k }}</dt><dd style="font-size:0.8rem;">{{ v }}</dd>
+              {% endfor %}
+            </dl>
+          </details>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{% if e.status and e.status < 400 %}<span class="badge">{{ e.status }}</span>{% else %}<span class="badge danger">{{ e.status }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No log entries{% if action %} for this action{% endif %} yet.</p>
+  {% endif %}
+</div>
+
+<script>
+  document.querySelectorAll("#filter_form select").forEach(sel =>
+    sel.addEventListener("change", () => document.getElementById("filter_form").submit()));
+</script>
+{% endblock %}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Auditing stock{% endblock %}
+{% block content %}
+<style>
+  .flag { display:inline-block; padding:0.05rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:700; }
+  .flag-ok { background:#e6f4ea; color:#12673a; border:1px solid #9dd3b0; }
+  .flag-duplicate { background:#eef1f5; color:#475569; border:1px solid #cbd5e1; }
+  .flag-should_be_out, .flag-out_of_scope, .flag-unknown { background:#fbe3e3; color:#9a1c1c; border:1px solid #eaa9a9; }
+</style>
+<div style="margin-bottom:0.7rem;"><a href="{{ url_for('inventory_audit') }}" class="btn btn-secondary">← All audits</a></div>
+<div class="toolbar">
+  <h1 style="margin:0;">🧮 Auditing
+    {% if audit["scope"] %}<span class="muted" style="font-size:1rem; font-weight:400;">· {{ audit["scope"] }}</span>
+    {% else %}<span class="muted" style="font-size:1rem; font-weight:400;">· all stock</span>{% endif %}</h1>
+  <form method="post" action="{{ url_for('inventory_audit_finish', audit_id=audit['id']) }}" style="margin:0;"
+        onsubmit="return confirm('Finish this audit and view the report? You can\'t scan more after that.');">
+    <button type="submit" class="btn">✓ Finish &amp; view report</button>
+  </form>
+</div>
+
+<div class="card" style="display:flex; gap:1.2rem; flex-wrap:wrap; align-items:center;">
+  <div><span class="muted" style="font-size:0.82rem;">Accounted for</span><br>
+    <strong id="prog" style="font-size:1.3rem;">{{ report.counts.accounted }}</strong>
+    <span class="muted"> / <span id="prog-exp">{{ report.counts.expected }}</span> expected</span></div>
+  <div><span class="muted" style="font-size:0.82rem;">Scans</span><br>
+    <strong id="cnt-scans" style="font-size:1.1rem;">{{ report.counts.scans }}</strong></div>
+  <div><span class="muted" style="font-size:0.82rem;">Flags</span><br>
+    <span class="muted" style="font-size:0.9rem;"><span id="cnt-unknown">{{ report.counts.unknown }}</span> unknown · <span id="cnt-dup">{{ report.counts.duplicates }}</span> dup</span></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Scan a tag</h2>
+  <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+    <input id="serial" type="text" autocomplete="off" placeholder="scan or type a serial (VXM-000123)"
+           style="flex:1; min-width:12rem; padding:0.5rem 0.6rem; font-size:1rem;">
+    <button id="add" class="btn">＋ Add</button>
+    <button id="cam-btn" type="button" class="btn btn-secondary">📷 Camera</button>
+  </div>
+  <div id="cam-wrap" style="display:none; margin-top:0.6rem;">
+    <video id="cam" playsinline style="width:100%; max-width:420px; border-radius:8px; border:1px solid var(--border);"></video>
+    <p id="cam-msg" class="muted" style="font-size:0.82rem; margin:0.3rem 0 0;">Point at a Code-128 label. It keeps scanning — no need to stop between items.</p>
+  </div>
+  <p id="live" class="muted" style="margin:0.5rem 0 0; font-size:0.9rem; min-height:1.1rem;"></p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Scanned this session <span id="scount" class="sect-count">{{ scans|length }}</span></h2>
+  <div style="overflow-x:auto;">
+  <table id="scantbl">
+    <thead><tr><th>Serial</th><th>Item</th><th>Result</th><th></th></tr></thead>
+    <tbody>
+      {% for s in scans %}
+      <tr data-serial="{{ s['serial'] }}">
+        <td style="white-space:nowrap; font-family:monospace;">{{ s["serial"] }}</td>
+        <td>{{ s["label"] or "—" }}</td>
+        <td><span class="flag flag-{{ s['flag'] }}">{{ s["reason"] }}</span></td>
+        <td>
+          <form method="post" action="{{ url_for('inventory_audit_scan_delete', audit_id=audit['id'], scan_id=s['id']) }}" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;" title="Remove this scan">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not scans %}<p class="empty" id="empty-row">Nothing scanned yet.</p>{% endif %}
+</div>
+
+<script>
+(function () {
+  var AUDIT = {{ audit['id'] }};
+  var input = document.getElementById("serial"), addBtn = document.getElementById("add");
+  var tbody = document.querySelector("#scantbl tbody"), live = document.getElementById("live");
+  var REASON = { ok: "in stock ✓", duplicate: "already scanned", unknown: "unknown tag",
+                 should_be_out: "should be out", out_of_scope: "out of scope" };
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]);}); }
+  function addRow(d) {
+    var er = document.getElementById("empty-row"); if (er) er.remove();
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td style="white-space:nowrap; font-family:monospace;">' + esc(d.serial) + '</td>' +
+      '<td>' + esc(d.label || "—") + '</td>' +
+      '<td><span class="flag flag-' + d.flag + '">' + esc(d.reason) + '</span></td><td></td>';
+    tbody.insertBefore(tr, tbody.firstChild);
+    document.getElementById("prog").textContent = d.accounted;
+    document.getElementById("prog-exp").textContent = d.expected;
+    if (d.unknown != null) document.getElementById("cnt-unknown").textContent = d.unknown;
+    if (d.duplicates != null) document.getElementById("cnt-dup").textContent = d.duplicates;
+    var sc = document.getElementById("scount");
+    sc.textContent = (parseInt(sc.textContent, 10) || 0) + 1;
+    var cn = document.getElementById("cnt-scans"); cn.textContent = (parseInt(cn.textContent, 10) || 0) + 1;
+    var cls = d.flag === "ok" ? "" : (d.flag === "duplicate" ? "" : "color:#9a1c1c;");
+    live.innerHTML = '<span style="' + cls + '">' + esc(d.serial) + ' — ' + esc(d.reason) + '</span>';
+  }
+  function send(serial) {
+    if (!serial) return;
+    var body = new URLSearchParams(); body.set("serial", serial);
+    fetch("/inventory/audit/" + AUDIT + "/scan", { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.error) { live.textContent = d.error; return; } addRow(d); })
+      .catch(function () { live.textContent = "Couldn't record that scan — try again."; });
+  }
+  function submitInput() { var v = input.value.trim(); if (v) { send(v); input.value = ""; } input.focus(); }
+  addBtn.addEventListener("click", submitInput);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submitInput(); } });
+  input.focus();
+
+  // Continuous camera scanning (Code-128) — keeps running; de-dupes rapid repeats.
+  (function () {
+    var btn = document.getElementById("cam-btn"), wrap = document.getElementById("cam-wrap"),
+        video = document.getElementById("cam"), msg = document.getElementById("cam-msg"),
+        stream = null, running = false, last = "", lastAt = 0;
+    if (!("BarcodeDetector" in window)) { btn.disabled = true; btn.textContent = "📷 Camera n/a"; return; }
+    var detector = new BarcodeDetector({ formats: ["code_128"] });
+    function stop() { running = false; if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } wrap.style.display = "none"; btn.textContent = "📷 Camera"; }
+    btn.addEventListener("click", async function () {
+      if (running) { stop(); return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }); }
+      catch (e) { msg.textContent = "Couldn't open the camera — allow access (needs HTTPS)."; return; }
+      video.srcObject = stream; await video.play(); wrap.style.display = "block"; btn.textContent = "■ Stop"; running = true; loop();
+    });
+    async function loop() {
+      if (!running) return;
+      try {
+        var codes = await detector.detect(video);
+        if (codes.length && codes[0].rawValue) {
+          var v = codes[0].rawValue, now = Date.now();
+          if (v !== last || now - lastAt > 2500) { last = v; lastAt = now; send(v); }
+        }
+      } catch (e) {}
+      requestAnimationFrame(loop);
+    }
+  })();
+})();
+</script>
+{% endblock %}

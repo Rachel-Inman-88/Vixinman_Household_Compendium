@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Boards{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>📋 Boards <span class="muted" style="font-size:0.95rem; font-weight:400;">— to-dos not tied to a job</span></h1>
+  <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} open</span>
+</div>
+<p class="muted" style="margin-top:0;">Standalone tasks for the team (clean the bathroom, call a vendor, …).
+Assign one to a teammate, log time on it, and keep a running notes log.</p>
+
+{# ---- filters ---- #}
+<div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0.9rem;">
+  <span class="muted" style="font-size:0.85rem;">Show:</span>
+  {% set base = {'show': show} %}
+  <a href="{{ url_for('boards_page', who='mine', show=show) }}" class="btn {{ '' if who == 'mine' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
+  <a href="{{ url_for('boards_page', who='all', show=show) }}" class="btn {{ '' if who == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+  <a href="{{ url_for('boards_page', who='unassigned', show=show) }}" class="btn {{ '' if who == 'unassigned' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
+  <span style="width:1px; height:1.2rem; background:var(--border); margin:0 0.2rem;"></span>
+  <a href="{{ url_for('boards_page', who=who, show='open') }}" class="btn {{ '' if show == 'open' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Open</a>
+  <a href="{{ url_for('boards_page', who=who, show='all') }}" class="btn {{ '' if show == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All statuses</a>
+</div>
+
+{# ---- list ---- #}
+<div class="card">
+  {% if boards %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>To-do</th><th>Assigned to</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for b in boards %}
+      {% set overdue = b["due_date"] and b["due_date"] < today and b["status"] != "Done" %}
+      <tr{% if b["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
+        <td><a href="{{ url_for('board_detail', board_id=b['id']) }}">{{ b["title"] }}</a></td>
+        <td class="muted" style="font-size:0.85rem;">{{ b["assignee_name"] or "— unassigned —" }}</td>
+        <td>{% if b["priority"] == "High" %}<span class="badge danger">High</span>{% elif b["priority"] %}<span class="badge neutral">{{ b["priority"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="white-space:nowrap;">{% if b["due_date"] %}{{ b["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}<span class="badge {{ sc.get(b['status'],'neutral') }}">{{ b["status"] }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No boards here — add one below.</p>
+  {% endif %}
+</div>
+
+{# ---- new board ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">＋ New board</h2>
+  <form method="post" action="{{ url_for('board_new') }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">To-do *</label>
+        <input id="title" name="title" required placeholder="e.g. Clean the shop bathroom"></div>
+      <div class="field"><label for="assigned_to">Send to (optional)</label>
+        <select id="assigned_to" name="assigned_to">
+          <option value="">— unassigned —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="priority">Priority</label>
+        <select id="priority" name="priority">
+          {% for p in priorities %}<option value="{{ p }}">{{ p or "— none —" }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="due_date">Due (optional)</label>
+        <input id="due_date" name="due_date" type="date"></div>
+      <div class="field wide"><label for="details">Details (optional)</label>
+        <input id="details" name="details" placeholder="anything else about the task"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add board</button></div>
+  </form>
+</div>
+{% endblock %}

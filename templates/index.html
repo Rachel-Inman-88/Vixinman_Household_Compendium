@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Client profiles</h1>
+  <div style="display:flex; gap:0.5rem; align-items:center;">
+    {% if can('leads.manage') and cold_count %}
+    <a href="{{ url_for('cold_leads_page') }}" class="btn btn-secondary">❄ Cold leads ({{ cold_count }})</a>
+    {% endif %}
+    <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
+  </div>
+</div>
+
+{% if followups %}
+<div class="card" style="border-left:4px solid #f5a623;">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔔 Follow-ups due ({{ followups|length }})</h2>
+  <p class="muted" style="margin-top:0;">New leads on the 7-day / 2-week / 1-month
+  cadence. Log the contact, convert the lead by entering job details, or mark it cold.</p>
+  <table>
+    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th>Sales rep</th><th></th></tr></thead>
+    <tbody>
+      {% for f in followups %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=f['client_id']) }}">{{ f["client_name"] }}</a>
+          {% if f["client_phone"] %}<br><span class="muted" style="font-size:0.8rem;">{{ f["client_phone"] }}</span>{% endif %}</td>
+        <td><span class="badge neutral">{{ f["milestone"] }}</span></td>
+        <td>{{ f["due_date"] }}{% if f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td>{{ f["rep_name"] or "— unassigned —" }}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('new_job', client_id=f['client_id']) }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Enter job details</a>
+          <form method="post" action="{{ url_for('followup_done', followup_id=f['id']) }}" style="display:inline; margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('home') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Log that you followed up">✓ Logged</button>
+          </form>
+          <form method="post" action="{{ url_for('mark_cold', client_id=f['client_id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Move this lead to cold leads? It leaves the active list.');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">❄ Cold</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+<div style="position:relative;">
+  <form method="get" action="{{ url_for('search') }}" class="card" id="search_form"
+        style="display:flex; gap:0.5rem; align-items:center; padding:0.75rem 1rem; margin-bottom:0;"
+        autocomplete="off">
+    <input type="search" name="q" id="q" placeholder="🔍 Search clients &amp; jobs…"
+           style="flex:1;" aria-expanded="false" aria-controls="preview">
+    <button type="submit" class="btn">Search</button>
+  </form>
+  <div id="preview" role="listbox"
+       style="display:none; position:absolute; left:0; right:0; top:100%; z-index:20;
+              background:var(--card); border:1px solid var(--border); border-top:none;
+              border-radius:0 0 10px 10px; box-shadow:0 8px 20px rgba(0,0,0,0.08);
+              max-height:22rem; overflow-y:auto;"></div>
+</div>
+<div style="height:1rem;"></div>
+<div class="card">
+  {% if clients %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Mailing address</th>
+        <th>Referral source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clients %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a>
+          {% if c["lead_status"] == "Lead" %}<span class="badge warn" style="font-size:0.7rem;">Lead</span>{% endif %}</td>
+        <td>{{ c["phone"] }}</td>
+        <td>{{ c["mailing_address"] }}</td>
+        <td>{{ c["referral_source"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No clients yet — click “＋ New client” to create the first one.</p>
+  {% endif %}
+</div>
+<p class="muted">Open a client to see their jobs folder and create job
+profiles. Piece 4 adds automatic resources on each job page.</p>
+
+<script>
+  // Live preview of search matches as you type, without leaving the page.
+  const input = document.getElementById("q");
+  const box = document.getElementById("preview");
+  const statusClass = {{ job_status_class_json | default('{}') | safe }};
+  let timer = null, lastQ = "";
+
+  const esc = s => (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  function hide() { box.style.display = "none"; input.setAttribute("aria-expanded", "false"); }
+  function row(href, main, sub, badge) {
+    return '<a href="' + href + '" style="display:block; padding:0.55rem 0.9rem;'
+      + ' border-bottom:1px solid var(--border); text-decoration:none; color:var(--text);">'
+      + '<span style="font-weight:600; color:var(--brand-dark);">' + esc(main) + '</span>'
+      + (badge || '')
+      + (sub ? '<br><span class="muted" style="font-size:0.82rem;">' + esc(sub) + '</span>' : '')
+      + '</a>';
+  }
+
+  function render(data) {
+    let html = "";
+    if (data.clients.length) {
+      html += '<div class="muted" style="padding:0.4rem 0.9rem; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; background:#fafbf9;">Clients</div>';
+      data.clients.forEach(c => {
+        const sub = [c.phone, c.address].filter(Boolean).join(" · ");
+        html += row("/clients/" + c.id, c.name, sub, "");
+      });
+    }
+    if (data.jobs.length) {
+      html += '<div class="muted" style="padding:0.4rem 0.9rem; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; background:#fafbf9;">Jobs</div>';
+      data.jobs.forEach(j => {
+        const badge = ' <span class="badge ' + (statusClass[j.status] || "neutral")
+          + '" style="font-size:0.7rem;">' + esc(j.status) + '</span>';
+        html += row("/jobs/" + j.id, j.name, j.client_name, badge);
+      });
+    }
+    if (!html) {
+      html = '<div class="muted" style="padding:0.7rem 0.9rem;">No matches. Press Enter for a full search.</div>';
+    }
+    box.innerHTML = html;
+    box.style.display = "block";
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  input.addEventListener("input", () => {
+    const q = input.value.trim();
+    if (q === lastQ) return;
+    lastQ = q;
+    clearTimeout(timer);
+    if (!q) { hide(); return; }
+    timer = setTimeout(() => {
+      fetch("/api/search?q=" + encodeURIComponent(q))
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(render)
+        .catch(() => hide());
+    }, 180);
+  });
+  input.addEventListener("focus", () => { if (box.innerHTML && input.value.trim()) box.style.display = "block"; });
+  document.addEventListener("click", e => {
+    if (!box.contains(e.target) && e.target !== input) hide();
+  });
+  input.addEventListener("keydown", e => { if (e.key === "Escape") hide(); });
+</script>
+{% endblock %}

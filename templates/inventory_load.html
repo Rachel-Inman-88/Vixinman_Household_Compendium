@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Load a truck{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🚚 Load a truck</h1>
+  <a href="{{ url_for('inventory_scan') }}" class="btn btn-secondary">📷 Single scan</a>
+</div>
+
+{% if not job %}
+<div class="card">
+  <form method="get" action="{{ url_for('inventory_load') }}" style="display:flex; gap:0.7rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0; flex:1 1 260px;">
+      <label>Which job are you loading for?</label>
+      <select name="job_id" required>
+        <option value="">— pick a job —</option>
+        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }} — {{ j['client_name'] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field" style="margin:0;"><button type="submit" class="btn">Start loading</button></div>
+  </form>
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Pick the job once,
+    then scan each tag to load it out. Two people can load the same job at the same
+    time from their own phones — every scan is recorded independently.</p>
+</div>
+{% else %}
+<div class="card" style="border-left:4px solid var(--brand);">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+    <div><strong>Loading:</strong> {{ job['job_name'] }} — {{ job['client_name'] }}</div>
+    <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Change job</a>
+  </div>
+  <div style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap; margin-top:0.7rem;">
+    <div class="field" style="margin:0; flex:1 1 200px;">
+      <label>Scan or type a serial</label>
+      <input id="serial" autocomplete="off" placeholder="VXM-000123"
+             style="font-family:monospace; font-size:1.05rem;">
+    </div>
+    <div class="field" style="margin:0;"><button type="button" id="cam-btn" class="btn">📷 Camera</button></div>
+  </div>
+  <div id="cam-wrap" style="display:none; margin-top:0.6rem;">
+    <video id="cam" playsinline muted style="width:100%; max-width:420px; border-radius:8px; background:#000;"></video>
+  </div>
+  <p class="muted" id="cam-msg" style="margin:0.4rem 0 0; font-size:0.8rem;">
+    Tap <strong>📷 Camera</strong> and point at a tag — it keeps scanning so you can
+    load fast. A USB/Bluetooth scanner works in the box too.</p>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 0.4rem; font-size:1.05rem;">Loaded <span id="count" class="badge">0</span></h2>
+  <ul id="loaded" style="list-style:none; margin:0; padding:0; font-size:0.9rem;"></ul>
+  <p class="empty" id="empty" style="margin:0;">Nothing loaded yet — scan a tag.</p>
+</div>
+
+<script>
+(function () {
+  var JOB_ID = {{ job['id'] }};
+  var serial = document.getElementById("serial"),
+      list = document.getElementById("loaded"),
+      count = document.getElementById("count"),
+      empty = document.getElementById("empty"),
+      btn = document.getElementById("cam-btn"),
+      wrap = document.getElementById("cam-wrap"),
+      video = document.getElementById("cam"),
+      msg = document.getElementById("cam-msg"),
+      loaded = 0, lastVal = "", lastAt = 0, busy = false;
+
+  function beep(ok) {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = ok ? 880 : 220; o.connect(g); g.connect(ctx.destination);
+      g.gain.value = 0.08; o.start(); o.stop(ctx.currentTime + 0.12);
+    } catch (e) {}
+  }
+  function row(text, cls) {
+    empty.style.display = "none";
+    var li = document.createElement("li");
+    li.style.cssText = "padding:0.35rem 0; border-bottom:1px solid var(--border);";
+    li.innerHTML = '<span class="badge ' + cls + '">' + (cls === "" ? "✓" : (cls === "warn" ? "!" : "✕")) + '</span> ' + text;
+    list.insertBefore(li, list.firstChild);
+  }
+  async function submit(code) {
+    code = (code || "").trim();
+    if (!code || busy) return;
+    var now = Date.now();
+    if (code === lastVal && now - lastAt < 2500) return;   // ignore repeat reads
+    lastVal = code; lastAt = now; busy = true;
+    try {
+      var r = await fetch("{{ url_for('api_scan_out') }}", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serial: code, job_id: JOB_ID })
+      });
+      var d = await r.json();
+      if (d.ok && !d.warn) { loaded++; count.textContent = loaded; row((d.label || code) + " — " + d.action, ""); beep(true); }
+      else if (d.ok && d.warn) { row((d.label || code) + " — " + d.action, "warn"); beep(false); }
+      else { row((d.label || code) + " — " + (d.error || "not loaded"), "danger"); beep(false); }
+    } catch (e) { row(code + " — network error", "danger"); beep(false); }
+    busy = false; serial.value = ""; serial.focus();
+  }
+  serial.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); submit(serial.value); }
+  });
+
+  // Camera (BarcodeDetector) — continuous scanning.
+  if (!("BarcodeDetector" in window)) {
+    btn.disabled = true; btn.textContent = "📷 Camera n/a";
+    msg.innerHTML = "This browser can't scan with the camera — use a USB/Bluetooth scanner or type the serial. (Camera scanning works in Chrome on Android; the app must be served over HTTPS.)";
+  } else {
+    var detector = new BarcodeDetector({ formats: ["code_128"] }), stream = null, running = false;
+    function stop() { running = false; if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } wrap.style.display = "none"; btn.textContent = "📷 Camera"; }
+    btn.addEventListener("click", async function () {
+      if (running) { stop(); return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }); }
+      catch (e) { msg.textContent = "Couldn't open the camera — allow access (needs HTTPS)."; return; }
+      video.srcObject = stream; await video.play(); wrap.style.display = "block"; btn.textContent = "■ Stop"; running = true; loop();
+    });
+    async function loop() {
+      if (!running) return;
+      try { var codes = await detector.detect(video); if (codes.length && codes[0].rawValue) submit(codes[0].rawValue); } catch (e) {}
+      setTimeout(function () { requestAnimationFrame(loop); }, 250);   // ~4 reads/sec
+    }
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

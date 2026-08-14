@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ client["name"] }} — change history{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🔒 Change history — {{ client["name"] }}</h1>
+  <a href="{{ url_for('client_detail', client_id=client['id']) }}" class="btn btn-secondary">← Back to profile</a>
+</div>
+<p class="muted">Admin-only. Each entry is the profile <strong>as it was before</strong>
+an edit — the older information that's hidden on the profile page. Newest first.</p>
+
+{% if versions %}
+  {% for v in versions %}
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:0.5rem;">
+      <h2 style="margin:0; font-size:1.05rem;">Version {{ v["version"] }}
+        <span class="muted" style="font-size:0.85rem; font-weight:normal;">— values before this change</span>
+      </h2>
+      <span class="muted" style="font-size:0.85rem;">changed {{ v["saved_at"][:16] }}{% if v["edited_by"] %} by {{ v["edited_by"] }}{% endif %}</span>
+    </div>
+    {% if v["changed"] %}
+    <p style="margin:0 0 0.6rem;">
+      {% for label in v["changed"] %}<span class="badge warn">{{ label }}</span>{% endfor %}
+      <span class="muted" style="font-size:0.85rem;">changed in this edit</span>
+    </p>
+    {% endif %}
+    <dl class="profile">
+      {% for field, label in labels.items() %}
+        {% if field not in ("mailing_address", "billing_address") %}
+        <dt>{{ label }}</dt><dd>{{ v["data"].get(field) or "—" }}</dd>
+        {% endif %}
+      {% endfor %}
+    </dl>
+  </div>
+  {% endfor %}
+{% else %}
+<p class="empty">No prior versions — this profile hasn't been edited since it was created.</p>
+{% endif %}
+{% endblock %}

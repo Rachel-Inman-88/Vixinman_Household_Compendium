@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
+<div class="toolbar">
+  <h1>✅ Task board</h1>
+  <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">🎒 My Work Bag</a>
+</div>
+<p class="muted">Every task across every job in one place. Filter to a person
+to see just their work — the “my tasks” view for the whole team.
+<strong>Work Bag</strong> is your own offline-capable field list.</p>
+
+{% if followups %}
+<div class="card" style="border-left:4px solid #f5a623;">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔔 Lead follow-ups due ({{ followups|length }})</h2>
+  <table>
+    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th>Sales rep</th><th></th></tr></thead>
+    <tbody>
+      {% for f in followups %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=f['client_id']) }}">{{ f["client_name"] }}</a></td>
+        <td><span class="badge neutral">{{ f["milestone"] }}</span></td>
+        <td>{{ f["due_date"] }}{% if f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td>{{ f["rep_name"] or "— unassigned —" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('followup_done', followup_id=f['id']) }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('tasks_dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Logged</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<form method="get" class="card" id="filter_form">
+  <div class="form-grid">
+    <div class="field">
+      <label for="employee">Who</label>
+      <select id="employee" name="employee">
+        <option value="" {% if who == "" %}selected{% endif %}>Everyone</option>
+        <option value="unassigned" {% if who == "unassigned" %}selected{% endif %}>— Unassigned —</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {% if who == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="show">Show</label>
+      <select id="show" name="show">
+        <option value="open" {% if show == "open" %}selected{% endif %}>Open (not done)</option>
+        <option value="all" {% if show == "all" %}selected{% endif %}>All, including done</option>
+      </select>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <p style="margin:0;">
+    <strong>{{ task_total }}</strong> task{{ "s" if task_total != 1 }}
+    across <strong>{{ groups|length }}</strong> job{{ "s" if groups|length != 1 }}
+    {% for s in task_statuses %}{% if counts.get(s) %}<span class="badge {{ sc[s] }}">{{ counts[s] }} {{ s }}</span>{% endif %}{% endfor %}
+    {% if overdue %}<span class="badge danger">{{ overdue }} overdue</span>{% endif %}
+  </p>
+</div>
+
+{% for g in groups %}
+<details class="card sect" open{% if g.overdue %} style="border-left:4px solid #b02a2a;"{% endif %}>
+  <summary>
+    <a href="{{ url_for('job_detail', job_id=g.job_id) }}#tasks" onclick="event.stopPropagation();">{{ g.job_name or "Job #" ~ g.job_id }}</a>
+    <span class="muted" style="font-weight:400; font-size:0.85rem;">· {{ g.client_name }}</span>
+    <span class="sect-count">{{ g.open }} open{% if g.overdue %} · <span class="badge danger">{{ g.overdue }} overdue</span>{% endif %}</span>
+  </summary>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Task</th><th>Assigned to</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for t in g.tasks %}
+      {% set overdue_t = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
+      <tr{% if t["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
+        <td>{{ t["title"] }}{% if t["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ t["notes"] }}</span>{% endif %}</td>
+        <td>{{ t["assignee_name"] or "" }}{% if not t["assignee_name"] %}<span class="muted">— unassigned —</span>{% endif %}</td>
+        <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue_t %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('set_task_status', job_id=t['job_id'], task_id=t['id']) }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
+              {% for s in task_statuses %}
+              <option value="{{ s }}" {% if t["status"] == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% else %}
+<div class="card"><p class="empty" style="margin:0;">No tasks match this view.</p></div>
+{% endfor %}
+
+<script>
+  document.querySelectorAll("#filter_form select").forEach(sel =>
+    sel.addEventListener("change", () => document.getElementById("filter_form").submit()));
+</script>
+{% endblock %}

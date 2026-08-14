@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline · Compendium</title>
+  <style>
+    :root { --brand:#1a6e3c; --brand-dark:#12522c; --bg:#f6f7f5; --muted:#6b7280; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center;
+      justify-content:center; background:var(--bg); color:#1f2937;
+      font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:1.5rem; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+      padding:2rem 1.75rem; max-width:420px; text-align:center;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+    h1 { margin:0 0 0.5rem; font-size:1.4rem; }
+    p { color:var(--muted); line-height:1.5; margin:0.5rem 0; }
+    .big { font-size:2.5rem; margin-bottom:0.5rem; }
+    a.btn { display:inline-block; margin-top:1rem; background:var(--brand);
+      color:#fff; text-decoration:none; padding:0.55rem 1.1rem; border-radius:8px;
+      font-weight:600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="big">📴</div>
+    <h1>You're offline</h1>
+    <p>Compendium couldn't reach the office. Pages you've already opened on this
+      device are still available.</p>
+    <p><strong>Your Work Bag works offline</strong> — open it to see your saved
+      tasks and record work; it syncs once you're back on a signal.</p>
+    <a class="btn" href="/work-bag">🎒 Open Work Bag</a>
+    <p style="font-size:0.82rem; margin-top:1rem;">Reconnect and reload to get the
+      latest from the office.</p>
+  </div>
+</body>
+</html>

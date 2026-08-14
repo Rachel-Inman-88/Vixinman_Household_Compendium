@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Help — Tutorials &amp; FAQ{% endblock %}
+{% block content %}
+<style>
+  .help-toc { columns: 2; column-gap: 1.5rem; }
+  .help-toc a { display:block; padding:0.12rem 0; font-size:0.9rem; }
+  @media (max-width:640px){ .help-toc { columns: 1; } }
+  .help h2 { font-size:1.15rem; margin:0 0 0.2rem; }
+  .help h3 { font-size:0.98rem; margin:0.9rem 0 0.2rem; }
+  .help details { border-top:1px solid var(--border); padding:0.5rem 0; }
+  .help details summary { cursor:pointer; font-weight:600; }
+  .help details p, .help details ul { margin:0.4rem 0 0; }
+  .help .steps { margin:0.3rem 0 0.6rem 1.1rem; }
+  .help .steps li { margin-bottom:0.2rem; }
+  .backtop { font-size:0.78rem; }
+</style>
+
+<div class="toolbar">
+  <h1>❓ Help — Tutorials &amp; FAQ</h1>
+  <span class="muted" style="font-size:0.85rem;">First draft · covers every feature</span>
+</div>
+<p class="muted" style="margin-top:0;">Short how-tos and answers for using Compendium. Jump to a
+section, or expand a question. What you can see and do depends on your role — if a page or
+button below isn't visible to you, you may not have access to it (ask a General Manager).</p>
+
+<div class="card" id="top">
+  <strong>Contents</strong>
+  <div class="help-toc" style="margin-top:0.4rem;">
+    <a href="#account">1. Signing in &amp; your account</a>
+    <a href="#clients">2. Clients &amp; leads</a>
+    <a href="#jobs">3. Jobs &amp; the pipeline</a>
+    <a href="#loads">4. Loads, sizing &amp; the BOM</a>
+    <a href="#rules">5. Rules, licenses, permits &amp; compliance</a>
+    <a href="#tasks">6. Tasks &amp; the field Work Bag</a>
+    <a href="#boards-help">6b. Boards (stand-alone to-dos)</a>
+    <a href="#finance">7. Finance, billing &amp; pricing</a>
+    <a href="#inventory">8. Inventory, barcodes &amp; stock audit</a>
+    <a href="#people">9. People, roles &amp; permissions</a>
+    <a href="#notifications">10. Notifications</a>
+    <a href="#managers">11. For managers &amp; admins</a>
+  </div>
+</div>
+
+<div class="help">
+
+<!-- 1 -->
+<div class="card" id="account">
+  <h2>1. Signing in &amp; your account</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — set up self-service password reset</h3>
+  <ol class="steps">
+    <li>Click your name (top right) → <strong>My account</strong>.</li>
+    <li>Under <strong>Security questions</strong>, pick 3 questions and type answers only you know.</li>
+    <li>Confirm with your current password and <strong>Save</strong>. Answers are stored scrambled and are <em>case-sensitive</em>.</li>
+  </ol>
+  <details><summary>I forgot my password — how do I get back in?</summary>
+    <p>On the sign-in page click <strong>Forgot your password?</strong>, enter your username, and answer the
+    2 (randomly chosen) security questions you enrolled. You then set a new password yourself — no admin needed.
+    If you never set up questions, ask a manager to reset it from your employee profile.</p></details>
+  <details><summary>Why did my account get locked after a reset attempt?</summary>
+    <p>Too many wrong security-question answers auto-locks the account for safety and notifies a Supervisor
+    (or the GM). A manager reinstates it from your employee profile.</p></details>
+  <details><summary>I got signed out on my own — why?</summary>
+    <p>Sessions end after <strong>12 hours of inactivity</strong> (the clock resets on each action). Just sign in again.</p></details>
+</div>
+
+<!-- 2 -->
+<div class="card" id="clients">
+  <h2>2. Clients &amp; leads</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — add a client and start a job</h3>
+  <ol class="steps">
+    <li>From <strong>🗄 Databases → Client Profiles</strong>, add a client (mailing/billing address split into fields).</li>
+    <li>Open the client and choose <strong>New job</strong> to create a job under them.</li>
+    <li>Leads get scheduled <strong>follow-ups</strong>; entering job details converts the lead automatically.</li>
+  </ol>
+  <details><summary>What is a "cold lead"?</summary>
+    <p>A lead that's gone quiet can be moved to the <strong>cold-leads</strong> list; a GM/Admin can restore or
+    purge it later. Old cold leads are flagged for review.</p></details>
+  <details><summary>Someone edited a client — can I see what changed?</summary>
+    <p>Yes. Editing a client saves the prior version; the changed data is hidden with a note, and an admin can
+    request the older info. Everything is in the audit log too.</p></details>
+</div>
+
+<!-- 3 -->
+<div class="card" id="jobs">
+  <h2>3. Jobs &amp; the pipeline</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;">Stages: <strong>Proposal → Job Prep → Installation → Inspections → Closing → Complete</strong> (plus Lost). Each stage is owned by a department with exit criteria.</p>
+  <h3>Tutorial — advance a job</h3>
+  <ol class="steps">
+    <li>Open the job. The <strong>Pipeline stage</strong> panel shows who owns it and what's needed to advance.</li>
+    <li>Use <strong>Advance to …</strong> when ready. Job Prep auto-advances to Installation once permits are filed and you set an install date.</li>
+    <li>To change the stage directly, click the ✎ next to the stage name.</li>
+  </ol>
+  <h3>Tutorial — cancel (and reopen) a job</h3>
+  <ol class="steps">
+    <li>On the job, open <strong>🚫 Cancel this job</strong>, type a <strong>reason</strong> (required), and confirm. The job is marked <strong>Lost</strong>.</li>
+    <li>Its open tasks stop showing in My Tasks / the board / the Work Bag, and everyone who was involved is notified.</li>
+    <li>To bring it back, use <strong>↩ Reopen job</strong> — it returns to the exact stage it was at.</li>
+  </ol>
+  <details><summary>Where do cancelled jobs go?</summary>
+    <p>Nowhere is deleted. A GM/Admin can review them under <strong>🗄 Databases → Closed jobs</strong> (reason,
+    who/when, contract) with one-click Reopen, alongside completed jobs.</p></details>
+  <details><summary>Who gets told when a job moves to a new stage?</summary>
+    <p>The department(s) that own the new stage get an inbox notification. Your copy clears the first time you
+    open it (or open the job).</p></details>
+</div>
+
+<!-- 4 -->
+<div class="card" id="loads">
+  <h2>4. Loads, sizing &amp; the bill of materials (BOM)</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — record a load survey &amp; size the system</h3>
+  <ol class="steps">
+    <li>On the job, open <strong>⚡ Loads &amp; Sizing</strong>. Loads are recorded here during the walkthrough — not at job creation.</li>
+    <li>Add rooms/appliances (each room's picker defaults to its type; use Custom for off-catalog items). 🟢 Modern / 🟠 Vintage tags help.</li>
+    <li>In Designer mode, use <strong>component auto-suggest</strong> to add PV modules, batteries, and the inverter to the BOM at the right quantity.</li>
+  </ol>
+  <details><summary>Why can't I edit the loads anymore?</summary>
+    <p>Loads &amp; Sizing is a <strong>Proposal-phase</strong> tool. Once the contract is signed (the job moves
+    past Proposal) the figures lock and become view-only.</p></details>
+  <details><summary>What's the difference between the BOM and the Packing list?</summary>
+    <p>The <strong>BOM</strong> is the priced bill of materials (equipment) built in Loads &amp; Sizing. The
+    <strong>📦 Packing list</strong> in the Work Bag is the field checklist of materials to load on the truck.</p></details>
+</div>
+
+<!-- 5 -->
+<div class="card" id="rules">
+  <h2>5. Rules, licenses, permits &amp; compliance (L/P/C)</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — add or edit a requirement rule</h3>
+  <ol class="steps">
+    <li>Go to <strong>🗄 Databases → Rules Editor</strong>.</li>
+    <li>Pick the job field + value that triggers it, a category, and a label; add links, phone, notes, and the <strong>verbatim source text</strong> if it's a compliance rule.</li>
+    <li>Set the <strong>Verification callout</strong> dropdown (none / ⚠ Verify / ⚠ Unverified) to flag anything staff should confirm — you can add or remove it any time.</li>
+  </ol>
+  <details><summary>Where do the requirements show up on a job?</summary>
+    <p>On the job's <strong>L/P/C tab</strong> (Permits lead, with an inline upload slot each), and browsable in
+    the read-only <strong>L/P/C Directory</strong> filtered by job type.</p></details>
+  <details><summary>What does the ⚠ Verify chip mean?</summary>
+    <p>It's a reminder to confirm that item before relying on it (Unverified = couldn't confirm online). It's an
+    editable field per rule now, not automatic.</p></details>
+</div>
+
+<!-- 6 -->
+<div class="card" id="tasks">
+  <h2>6. Tasks &amp; the field Work Bag</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — do field work from the Work Bag</h3>
+  <ol class="steps">
+    <li>Open <strong>🎒 Work Bag</strong> (works offline). Tap a job to see its field tasks, hours, receipts, and notes.</li>
+    <li>Finish a task with <strong>✓ Submit as done</strong> and enter the time it took, <strong>split by pay type</strong> (e.g. 8h regular + 1h travel + 2h roof).</li>
+    <li>Photo steps open a <strong>take / review / submit</strong> screen — at least one photo is required.</li>
+    <li>Your supervisor approves the task, then Finance approves the hours for payroll (two sign-offs).</li>
+  </ol>
+  <details><summary>Can I log a receipt or a note from the field?</summary>
+    <p>Yes — snap a receipt (date, total, vendor, category) and it's filed as a paid expense; the 📝 Job notes box
+    saves timestamped notes for the office.</p></details>
+  <details><summary>My tasks list looks empty for a job I know exists.</summary>
+    <p>Cancelled (Lost) jobs are hidden from tasks. Also, the field views show only on-site work; office/scheduling
+    steps live on your dashboard.</p></details>
+</div>
+
+<!-- 6b -->
+<div class="card" id="boards-help">
+  <h2>6b. Boards — stand-alone to-dos</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;"><strong>Boards</strong> (📋 in the top bar) are to-dos
+  <em>not</em> tied to a job or client — clean the bathroom, call a vendor, etc.</p>
+  <h3>Tutorial — create a to-do and send it to a teammate</h3>
+  <ol class="steps">
+    <li>Open <strong>📋 Boards</strong> and use <strong>＋ New board</strong> — give it a title, optionally a person to <strong>send it to</strong>, a priority, and a due date.</li>
+    <li>Open the board to <strong>log time</strong> (hours + date + note, with a running total), add <strong>notes</strong> as it progresses, and change its status.</li>
+    <li>To hand it off, use <strong>Send this to-do to</strong> and pick a teammate — they get a notification.</li>
+  </ol>
+  <details><summary>Where do I see to-dos sent to me?</summary>
+    <p>On <strong>📋 Boards</strong>, the <strong>Mine</strong> filter shows to-dos assigned to you; you also get a
+    🔔 notification when one is sent to you.</p></details>
+  <details><summary>Can I update an older board's notes later?</summary>
+    <p>Yes — open the board any time and add another note; the log keeps every entry with author and timestamp.</p></details>
+</div>
+
+<!-- 7 -->
+<div class="card" id="finance">
+  <h2>7. Finance, billing &amp; pricing</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — price a job with the estimate</h3>
+  <ol class="steps">
+    <li>On the job, open the <strong>📐 Estimate</strong> tab (Finance/Sales/Design) and click <strong>Prefill from cost model</strong>.</li>
+    <li>Set quantities for Labor / Travel / Adders / mounts; equipment pulls from the BOM. Overhead (G&amp;A) applies automatically.</li>
+    <li>Use <strong>Use suggested as contract total</strong> to set the contract.</li>
+  </ol>
+  <h3>Tutorial — bill the customer (50 / 40 / 10)</h3>
+  <ol class="steps">
+    <li>On the <strong>💵 Billing</strong> tab, set the contract total (and GRT — it auto-fills from the job's county).</li>
+    <li>Generate the <strong>Deposit 50%</strong>, then <strong>Progress 40%</strong>, then <strong>Final 10%</strong> invoices.</li>
+    <li>Print the <strong>customer copy</strong> — it shows the schedule, amount due, and equipment list, but never per-item prices.</li>
+  </ol>
+  <details><summary>Where do markups, county tax, and travel rates live?</summary>
+    <p><strong>🗄 Databases → Cost model &amp; finance</strong> (Finance/Admin/GM): six cost-model sections
+    (equipment markup, labor, travel, adders, overhead) plus the NM county GRT table.</p></details>
+  <details><summary>Who can see the cost/margin breakdown?</summary>
+    <p>The internal <strong>Pricing breakdown</strong> on the Billing tab is visible to Finance, Sales &amp; Design
+    only — never on the customer copy.</p></details>
+  <details><summary>How does payroll work?</summary>
+    <p>Crews log hours by pay type in the Work Bag; supervisors approve them; Finance runs payroll (Sun→Sat periods,
+    automatic overtime, QuickBooks CSV export). Only the GM and Payroll Manager change pay rates.</p></details>
+</div>
+
+<!-- 8 -->
+<div class="card" id="inventory">
+  <h2>8. Inventory, barcodes &amp; stock audit</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — mark an item stale</h3>
+  <ol class="steps">
+    <li>Open <strong>🗄 Databases → Inventory</strong> and find the item.</li>
+    <li>Click the <strong>🕰</strong> toggle in its row to flag it stale (click again to clear). It shows a Stale badge and joins the review queue.</li>
+  </ol>
+  <h3>Tutorial — run a stock audit</h3>
+  <ol class="steps">
+    <li>On Inventory, choose <strong>🧮 Audit stock</strong> and start a session (all stock or one category).</li>
+    <li>Scan every tag (phone camera or scanner). Compendium reconciles against what it expects to be in stock.</li>
+    <li>Finish to get a report of unaccounted / unexpected / unknown / duplicate items — exportable as CSV.</li>
+  </ol>
+  <details><summary>How do barcodes / asset tags work?</summary>
+    <p>The Warehouse Manager registers serials and prints Code-128 labels; anyone can scan items in/out to load a
+    truck (including from a phone). Two installers can load the same job at once.</p></details>
+</div>
+
+<!-- 9 -->
+<div class="card" id="people">
+  <h2>9. People, roles &amp; permissions</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <h3>Tutorial — onboard a new employee</h3>
+  <ol class="steps">
+    <li>Add them under <strong>👥 Team → Employees</strong> (roles, and a login if they need one).</li>
+    <li>Open their profile → <strong>Onboarding</strong> tab and check off steps as they're completed. Edit the checklist template from the Employees page.</li>
+  </ol>
+  <details><summary>How do the dashboard "modes" work?</summary>
+    <p>Your dashboard shows a section per department you belong to; the <strong>View:</strong> buttons focus on
+    one. Your default is remembered. (Sales-role users see a <strong>🏁 Closing</strong> mode where installers
+    see Installation.)</p></details>
+  <details><summary>What is "emergency revoke access"?</summary>
+    <p>A GM or a designated <strong>Supervisor</strong> can instantly suspend all of an employee's access from
+    their profile — they're signed out and blocked until <strong>reinstated</strong>. Nothing is deleted.</p></details>
+  <details><summary>How are permissions granted?</summary>
+    <p>The GM has full access and can grant individuals specific tools (optionally with an expiry). Admin sits below
+    GM; most people get exactly what their role needs.</p></details>
+</div>
+
+<!-- 10 -->
+<div class="card" id="notifications">
+  <h2>10. Notifications</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p style="margin-top:0;">The <strong>🔔</strong> in the top bar is your inbox (the badge is your unread count).
+  You'll get notifications for pipeline turnovers to your department, job cancellations you were involved in, and
+  security alerts. <strong>Opening a notification clears it</strong> for you.</p>
+  <details><summary>A notification disappeared — where did it go?</summary>
+    <p>They clear once accessed (by opening the notification or the job it points to). Use <strong>Clear all</strong>
+    on the inbox to empty it.</p></details>
+</div>
+
+<!-- 11 -->
+<div class="card" id="managers">
+  <h2>11. For managers &amp; admins</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <ul class="steps">
+    <li><strong>🔧 Admin → Log</strong>: the audit log of every change (who/what/when), with passwords redacted.</li>
+    <li><strong>🔧 Admin → Trash</strong>: deleted items (GM restores or purges). Deletes are blocked if data is in use.</li>
+    <li><strong>🔧 Admin → Access</strong>: grant per-person tool access, optionally with an expiry (GM only).</li>
+    <li><strong>🗄 Databases → Closed jobs</strong>: review cancelled + completed jobs; reopen a cancelled job.</li>
+    <li><strong>🗄 Databases → Cost model &amp; finance</strong>: markups, county GRT, travel, overhead.</li>
+    <li><strong>Executive dashboard</strong>: company overview — pipeline counts, money in flight, attention row,
+      ready-for-design, this week's installs, and the Closing worklist.</li>
+  </ul>
+  <details><summary>How do we back up the data?</summary>
+    <p>Everything lives in <code>job_creator.db</code> with uploaded files in the <code>uploads/</code> folder —
+    back up both together. In the desktop app that's your personal <code>Compendium</code> folder.</p></details>
+</div>
+
+<p class="muted" style="font-size:0.85rem;">This is a first draft — tell us what's unclear or missing and we'll expand it.</p>
+</div>
+{% endblock %}

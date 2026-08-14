@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Onboarding checklist{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🚀 Onboarding checklist</h1>
+  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Employees</a>
+</div>
+<p class="muted" style="margin-top:0;">These steps are the company-wide checklist
+every new hire is tracked against, on their profile's <strong>Onboarding</strong>
+tab. Edit them here; adding a step makes it appear (unchecked) for everyone.</p>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Steps</h2>
+  {% if steps %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th style="width:4.5rem;">Order</th><th>Step</th><th>Category</th><th></th></tr></thead>
+    <tbody>
+      {% for s in steps %}
+      {% if edit_id == s["id"] %}
+      <tr>
+        <td colspan="4">
+          <form method="post" action="{{ url_for('onboarding_step_edit', step_id=s['id']) }}">
+            <div class="form-grid">
+              <div class="field wide"><label>Title *</label>
+                <input name="title" required value="{{ s['title'] }}"></div>
+              <div class="field"><label>Category</label>
+                <input name="category" value="{{ s['category'] }}" placeholder="HR / Safety / IT / Operations"></div>
+              <div class="field wide"><label>Description</label>
+                <input name="description" value="{{ s['description'] }}"></div>
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn">Save changes</button>
+              <a href="{{ url_for('onboarding_checklist') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('onboarding_step_move', step_id=s['id']) }}" style="display:inline; margin:0;">
+            <button name="dir" value="up" class="btn btn-secondary" style="padding:0 0.4rem;" title="Move up"{% if loop.first %} disabled{% endif %}>↑</button>
+          </form>
+          <form method="post" action="{{ url_for('onboarding_step_move', step_id=s['id']) }}" style="display:inline; margin:0;">
+            <button name="dir" value="down" class="btn btn-secondary" style="padding:0 0.4rem;" title="Move down"{% if loop.last %} disabled{% endif %}>↓</button>
+          </form>
+        </td>
+        <td><strong>{{ s["title"] }}</strong>{% if s["description"] %}<br><span class="muted" style="font-size:0.82rem;">{{ s["description"] }}</span>{% endif %}</td>
+        <td>{% if s["category"] %}<span class="badge">{{ s["category"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('onboarding_checklist', edit=s['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.8rem;">✎ Edit</a>
+          <form method="post" action="{{ url_for('onboarding_step_delete', step_id=s['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Remove this step from the checklist?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No steps yet — add the first one below.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Add a step</h2>
+  <form method="post" action="{{ url_for('onboarding_step_add') }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Title *</label>
+        <input id="title" name="title" required placeholder="e.g. Issue safety gear"></div>
+      <div class="field"><label for="category">Category</label>
+        <input id="category" name="category" placeholder="HR / Safety / IT / Operations"></div>
+      <div class="field wide"><label for="description">Description</label>
+        <input id="description" name="description" placeholder="What this step involves"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add step</button></div>
+  </form>
+</div>
+{% endblock %}

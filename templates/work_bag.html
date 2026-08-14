@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Work Bag{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🎒 Work Bag</h1>
+  <div style="display:flex; gap:0.5rem; align-items:center;">
+    <span id="net" class="badge">…</span>
+    <button id="refresh" class="btn btn-secondary">Refresh</button>
+  </div>
+</div>
+<p class="muted">Your jobs. Tap a job to see its tasks, log hours, add receipts,
+and leave notes. Once you've opened a job it keeps working offline —
+<strong>open the jobs you'll need before you lose signal.</strong></p>
+
+<div id="status" class="flash" style="display:none;"></div>
+<div id="joblist"><p class="empty">Loading…</p></div>
+
+<script>
+(function () {
+  const LS_TASKS = "compendium_wb_tasks", LS_QUEUE = "compendium_wb_queue";
+  // Field work only (install & inspection) — office/scheduling tasks live on the
+  // dashboard, so the bag only surfaces the jobs the crew is on site for.
+  const FIELD_STAGES = ["Installation", "Inspections"];
+  const $ = s => document.querySelector(s);
+  const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
+  let tasks = load(LS_TASKS, []);
+  let queue = load(LS_QUEUE, {});
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function setNet() {
+    const on = navigator.onLine, el = $("#net");
+    el.textContent = on ? "🟢 Online" : "🔴 Offline";
+    el.className = "badge " + (on ? "" : "danger");
+  }
+  function msg(text, kind) {
+    const s = $("#status");
+    s.textContent = text || ""; s.className = "flash " + (kind || "");
+    s.style.display = text ? "block" : "none";
+  }
+
+  function render() {
+    const list = $("#joblist");
+    const field = tasks.filter(t => FIELD_STAGES.indexOf(t.pipeline_status) !== -1);
+    list.innerHTML = "";
+    if (!tasks.length) {
+      list.innerHTML = '<p class="empty">No tasks assigned to you.</p>'; setNet(); return;
+    }
+    if (!field.length) {
+      list.innerHTML = '<p class="empty">No jobs in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
+      setNet(); return;
+    }
+    const order = [], groups = {};
+    field.forEach(t => { const k = t.job_id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(t); });
+    order.forEach(k => {
+      const g = groups[k], first = g[0];
+      const open = g.filter(t => t.status !== "Done").length;
+      const unsub = g.filter(t => queue[t.id]).length;
+      const a = document.createElement("a");
+      a.href = "/work-bag/job/" + k;
+      a.className = "card";
+      a.style.cssText = "display:block; text-decoration:none; color:inherit; margin-bottom:0.7rem;" +
+        " border-left:4px solid var(--brand); transition:box-shadow .1s;";
+      a.innerHTML =
+        '<div style="display:flex; justify-content:space-between; align-items:baseline; gap:0.6rem; flex-wrap:wrap;">' +
+          '<div>' +
+            '<span style="font-weight:800; font-size:1.1rem; color:var(--brand-dark);">🏠 ' + esc(first.job_name) + '</span>' +
+            '<div class="muted" style="font-size:0.85rem;">' + esc(first.client_name || "") + '</div>' +
+          '</div>' +
+          '<span class="badge" style="white-space:nowrap; background:#fff; border-color:var(--brand); color:var(--brand-dark);">' +
+            (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>' +
+        '</div>' +
+        '<div style="margin-top:0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">' +
+          '<span class="badge neutral">' + open + ' open task' + (open === 1 ? '' : 's') + '</span>' +
+          (unsub ? '<span class="badge warn">' + unsub + ' not submitted</span>' : '') +
+          '<span class="muted" style="margin-left:auto; font-size:0.85rem;">Open →</span>' +
+        '</div>';
+      list.appendChild(a);
+    });
+    setNet();
+  }
+
+  function applyServer(data) {
+    const server = data.tasks || [];
+    tasks = server.map(t => {
+      const q = queue[t.id];
+      return q ? Object.assign({}, t, { status: q.status, notes: q.notes }) : t;
+    });
+    localStorage.setItem(LS_TASKS, JSON.stringify(tasks));
+  }
+
+  async function pull() {
+    if (!navigator.onLine) { msg("Offline — showing the jobs saved on this device.", "error"); render(); return; }
+    try {
+      const r = await fetch("/api/my-tasks", { headers: { "Accept": "application/json" } });
+      if (r.status === 401) { msg("Please sign in to use your Work Bag.", "error"); return; }
+      applyServer(await r.json());
+      msg("", "");
+      render();
+    } catch (e) { msg("Couldn't reach the office — showing saved jobs.", "error"); render(); }
+  }
+
+  window.addEventListener("online", () => { setNet(); pull(); });
+  window.addEventListener("offline", () => { setNet(); msg("Offline — showing saved jobs.", "error"); });
+  $("#refresh").addEventListener("click", pull);
+
+  render();
+  pull();
+})();
+</script>
+{% endblock %}

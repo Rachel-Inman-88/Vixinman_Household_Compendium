@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Stock Audit{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🧮 Stock Audit</h1>
+  <a href="{{ url_for('inventory_page') }}" class="btn btn-secondary">← Inventory</a>
+</div>
+<p class="muted" style="margin-top:0;">Scan the physical tags on the shelf; Compendium
+reconciles them against the registered assets it expects to be <strong>In stock</strong>.
+Audit <strong>all stock</strong> or scope it to one <strong>category / type</strong>.
+Items it can't account for — plus anything scanned that shouldn't be there — are logged
+into a report you can export.</p>
+
+{% if registered == 0 %}
+<div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+  No barcoded assets yet. Register and print tags on the
+  <a href="{{ url_for('inventory_assets') }}">🏷 Barcodes</a> page first — an audit checks
+  scanned serials against those.
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Start a new audit</h2>
+  <form method="post" action="{{ url_for('inventory_audit_start') }}"
+        style="display:flex; gap:0.6rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0;">
+      <label>Scope</label>
+      <select name="scope">
+        <option value="">All stock</option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn">▶ Start audit</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Audit history</h2>
+  {% if audits %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>#</th><th>Scope</th><th>Status</th><th style="text-align:right;">Scans</th><th>Started</th><th>By</th><th></th></tr></thead>
+    <tbody>
+      {% for a in audits %}
+      <tr>
+        <td>{{ a["id"] }}</td>
+        <td>{% if a["scope"] %}{{ a["scope"] }}{% else %}<span class="muted">All stock</span>{% endif %}</td>
+        <td>{% if a["status"] == "Open" %}<span class="badge warn">Open</span>{% else %}<span class="badge">Closed</span>{% endif %}</td>
+        <td style="text-align:right;">{{ a["scans"] }}</td>
+        <td class="muted" style="white-space:nowrap; font-size:0.85rem;">{{ a["started_at"][:16] }}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ a["started_by"] or "—" }}</td>
+        <td style="white-space:nowrap;">
+          {% if a["status"] == "Open" %}
+          <a href="{{ url_for('inventory_audit_session', audit_id=a['id']) }}" class="btn" style="padding:0.15rem 0.55rem; font-size:0.8rem;">Resume</a>
+          {% else %}
+          <a href="{{ url_for('inventory_audit_report', audit_id=a['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.8rem;">Report</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No audits yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

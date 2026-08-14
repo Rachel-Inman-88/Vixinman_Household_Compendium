@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🔔 Notifications</h1>
+  {% if items %}
+  <form method="post" action="{{ url_for('notifications_clear_all') }}" style="margin:0;"
+        onsubmit="return confirm('Clear all your notifications?');">
+    <button type="submit" class="btn btn-secondary">Clear all</button>
+  </form>
+  {% endif %}
+</div>
+<p class="muted" style="margin-top:0; font-size:0.9rem;">Opening a notification clears it.</p>
+
+<div class="card">
+  {% if items %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for n in items %}
+    {% set unread = (n["is_read"] or "") != "1" %}
+    <li style="padding:0.7rem 0.4rem; border-bottom:1px solid var(--border);
+               {% if unread %}background:#f5f8ff;{% endif %}">
+      <div style="display:flex; gap:0.6rem; align-items:flex-start;">
+        <div style="flex:1;">
+          {% if unread %}<span class="badge" style="background:#2563eb; color:#fff;">new</span> {% endif %}
+          {{ n["message"] }}
+          <div class="muted" style="font-size:0.8rem; margin-top:0.15rem;">{{ n["created_at"][:16].replace("T"," ") }}</div>
+        </div>
+        {% if n["link"] %}
+        <a href="{{ url_for('notification_open', note_id=n['id']) }}" class="btn" style="padding:0.15rem 0.6rem; font-size:0.82rem; white-space:nowrap;">Open →</a>
+        {% else %}
+        <a href="{{ url_for('notification_open', note_id=n['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.82rem;">Dismiss</a>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No notifications.</p>
+  {% endif %}
+</div>
+{% endblock %}

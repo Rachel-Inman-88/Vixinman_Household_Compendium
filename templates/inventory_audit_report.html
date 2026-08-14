@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Audit report{% endblock %}
+{% block content %}
+<div style="margin-bottom:0.7rem;"><a href="{{ url_for('inventory_audit') }}" class="btn btn-secondary">← All audits</a></div>
+<div class="toolbar">
+  <h1 style="margin:0;">🧮 Audit report
+    <span class="muted" style="font-size:1rem; font-weight:400;">· {{ audit["scope"] or "all stock" }}</span></h1>
+  <div style="display:flex; gap:0.5rem;">
+    {% if audit["status"] == "Open" %}
+    <a href="{{ url_for('inventory_audit_session', audit_id=audit['id']) }}" class="btn btn-secondary">← Resume scanning</a>
+    {% endif %}
+    <a href="{{ url_for('inventory_audit_report_csv', audit_id=audit['id']) }}" class="btn">⬇ Export CSV</a>
+  </div>
+</div>
+<p class="muted" style="margin-top:0;">Audit #{{ audit["id"] }} ·
+  {% if audit["status"] == "Open" %}<span class="badge warn">Open (not finished)</span>{% else %}<span class="badge">Closed {{ audit["closed_at"][:16] }}</span>{% endif %}
+  · started {{ audit["started_at"][:16] }} by {{ audit["started_by"] or "—" }}.</p>
+
+{% set c = report.counts %}
+<div class="card" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:0.6rem;">
+  {% set tile = "background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.6rem; text-align:center;" %}
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800; color:#12673a;">{{ c.accounted }}</div><div class="muted" style="font-size:0.78rem;">Accounted for</div></div>
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800; color:#9a1c1c;">{{ c.unaccounted }}</div><div class="muted" style="font-size:0.78rem;">Unaccounted</div></div>
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800; color:#9a1c1c;">{{ c.unexpected }}</div><div class="muted" style="font-size:0.78rem;">Unexpected found</div></div>
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800; color:#9a1c1c;">{{ c.unknown }}</div><div class="muted" style="font-size:0.78rem;">Unknown tags</div></div>
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800;">{{ c.duplicates }}</div><div class="muted" style="font-size:0.78rem;">Duplicate scans</div></div>
+  <div style="{{ tile }}"><div style="font-size:1.5rem; font-weight:800;">{{ c.expected }}</div><div class="muted" style="font-size:0.78rem;">Expected in stock</div></div>
+</div>
+
+{% macro asset_table(rows, note_col) %}
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Serial</th><th>Item</th><th>Category</th><th>System status</th>{% if note_col %}<th>Note</th>{% endif %}</tr></thead>
+  <tbody>
+    {% for a in rows %}
+    <tr>
+      <td style="font-family:monospace; white-space:nowrap;">{{ a["serial"] }}</td>
+      <td>{{ a["label"] or "—" }}</td>
+      <td class="muted">{{ a["category"] }}</td>
+      <td>{{ a["status"] }}</td>
+      {% if note_col %}<td class="muted">{{ a["reason"] }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+<div class="card" style="border-left:4px solid #9a1c1c;">
+  <h2 style="margin-top:0; font-size:1.05rem;">⚠ Unaccounted for <span class="sect-count">{{ c.unaccounted }}</span></h2>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Registered <strong>In stock</strong> in this scope but never scanned — missing, misplaced, or already used without checking out.</p>
+  {% if report.unaccounted %}{{ asset_table(report.unaccounted, false) }}{% else %}<p class="empty">None — everything expected was scanned. 🎉</p>{% endif %}
+</div>
+
+{% if report.unexpected %}
+<div class="card" style="border-left:4px solid #9a1c1c;">
+  <h2 style="margin-top:0; font-size:1.05rem;">Scanned but unexpected <span class="sect-count">{{ c.unexpected }}</span></h2>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Found on the shelf but the database didn't expect it here (checked out, retired, or outside this audit's scope).</p>
+  {{ asset_table(report.unexpected, true) }}
+</div>
+{% endif %}
+
+{% if report.unknown %}
+<div class="card" style="border-left:4px solid #9a1c1c;">
+  <h2 style="margin-top:0; font-size:1.05rem;">Unknown tags <span class="sect-count">{{ c.unknown }}</span></h2>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Serials scanned that don't match any registered asset — a stray or mistyped tag.</p>
+  <div style="overflow-x:auto;"><table><thead><tr><th>Serial</th><th style="text-align:right;">Times scanned</th></tr></thead>
+    <tbody>{% for u in report.unknown %}<tr><td style="font-family:monospace;">{{ u["serial"] }}</td><td style="text-align:right;">{{ u["count"] }}</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endif %}
+
+{% if report.duplicates %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Duplicate scans <span class="sect-count">{{ c.duplicates }}</span></h2>
+  <div style="overflow-x:auto;"><table><thead><tr><th>Serial</th><th style="text-align:right;">Times scanned</th></tr></thead>
+    <tbody>{% for d in report.duplicates %}<tr><td style="font-family:monospace;">{{ d["serial"] }}</td><td style="text-align:right;">{{ d["count"] }}</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endif %}
+
+<details class="card">
+  <summary style="cursor:pointer; font-weight:600;">✓ Accounted for ({{ c.accounted }})</summary>
+  {% if report.accounted %}<div style="margin-top:0.5rem;">{{ asset_table(report.accounted, false) }}</div>{% else %}<p class="empty">None scanned yet.</p>{% endif %}
+</details>
+{% endblock %}

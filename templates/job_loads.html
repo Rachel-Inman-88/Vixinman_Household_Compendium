@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+{% block title %}Loads & Sizing — {{ job["job_name"] or "Job #" ~ job["id"] }}{% endblock %}
+{% block content %}
+<style>
+  /* Piece 26.6: colour-coded appliance-era tags — green = Modern, orange =
+     Vintage — so the two pop apart at a glance in the load-survey picker. */
+  .era-tag { display:inline-block; padding:0.12rem 0.55rem; border-radius:999px;
+    font-size:0.72rem; font-weight:700; letter-spacing:0.02em; line-height:1.4;
+    vertical-align:middle; }
+  .era-modern { background:#e6f4ea; color:#12673a; border:1px solid #9dd3b0; }
+  .era-vintage { background:#fbe8d3; color:#9a4a06; border:1px solid #eab785; }
+</style>
+<div class="toolbar">
+  <h1>⚡ Loads &amp; Sizing <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
+  <div style="display:flex; gap:0.5rem; align-items:center;">
+    <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Back to job</a>
+  </div>
+</div>
+
+{% if locked %}
+<div class="flash" style="background:#fef6e7; border:1px solid #f5d9a2; color:#7c4a03;">
+  🔒 <strong>Locked — {{ job["status"] }}.</strong> Loads &amp; Sizing is a
+  Proposal-phase tool. Now that the contract is signed, these figures are final
+  and view-only — the recorded numbers stay visible here and in Design, but no
+  one edits them from here.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.6rem;">
+    <h2 style="margin:0; font-size:1.1rem;">⚡ Electric loads &amp; system sizing</h2>
+    <form method="post" action="{{ url_for('set_ui_mode', job_id=job['id']) }}" style="margin:0;">
+      <select name="ui_mode" onchange="this.form.submit()" style="padding:0.35rem;">
+        <option value="sales" {% if ui_mode == "sales" %}selected{% endif %}>Sales mode</option>
+        <option value="designer" {% if ui_mode == "designer" %}selected{% endif %}>Designer mode</option>
+      </select>
+    </form>
+  </div>
+  <p class="muted" style="margin-bottom:0;">Sales mode hides System Sizing and
+  Components so a sales rep only records the load survey; the panel wattage
+  from System Sizing still appears in the summary below. Designer mode shows
+  everything. This is a view toggle, not access control — anyone can switch it.</p>
+</div>
+
+<details class="card sect" open>
+  <summary>Load survey</summary>
+  {% for room in rooms %}
+  <fieldset class="section" style="margin-bottom:0.9rem;{% if not room['enabled'] %} opacity:0.55;{% endif %}">
+    <legend>
+      {{ room["name"] }}
+      {% if "category" in room.keys() and room["category"] %}<span class="badge neutral" style="font-weight:400;">{{ room["category"] }}</span>{% endif %}
+      {% if room["room_type"] == "scenario" %}<span class="badge warn">custom use-case</span>{% endif %}
+      {% if not room["enabled"] %}<span class="badge neutral">excluded from totals</span>{% endif %}
+      {% if not locked and edit_room != room["id"] %}
+      <a href="{{ url_for('job_loads', job_id=job['id'], edit_room=room['id']) }}"
+         class="btn btn-secondary" style="padding:0.1rem 0.4rem; font-size:0.72rem;" title="Rename / retype room">✎</a>
+      {% endif %}
+    </legend>
+    {% if edit_room == room["id"] and not locked %}
+    <form method="post" action="{{ url_for('update_load_room', job_id=job['id'], room_id=room['id']) }}" class="form-grid" style="margin-bottom:0.7rem;">
+      <div class="field"><label>Room name</label><input name="name" required value="{{ room['name'] }}"></div>
+      <div class="field">
+        <label>Type <span class="muted" style="font-weight:400;">(filters the appliance picker)</span></label>
+        <select name="category">
+          <option value="">— any —</option>
+          {% for c in appliance_categories %}<option value="{{ c }}" {% if "category" in room.keys() and room["category"] == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Room kind</label>
+        <select name="room_type">
+          <option value="standard" {% if room['room_type'] != 'scenario' %}selected{% endif %}>Standard room</option>
+          <option value="scenario" {% if room['room_type'] == 'scenario' %}selected{% endif %}>Custom use-case (seasonal / unusual load)</option>
+        </select>
+      </div>
+      <div class="field" style="align-self:end;"><button type="submit" class="btn">Save</button>
+        <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+    </form>
+    {% endif %}
+    <table>
+      <thead><tr><th>Appliance</th><th>W</th><th>Qty</th><th>Hrs/day</th><th>Usage</th><th>kWh/day</th><th></th></tr></thead>
+      <tbody>
+        {% for it in items_by_room.get(room["id"], []) %}
+        {% if edit_item == it["id"] and not locked %}
+        <tr><td colspan="7">
+          <form method="post" action="{{ url_for('update_load_item', job_id=job['id'], item_id=it['id']) }}">
+            <div class="form-grid">
+              <div class="field"><label>Appliance</label><input name="appliance" required value="{{ it['appliance'] }}"></div>
+              <div class="field"><label>Watts</label><input type="number" step="any" name="watts" value="{{ it['watts'] }}"></div>
+              <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="{{ it['qty'] }}"></div>
+              <div class="field"><label>Hrs/day</label><input type="number" step="any" name="hrs" value="{{ it['hrs'] }}"></div>
+              <div class="field"><label>Usage</label>
+                <select name="usage_type">{% for u in load_usage_types %}<option value="{{ u }}" {% if it['usage_type'] == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></div>
+            </div>
+            <div class="actions"><button type="submit" class="btn">Save</button>
+              <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+          </form>
+        </td></tr>
+        {% else %}
+        <tr>
+          <td>{{ it["appliance"] }}</td>
+          <td>{{ it["watts"]|int }}</td>
+          <td>{{ it["qty"] }}</td>
+          <td>{{ it["hrs"] }}</td>
+          <td class="muted">{{ it["usage_type"] }}</td>
+          <td>{{ "%.2f"|format((it["watts"] or 0) * (it["qty"] or 0) * (it["hrs"] or 0) / 1000) }}</td>
+          <td style="white-space:nowrap;">
+            {% if not locked %}
+            <a href="{{ url_for('job_loads', job_id=job['id'], edit_item=it['id']) }}"
+               class="btn btn-secondary" style="padding:0.15rem 0.45rem; font-size:0.75rem;" title="Edit">✎</a>
+            {% endif %}
+            {% if can('delete') and not locked %}
+            <form method="post" action="{{ url_for('delete_load_item', job_id=job['id'], item_id=it['id']) }}" style="margin:0; display:inline;">
+              <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="7" class="muted">No appliances added to this room yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not locked %}
+    <form method="post" action="{{ url_for('add_load_item', job_id=job['id']) }}"
+          class="load-add" data-room-cat="{{ room['category'] if 'category' in room.keys() and room['category'] else '' }}"
+          style="margin-top:0.7rem;">
+      <input type="hidden" name="room_id" value="{{ room['id'] }}">
+      <label style="display:inline-flex; gap:0.4rem; align-items:center; font-size:0.85rem; margin-bottom:0.5rem;">
+        <input type="checkbox" class="la-custom" style="width:auto;"> Custom appliance (not in the catalog)
+      </label>
+
+      {# Catalog mode: the room's own appliances by default, or search everything. #}
+      <div class="la-catalog">
+        <div class="form-grid">
+          <div class="field wide">
+            <label>Search all appliances <span class="muted" style="font-weight:400;">— e.g. a keyboard kept in the kitchen</span></label>
+            <input type="search" class="la-search" autocomplete="off" placeholder="type to search the whole catalog…">
+          </div>
+          <div class="field wide">
+            <label>Appliance <span class="la-scope muted" style="font-weight:400;"></span>
+              <span class="la-era era-tag" style="display:none; margin-left:0.35rem;"></span></label>
+            <select name="catalog_id" class="la-select"></select>
+          </div>
+        </div>
+      </div>
+
+      {# Custom mode: only shown when the toggle is checked. #}
+      <div class="la-customfields" style="display:none;">
+        <div class="form-grid">
+          <div class="field"><label>Custom name</label><input class="la-cname" name="custom_name" disabled></div>
+          <div class="field"><label>Custom watts</label><input class="la-cwatts" type="number" step="any" name="custom_watts" disabled></div>
+          <div class="field">
+            <label>Usage</label>
+            <select class="la-cusage" name="custom_usage_type" disabled>
+              {% for u in load_usage_types %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:0.3rem;">
+        <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="1"></div>
+        <div class="field"><label>Hrs/day <span class="muted" style="font-weight:400;">(catalog default if blank)</span></label><input type="number" step="any" name="hrs"></div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn">＋ Add appliance</button>
+      </div>
+    </form>
+    <div class="actions" style="margin-top:0.5rem;">
+      <form method="post" action="{{ url_for('toggle_load_room', job_id=job['id'], room_id=room['id']) }}" style="margin:0;">
+        <button type="submit" class="btn btn-secondary">{{ "Exclude from totals" if room["enabled"] else "Include in totals" }}</button>
+      </form>
+      {% if can('delete') %}
+      <form method="post" action="{{ url_for('delete_load_room', job_id=job['id'], room_id=room['id']) }}"
+            onsubmit="return confirm('Send this room to the trash? (Remove its appliances first if any.)');" style="margin:0;">
+        <button type="submit" class="btn btn-secondary">Delete room</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </fieldset>
+  {% else %}
+  <p class="empty">No rooms yet — add one below.</p>
+  {% endfor %}
+
+  {% if not locked %}
+  <form method="post" action="{{ url_for('add_load_room', job_id=job['id']) }}" class="form-grid" style="margin-top:0.6rem;">
+    <div class="field"><label>New room name</label><input name="name" required placeholder="e.g. Kitchen"></div>
+    <div class="field">
+      <label>Type <span class="muted" style="font-weight:400;">(filters the appliance picker)</span></label>
+      <select name="category">
+        <option value="">— any —</option>
+        {% for c in appliance_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Room kind</label>
+      <select name="room_type">
+        <option value="standard">Standard room</option>
+        <option value="scenario">Custom use-case (seasonal / unusual load)</option>
+      </select>
+    </div>
+    <div class="field" style="align-self:end;"><button type="submit" class="btn">＋ Add room</button></div>
+  </form>
+  {% endif %}
+</details>
+
+<details class="card sect" open>
+  <summary>Summary</summary>
+  <dl class="profile">
+    <dt>Daily energy use</dt><dd>{{ "%.1f"|format(daily_kwh) }} kWh/day</dd>
+    <dt>Peak load</dt><dd>{{ "%.0f"|format(peak_w) }} W</dd>
+    <dt>Panel wattage</dt><dd>{{ sizing["panel_watts"]|int }} W</dd>
+  </dl>
+</details>
+
+{% if ui_mode == "designer" %}
+<details class="card sect" open>
+  <summary>System sizing</summary>
+  <form method="post" action="{{ url_for('update_sizing', job_id=job['id']) }}">
+    <input type="hidden" name="ui_mode" value="{{ ui_mode }}">
+    <fieldset {% if locked %}disabled{% endif %} style="border:0; padding:0; margin:0; min-inline-size:auto;">
+    <div class="form-grid">
+      <div class="field">
+        <label>System type</label>
+        <select name="system_type">
+          <option value="custom" {% if sizing["system_type"] == "custom" %}selected{% endif %}>Custom</option>
+          <option value="offgrid" {% if sizing["system_type"] == "offgrid" %}selected{% endif %}>Off-grid (70% derate, 3 days autonomy)</option>
+          <option value="gridtie" {% if sizing["system_type"] == "gridtie" %}selected{% endif %}>Grid-tie (80% derate, 1.5 days autonomy)</option>
+        </select>
+      </div>
+      <div class="field"><label>Peak sun hours (NM)</label><input type="number" step="any" name="sun_hours" value="{{ sizing['sun_hours'] }}"></div>
+      <div class="field"><label>Derate factor (%)</label><input type="number" step="any" name="derate_pct" value="{{ sizing['derate_pct'] }}"></div>
+      <div class="field"><label>Autonomy (days)</label><input type="number" step="any" name="autonomy_days" value="{{ sizing['autonomy_days'] }}"></div>
+      <div class="field"><label>Solar fraction (%)</label><input type="number" step="any" name="solar_fraction_pct" value="{{ sizing['solar_fraction_pct'] }}"></div>
+      <div class="field"><label>Panel wattage (W)</label><input type="number" step="any" name="panel_watts" value="{{ sizing['panel_watts'] }}"></div>
+      <div class="field"><label>Battery DoD (%)</label><input type="number" step="any" name="dod_pct" value="{{ sizing['dod_pct'] }}"></div>
+      <div class="field"><label>Round-trip efficiency (%)</label><input type="number" step="any" name="round_trip_eff_pct" value="{{ sizing['round_trip_eff_pct'] }}"></div>
+      <div class="field"><label>Inverter efficiency (%)</label><input type="number" step="any" name="inverter_eff_pct" value="{{ sizing['inverter_eff_pct'] }}"></div>
+      <div class="field"><label>Backup daily load (kWh)</label><input type="number" step="any" name="backup_daily_kwh" value="{{ sizing['backup_daily_kwh'] }}"></div>
+      <div class="field"><label>Max inverter/charge controller input V</label><input type="number" step="any" name="max_input_v" value="{{ sizing['max_input_v'] }}"></div>
+      <div class="field"><label>Site record low temp (°F, NEC 690.7)</label><input type="number" step="any" name="record_low_temp_f" value="{{ sizing['record_low_temp_f'] }}"></div>
+      <div class="field">
+        <label>Battery component (for units-needed)</label>
+        <select name="selected_battery_id">
+          <option value="">— none —</option>
+          {% for c in components_by_category.get("Battery", []) %}
+          <option value="{{ c['id'] }}" {% if sizing["selected_battery_id"] == c["id"] %}selected{% endif %}>{{ c["name"] }}{% if c["capacity_kwh_nameplate"] %} ({{ c["capacity_kwh_nameplate"] }} kWh){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>PV module component (for Voc string sizing)</label>
+        <select name="selected_pv_module_id">
+          <option value="">— none —</option>
+          {% for c in components_by_category.get("PV Module", []) %}
+          <option value="{{ c['id'] }}" {% if sizing["selected_pv_module_id"] == c["id"] %}selected{% endif %}>{{ c["name"] }}{% if c["voc"] %} (Voc {{ c["voc"] }}V){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% if not locked %}<div class="actions"><button type="submit" class="btn">Save sizing</button></div>{% endif %}
+    </fieldset>
+  </form>
+
+  <dl class="profile" style="margin-top:1.1rem;">
+    <dt>Array size</dt><dd>{{ "%.2f"|format(array_kw) }} kW — {{ panel_count }} panels</dd>
+    <dt>Battery needed</dt><dd>{{ "%.1f"|format(battery_kwh_needed) }} kWh nameplate{% if selected_battery and battery_units_needed %} — {{ battery_units_needed }}× {{ selected_battery["name"] }}{% endif %}</dd>
+    {% if selected_pv_module %}
+    <dt>Cold-temp Voc (NEC 690.7 Method 1)</dt>
+    <dd>{{ selected_pv_module["name"] }}: corrected Voc {{ "%.1f"|format(voc_corrected) }}V at {{ sizing["record_low_temp_f"]|int }}°F → max {{ max_modules }} modules per string at {{ sizing["max_input_v"]|int }}V max input</dd>
+    {% endif %}
+  </dl>
+  <p class="muted" style="margin-bottom:0;">Method: NEC 690.7 cold-temperature
+  Voc correction; peak-sun-hour method for array sizing (northern New Mexico
+  design values — confirm against the specific site).</p>
+</details>
+
+{% if suggestions and not locked %}
+<div class="card" style="border-color:var(--brand); background:#f3faf5;">
+  <h3 style="margin-top:0;">✨ Suggested components
+    <span class="muted" style="font-weight:400; font-size:0.82rem;">— matched to the recorded loads &amp; sizing from what's in inventory</span></h3>
+  <p class="muted" style="margin-top:0;">Pick one per row and it drops into the
+    BOM below at the sized quantity. The <strong>Recommended</strong> pick fits
+    best and favors in-stock items; the alternates are 2nd/3rd choices.</p>
+  {% for role in suggestions %}
+  <div style="margin-bottom:0.9rem;">
+    <div style="font-weight:600; margin-bottom:0.35rem;">{{ role.label }}</div>
+    <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+      {% for s in role.suggestions %}
+      <form method="post" action="{{ url_for('accept_suggested_component', job_id=job['id']) }}"
+            style="margin:0; flex:1 1 220px; min-width:220px; border:1px solid var(--border);
+                   border-radius:8px; padding:0.6rem 0.7rem; background:#fff;
+                   {% if s.rank == 1 %}border-color:var(--brand); box-shadow:0 0 0 1px var(--brand);{% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.25rem;">
+          <span class="badge{% if s.rank == 1 %}{% else %} warn{% endif %}">{{ s.tag }}</span>
+          {% if s.in_stock %}<span class="badge" style="background:#1a6e3c;">In stock</span>
+          {% else %}<span class="muted" style="font-size:0.72rem;">order-in</span>{% endif %}
+        </div>
+        <div style="font-weight:600; font-size:0.9rem; line-height:1.25;">{{ s.name }}</div>
+        <div class="muted" style="font-size:0.78rem; margin:0.2rem 0;">{{ s.why }}</div>
+        <div style="font-size:0.82rem; margin-bottom:0.4rem;">
+          <strong>{{ s.qty }}</strong> {{ role.unit }}{% if s.unit_cost %} · ${{ (s.unit_cost)|money0 }} ea
+          · ${{ (s.qty * s.unit_cost)|money0 }} line{% endif %}</div>
+        <input type="hidden" name="name" value="{{ s.name }}">
+        <input type="hidden" name="category" value="{{ s.category }}">
+        <input type="hidden" name="qty" value="{{ s.qty }}">
+        <input type="hidden" name="unit_cost" value="{{ s.unit_cost if s.unit_cost is not none else '' }}">
+        <button type="submit" class="btn{% if s.rank != 1 %} btn-secondary{% endif %}"
+                style="width:100%; padding:0.3rem;">✓ Accept</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Components / bill of materials</h3>
+  {% if bom %}
+  <table>
+    <thead><tr><th>Component</th><th>Category</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for b in bom %}
+      {% if edit_bom == b["id"] and not locked %}
+      <tr><td colspan="7">
+        <form method="post" action="{{ url_for('update_bom_item', job_id=job['id'], bom_id=b['id']) }}">
+          <div class="form-grid">
+            <div class="field"><label>Component</label><input name="component_name" required value="{{ b['component_name'] }}"></div>
+            <div class="field">
+              <label>Category</label>
+              <select name="category">
+                <option value="">—</option>
+                {% for cat in component_categories %}<option value="{{ cat }}" {% if b['category'] == cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="{{ b['qty'] }}"></div>
+            <div class="field"><label>Unit cost ($)</label><input type="number" step="any" name="unit_cost" value="{{ b['unit_cost'] if b['unit_cost'] is not none else '' }}"></div>
+            <div class="field"><label>Markup % <span class="muted">(blank = category default)</span></label><input type="number" step="0.1" min="0" name="markup_pct" value="{{ b['markup_pct'] if 'markup_pct' in b.keys() and b['markup_pct'] not in (none, '') else '' }}" placeholder="default"></div>
+            <div class="field wide"><label>Notes</label><input name="notes" value="{{ b['notes'] or '' }}"></div>
+          </div>
+          <div class="actions"><button type="submit" class="btn">Save</button>
+            <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+        </form>
+      </td></tr>
+      {% else %}
+      <tr>
+        <td>{{ b["component_name"] }}</td>
+        <td class="muted">{{ b["category"] }}</td>
+        <td>{{ b["qty"] }}</td>
+        <td>{% if b["unit_cost"] %}${{ (b["unit_cost"])|money0 }}{% endif %}</td>
+        <td>{% if b["unit_cost"] %}${{ ((b["qty"] or 0) * (b["unit_cost"] or 0))|money0 }}{% endif %}</td>
+        <td class="muted">{{ b["notes"] }}</td>
+        <td style="white-space:nowrap;">
+          {% if not locked %}
+          <a href="{{ url_for('job_loads', job_id=job['id'], edit_bom=b['id']) }}"
+             class="btn btn-secondary" style="padding:0.15rem 0.45rem; font-size:0.75rem;" title="Edit">✎</a>
+          {% endif %}
+          {% if can('delete') and not locked %}
+          <form method="post" action="{{ url_for('delete_bom_item', job_id=job['id'], bom_id=b['id']) }}" style="margin:0; display:inline;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="4" style="text-align:right; font-weight:600;">Total</td><td style="font-weight:600;">${{ (bom_total)|money0 }}</td><td colspan="2"></td></tr></tfoot>
+  </table>
+  {% else %}
+  <p class="empty">No components added yet.</p>
+  {% endif %}
+  {% if not locked %}
+  <form method="post" action="{{ url_for('add_bom_item', job_id=job['id']) }}" style="margin-top:0.7rem;">
+    <div class="form-grid">
+      <div class="field">
+        <label>From catalog</label>
+        <select name="component_id">
+          <option value="">— custom component below —</option>
+          {% for cat, items in components_by_category.items() %}
+          <optgroup label="{{ cat }}">
+            {% for c in items %}
+            <option value="{{ c['id'] }}">{{ c["name"] }}{% if c["cost"] %} — ${{ c["cost"]|int }}{% endif %}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Custom name</label><input name="custom_name" placeholder="only if not using the catalog"></div>
+      <div class="field"><label>Custom category</label><input name="custom_category"></div>
+      <div class="field"><label>Custom cost ($)</label><input type="number" step="any" name="custom_cost"></div>
+      <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="1"></div>
+      <div class="field"><label>Notes</label><input name="notes"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add to BOM</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+  // Piece 26.4: the load-survey appliance picker. Each room's dropdown shows
+  // that room's "type" of appliances by default; a search box filters the whole
+  // catalog (for the odd item kept in an unusual room). The Custom toggle swaps
+  // in free-text fields.
+  var APPLIANCES = {{ all_appliances | tojson }};
+  function optText(a, withCat) {
+    return a.name + (a.era ? " (" + a.era + ")" : "") + " — " + a.watts + "W"
+           + (withCat ? "  · " + a.category : "");
+  }
+  document.querySelectorAll(".load-add").forEach(function (form) {
+    var roomCat = form.dataset.roomCat || "";
+    var select = form.querySelector(".la-select");
+    var search = form.querySelector(".la-search");
+    var scope = form.querySelector(".la-scope");
+    var eraTag = form.querySelector(".la-era");
+    var customBox = form.querySelector(".la-custom");
+    var catalog = form.querySelector(".la-catalog");
+    var customFields = form.querySelector(".la-customfields");
+
+    // Green = Modern, orange = Vintage. Where the browser honours per-option
+    // colour (Firefox, some Chrome) the whole list is tinted; every browser
+    // gets the bold colour-coded badge beside the picker via updateEra().
+    var ERA_COLOR = { Modern: "#12673a", Vintage: "#9a4a06" };
+    function updateEra() {
+      var a = null, id = select.value;
+      for (var i = 0; i < APPLIANCES.length; i++) {
+        if (String(APPLIANCES[i].id) === String(id)) { a = APPLIANCES[i]; break; }
+      }
+      if (a && a.era) {
+        eraTag.textContent = a.era;
+        eraTag.className = "la-era era-tag " + (a.era === "Vintage" ? "era-vintage" : "era-modern");
+        eraTag.style.display = "";
+      } else {
+        eraTag.style.display = "none";
+      }
+    }
+
+    function fill() {
+      var q = (search.value || "").trim().toLowerCase();
+      var searching = q.length > 0;
+      var list = APPLIANCES.filter(function (a) {
+        if (searching) return a.name.toLowerCase().indexOf(q) !== -1;
+        return roomCat ? a.category === roomCat : true;
+      });
+      list.sort(function (x, y) { return x.name.localeCompare(y.name); });
+      select.innerHTML = "";
+      if (!list.length) {
+        var o = document.createElement("option");
+        o.value = ""; o.textContent = searching ? "no match — try the Custom toggle" : "— none for this room —";
+        select.appendChild(o);
+      }
+      list.forEach(function (a) {
+        var o = document.createElement("option");
+        o.value = a.id; o.textContent = optText(a, searching || !roomCat);
+        if (ERA_COLOR[a.era]) o.style.color = ERA_COLOR[a.era];
+        select.appendChild(o);
+      });
+      scope.textContent = searching ? "(whole catalog)"
+                          : (roomCat ? "(" + roomCat + ")" : "(whole catalog)");
+      updateEra();
+    }
+    function setCustom(on) {
+      customFields.style.display = on ? "" : "none";
+      catalog.style.display = on ? "none" : "";
+      // Only the active mode's inputs submit.
+      select.disabled = on;
+      form.querySelectorAll(".la-cname,.la-cwatts,.la-cusage").forEach(function (el) {
+        el.disabled = !on;
+      });
+    }
+    search.addEventListener("input", fill);
+    select.addEventListener("change", updateEra);
+    customBox.addEventListener("change", function () { setCustom(customBox.checked); });
+    fill(); setCustom(false);
+  });
+</script>
+{% endblock %}

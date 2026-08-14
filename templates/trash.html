@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Trash{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🗑 Trash</h1>
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Home</a>
+</div>
+<p class="muted">Deleted items wait here. <strong>Restore</strong> puts an item back
+exactly where it came from. <strong>Delete permanently</strong> is final and is
+limited to the General Manager. Nothing here counts in the system while it's in
+the trash.</p>
+
+<div class="card">
+{% if rows %}
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Item</th><th>Type</th><th>Was in</th><th>Deleted</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r["label"] or "(unnamed)" }}</td>
+      <td><span class="badge neutral">{{ r["entity_type"].replace("_", " ") }}</span></td>
+      <td class="muted" style="font-size:0.85rem;">{{ r["found_in"] or "—" }}</td>
+      <td class="muted" style="font-size:0.85rem;">{{ r["deleted_at"][:16] }}{% if r["deleted_by"] %}<br>by {{ r["deleted_by"] }}{% endif %}</td>
+      <td style="white-space:nowrap;">
+        <form method="post" action="{{ url_for('restore_trash', trash_id=r['id']) }}" style="display:inline; margin:0;">
+          <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">↩ Restore</button>
+        </form>
+        {% if is_gm %}
+        <form method="post" action="{{ url_for('purge_trash', trash_id=r['id']) }}" style="display:inline; margin:0;"
+              onsubmit="return confirm('Permanently delete this item? This cannot be undone.');">
+          <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">🗑 Delete permanently</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if not is_gm %}
+<p class="muted" style="margin:0.8rem 0 0; font-size:0.85rem;">Only the General
+Manager can permanently delete items from the trash.</p>
+{% endif %}
+{% else %}
+<p class="empty">The trash is empty.</p>
+{% endif %}
+</div>
+{% endblock %}

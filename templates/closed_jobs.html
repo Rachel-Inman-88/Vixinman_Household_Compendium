@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Closed jobs{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>📁 Closed jobs</h1>
+  <a href="{{ url_for('dashboard', mode='Executive') }}" class="btn btn-secondary">← Dashboard</a>
+</div>
+<p class="muted" style="margin-top:0;">A management review of jobs that have left the
+active pipeline — <strong>cancelled</strong> (Lost) jobs to look over (and reopen if
+needed) and <strong>completed</strong> jobs. Nothing here is deleted.</p>
+
+<div class="card" style="border-left:4px solid #9a1c1c;">
+  <h2 style="margin-top:0; font-size:1.1rem;">🚫 Cancelled <span class="sect-count">{{ cancelled|length }}</span></h2>
+  {% if cancelled %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th>Reason</th><th>Cancelled</th><th style="text-align:right;">Contract</th><th></th></tr></thead>
+    <tbody>
+      {% for j in cancelled %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a>
+          {% if j["pre_lost_status"] %}<br><span class="muted" style="font-size:0.8rem;">was at {{ j["pre_lost_status"] }}</span>{% endif %}</td>
+        <td>{{ j["client_name"] }}</td>
+        <td>{{ j["cancel_reason"] or "—" }}</td>
+        <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
+          {% if j["cancelled_by"] %}{{ j["cancelled_by"] }}{% endif %}
+          {% if j["cancelled_at"] %}<br>{{ j["cancelled_at"][:10] }}{% endif %}</td>
+        <td style="text-align:right;">{% if j["contract_amount"] %}${{ (j["contract_amount"])|money0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('reopen_job', job_id=j['id']) }}" style="margin:0;"
+                onsubmit="return confirm('Reopen this job?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.8rem;">↩ Reopen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No cancelled jobs.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">✅ Completed <span class="sect-count">{{ completed|length }}</span></h2>
+  {% if completed %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th>Install date</th><th style="text-align:right;">Contract</th></tr></thead>
+    <tbody>
+      {% for j in completed %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        <td>{{ j["client_name"] }}</td>
+        <td class="muted">{{ j["install_date"] or "—" }}</td>
+        <td style="text-align:right;">{% if j["contract_amount"] %}${{ (j["contract_amount"])|money0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No completed jobs yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

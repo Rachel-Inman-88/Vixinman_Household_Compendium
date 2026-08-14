@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Reset password{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:2rem auto;">
+  <h1 style="text-align:center;">🔑 Reset your password</h1>
+  <form method="post" action="{{ url_for('forgot_password') }}" class="card">
+    <p class="muted" style="margin-top:0; font-size:0.9rem;">Enter your username.
+      If you've set up security questions, we'll ask them next so you can choose
+      a new password yourself.</p>
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" name="username" required autofocus autocomplete="username">
+    </div>
+    <div class="actions"><button type="submit" class="btn" style="width:100%;">Continue</button></div>
+  </form>
+  <p class="muted" style="text-align:center; font-size:0.85rem;">
+    <a href="{{ url_for('login') }}">← Back to sign in</a></p>
+</div>
+{% endblock %}

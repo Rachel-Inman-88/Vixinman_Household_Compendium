@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Timesheet{% endblock %}
+{% block content %}
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    .ts-sheet { break-inside: avoid; }
+  }
+  .ts-day td { border-top: 1px solid var(--border); }
+  .ts-sub td { font-weight: 600; background: var(--bg); }
+</style>
+
+<div class="toolbar no-print">
+  <h1>🕒 Timesheet</h1>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <a href="{{ url_for('timesheet_csv', start=start, end=end, employee=selected) }}" class="btn btn-secondary">⬇ CSV</a>
+    <button type="button" class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+    {% if manager %}<a href="{{ url_for('payroll', start=start, end=end) }}" class="btn btn-secondary">← Payroll</a>
+    {% else %}<a href="{{ url_for('work_bag') }}" class="btn btn-secondary">← Work Bag</a>{% endif %}
+  </div>
+</div>
+
+<form method="get" class="card no-print" style="display:flex; gap:0.8rem; align-items:end; flex-wrap:wrap;">
+  <div class="field" style="margin:0;"><label>From</label><input type="date" name="start" value="{{ start }}"></div>
+  <div class="field" style="margin:0;"><label>To</label><input type="date" name="end" value="{{ end }}"></div>
+  {% if manager %}
+  <div class="field" style="margin:0;">
+    <label>Employee</label>
+    <select name="employee">
+      <option value="all" {% if selected == 'all' %}selected{% endif %}>— everyone —</option>
+      {% for e in employees %}<option value="{{ e['id'] }}" {% if selected == e['id']|string %}selected{% endif %}>{{ e['name'] }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="field" style="margin:0;"><button type="submit" class="btn">Show</button></div>
+</form>
+
+<p class="muted">Hours logged {{ start }} → {{ end }}.
+  {% if not manager %}Showing <strong>{{ self_name }}</strong>'s hours.{% endif %}
+  <strong>Approved</strong> hours are payroll-ready; <strong>pending</strong> ones
+  still need a supervisor's OK.</p>
+
+{% if sheets %}
+<div class="card" style="margin-bottom:1rem;">
+  <strong>Totals:</strong>
+  {{ "%.2f"|format(totals.approved) }} approved
+  {% if totals.pending %}· <span style="color:#8a5a00;">{{ "%.2f"|format(totals.pending) }} pending</span>{% endif %}
+  · {{ "%.2f"|format(totals.total) }} total hours{% if sheets|length > 1 %} across {{ sheets|length }} people{% endif %}.
+</div>
+
+{% for sh in sheets %}
+<div class="card ts-sheet">
+  <h2 style="margin:0 0 0.5rem; font-size:1.1rem;">{{ sh.name }}
+    <span class="muted" style="font-weight:400; font-size:0.85rem;">
+      — {{ "%.2f"|format(sh.approved) }} approved{% if sh.pending %} · {{ "%.2f"|format(sh.pending) }} pending{% endif %} · {{ "%.2f"|format(sh.total) }} h</span></h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Date</th><th>Day</th><th>Job</th><th>Pay type</th><th style="text-align:right;">Hours</th><th>Status</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for day in sh.days %}
+      {% for r in day.rows %}
+      <tr class="ts-day">
+        <td style="white-space:nowrap;">{% if loop.first %}{{ day.date }}{% endif %}</td>
+        <td class="muted">{% if loop.first %}{{ day.weekday }}{% endif %}</td>
+        <td>{{ r["job_name"] or "—" }}</td>
+        <td class="muted">{{ r["type_name"] or "—" }}</td>
+        <td style="text-align:right;">{{ "%.2f"|format(r["hours"] or 0) }}</td>
+        <td>{% if r["status"] == "Approved" %}<span class="badge">Approved</span>{% else %}<span class="badge warn">Pending</span>{% endif %}</td>
+        <td class="muted">{{ r["note"] or "" }}</td>
+      </tr>
+      {% endfor %}
+      {% if sh.days|length > 1 or day.rows|length > 1 %}
+      <tr class="ts-sub"><td colspan="4" style="text-align:right;">{{ day.date }} subtotal</td>
+        <td style="text-align:right;">{{ "%.2f"|format(day.hours) }}</td><td colspan="2"></td></tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><p class="muted" style="margin:0;">No hours logged in this range.</p></div>
+{% endif %}
+{% endblock %}

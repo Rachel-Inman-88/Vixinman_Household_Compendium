@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<h1>🔍 Search</h1>
+<form method="get" action="{{ url_for('search') }}" class="card"
+      style="display:flex; gap:0.5rem; align-items:center;">
+  <input type="search" name="q" value="{{ q }}" autofocus
+         placeholder="Client name, address, phone, email, job, county…"
+         style="flex:1;">
+  <button type="submit" class="btn">Search</button>
+</form>
+
+{% if q %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Clients ({{ clients|length }})</h2>
+  {% if clients %}
+  <table>
+    <thead><tr><th>Name</th><th>Phone</th><th>Mailing address</th></tr></thead>
+    <tbody>
+      {% for c in clients %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a></td>
+        <td>{{ c["phone"] }}</td>
+        <td>{{ c["mailing_address"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">No matching clients.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Jobs ({{ jobs|length }})</h2>
+  {% if jobs %}
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th>Status</th><th>County</th></tr></thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        <td><a href="{{ url_for('client_detail', client_id=j['client_id']) }}">{{ j["client_name"] }}</a></td>
+        <td><span class="badge {{ job_status_class.get(j["status"] or "Proposal", "neutral") }}">{{ j["status"] or "Proposal" }}</span></td>
+        <td>{{ j["county"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">No matching jobs.</p>{% endif %}
+</div>
+{% else %}
+<p class="muted">Type something above to search clients and jobs.</p>
+{% endif %}
+{% endblock %}

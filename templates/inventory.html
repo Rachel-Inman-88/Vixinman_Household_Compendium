@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<style>
+  .inv-table { font-size: 0.85rem; }
+  .inv-table.specs-hidden .spec-col { display: none; }
+  .inv-toolbar { display: flex; justify-content: space-between; align-items: center;
+    gap: 0.6rem; flex-wrap: wrap; margin: 0.2rem 0 0.5rem; }
+  .inv-legend { font-size: 0.8rem; color: var(--muted); }
+  /* Purchase / datasheet chips — bordered so they read against the row. */
+  .inv-ico { display: inline-block; border: 1px solid var(--brand); border-radius: 6px;
+    padding: 0.05rem 0.4rem; margin-right: 0.25rem; font-size: 1.05rem; line-height: 1.3;
+    text-decoration: none; background: #fff; }
+  .inv-ico:hover { background: #e7f4ec; }
+  .inv-edit { text-decoration: none; font-size: 1rem; }
+  /* Top-mounted horizontal scrollbar that mirrors the table's width. */
+  .inv-scrolltop { overflow-x: auto; overflow-y: hidden; }
+  .inv-scrolltop > div { height: 1px; }
+</style>
+
+<div class="toolbar">
+  <h1>📦 Inventory</h1>
+  <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🚚 Load</a>
+    <a href="{{ url_for('inventory_scan') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">📷 Scan</a>
+    {% if can('inventory.manage') %}
+    <a href="{{ url_for('inventory_assets') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🏷 Barcodes</a>
+    <a href="{{ url_for('inventory_audit') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🧮 Audit stock</a>
+    <a href="{{ url_for('inventory_stale') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕰️ Stale stock{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</a>
+    {% endif %}
+    <span class="muted" style="font-size:0.9rem;">{{ item_total }} items · {{ vendor_count }} vendors</span>
+  </div>
+</div>
+<p class="muted" style="margin-top:0;">Stock, then description, lead each table.
+Specs are hidden by default — <strong>Show specs</strong> reveals the calculator
+data. Prices show your quoted <strong>Cost</strong> (a web-verified price never
+overwrites it). Use <strong>＋ New product</strong> to add items.</p>
+
+{# Piece 28.4: search across every inventory item (products, tools, vehicles). #}
+<div class="card" style="padding:0.7rem 0.9rem;">
+  <input id="inv-search" type="search" autocomplete="off"
+         placeholder="🔍 Search all inventory — make, model, description, vendor, specs…"
+         style="width:100%; padding:0.5rem 0.7rem; font-size:0.95rem; border:1px solid var(--border); border-radius:8px;">
+  <p id="inv-search-hint" class="muted" style="margin:0.4rem 0 0; font-size:0.82rem; display:none;"></p>
+</div>
+<p id="inv-nomatch" class="empty" style="display:none;">No inventory items match your search.</p>
+
+{% for s in sections %}
+<details class="card sect"{% if loop.first %} open{% endif %}>
+  <summary>{{ s.category }} <span class="sect-count">{{ s.count }}</span></summary>
+
+  <div class="inv-toolbar">
+    <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+      <span class="inv-legend"><strong>Stock</strong> = Available / Needed / On PO</span>
+      {% if s.specs %}<button type="button" class="btn btn-secondary specs-toggle" data-target="tbl-{{ loop.index }}" style="padding:0.2rem 0.6rem; font-size:0.8rem;">⚙ Show specs</button>{% endif %}
+    </div>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_item_new', category=s.category) }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New product</a>{% endif %}
+  </div>
+
+  {# Top horizontal scrollbar, synced with the table below. #}
+  <div class="inv-scrolltop" data-scrollfor="tbl-{{ loop.index }}"><div></div></div>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table specs-hidden" id="tbl-{{ loop.index }}">
+    <thead><tr>
+      <th title="Available / Needed / On PO">Stock</th>
+      <th>Description</th>
+      <th>Make</th><th>Model</th><th>Vendor</th>
+      <th style="text-align:right;">Cost</th><th>Docs</th><th></th>
+      {% for sp in s.specs %}<th class="spec-col" style="white-space:nowrap;">{{ sp }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for it in s['items'] %}
+      <tr>
+        <td style="white-space:nowrap; font-size:0.82rem;">{{ it["available"] }}/{{ it["needed"] }}/{{ it["on_po"] }}</td>
+        <td>{{ it["description"] or "—" }}</td>
+        <td style="white-space:nowrap;">{{ it["make"] or "—" }}
+          {% if it["status"] == "Discontinued" %}<span class="badge neutral" style="font-size:0.66rem;">Discontinued</span>{% endif %}
+          {% if it["stale_flag"] == "1" %}<span class="badge warn" style="font-size:0.66rem;" title="Manually marked stale">🕰 Stale</span>{% endif %}
+          {% if it["flags"] %}<span title="{{ it['flags'] }}" style="cursor:help;">⚠️</span>{% endif %}</td>
+        <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
+        <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          {% if it["cost"] is not none %}${{ (it["cost"])|money }}{% else %}<span class="muted">—</span>{% endif %}
+          {% if it["web_price"] is not none %}<br><span class="muted" style="font-size:0.72rem;" title="web-verified {{ it['price_checked_on'] }}">web ${{ (it["web_price"])|money }}</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap;">
+          {% if it["purchase_url"] %}<a class="inv-ico" href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / buy">🛒</a>{% endif %}
+          {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
+          {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap;">{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>
+          <form method="post" action="{{ url_for('inventory_toggle_stale', item_id=it['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="inv-ico" style="background:none; border:none; cursor:pointer; padding:0 0.1rem; font-size:0.95rem;{% if it['stale_flag'] == '1' %} opacity:1;{% else %} opacity:0.5;{% endif %}"
+                    title="{{ 'Unmark stale' if it['stale_flag'] == '1' else 'Mark as stale' }}">🕰</button>
+          </form>{% endif %}</td>
+        {% for sp in s.specs %}<td class="spec-col" style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endfor %}
+
+<details class="card sect" id="tools">
+  <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
+  <div class="inv-toolbar">
+    <span class="inv-legend"><strong>Stock</strong> = Available / Needed</span>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_tool_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New tool</a>{% endif %}
+  </div>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table">
+    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th style="text-align:right;">Cost</th><th>Buy</th><th></th></tr></thead>
+    <tbody>
+      {% for t in tools %}
+      <tr>
+        <td style="font-size:0.82rem;">{{ t["available"] }}/{{ t["needed"] }}</td>
+        <td>{{ t["name"] }}
+          {% if t["notes"] %}<span title="{{ t['notes'] }}" style="cursor:help;">ℹ️</span>{% endif %}</td>
+        <td class="muted">{{ t["category"] or "—" }}</td>
+        <td>{{ t["make"] or "—" }}</td>
+        <td>{{ t["model"] or "—" }}</td>
+        <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ (t["cost"])|money }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Standard install-work tool kit — mixed tier (pro-grade for daily/accuracy/safety, budget for occasional). Prices are <strong>approx (~)</strong>; click 🛒 for the live listing. Hover ℹ️ for tier/source notes. Use <strong>＋ New tool</strong> or ✎ to edit.</p>
+</details>
+
+<details class="card sect" id="vehicles">
+  <summary>🚚 Vehicles &amp; heavy equipment <span class="sect-count">{{ vehicles|length }}</span></summary>
+  <div class="inv-toolbar">
+    <span class="inv-legend">Each unit has a shop <strong>nickname</strong> field.</span>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_vehicle_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New unit</a>{% endif %}
+  </div>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table">
+    <thead><tr><th>Unit</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Vendor</th><th></th></tr></thead>
+    <tbody>
+      {% for v in vehicles %}
+      <tr>
+        <td>{{ v["name"] }}</td>
+        <td>{% if v["nickname"] %}<span class="badge">{{ v["nickname"] }}</span>{% else %}<span class="muted">— add —</span>{% endif %}</td>
+        <td class="muted">{{ v["category"] or "—" }}</td>
+        <td>{{ v["make"] or "—" }}</td>
+        <td>{{ v["model"] or "—" }}</td>
+        <td>{{ v["year"] or "—" }}</td>
+        <td class="muted">{{ v["vendor_name"] or "—" }}</td>
+        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Use <strong>＋ New unit</strong> to add a truck, trailer, or piece of heavy equipment, or ✎ to edit — nickname, year, and vendor included.</p>
+</details>
+
+<script>
+  // Show/hide the spec columns per category.
+  document.querySelectorAll(".specs-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tbl = document.getElementById(btn.dataset.target);
+      var hidden = tbl.classList.toggle("specs-hidden");
+      btn.textContent = hidden ? "⚙ Show specs" : "⚙ Hide specs";
+      syncTop(btn.dataset.target);
+    });
+  });
+  // Mirror each table's horizontal scroll to a scrollbar mounted at the top.
+  function syncTop(id) {
+    var tbl = document.getElementById(id);
+    var top = document.querySelector('.inv-scrolltop[data-scrollfor="' + id + '"]');
+    if (!tbl || !top) return;
+    top.firstElementChild.style.width = tbl.scrollWidth + "px";
+  }
+  document.querySelectorAll(".inv-scrolltop").forEach(function (top) {
+    var id = top.dataset.scrollfor;
+    var wrap = document.getElementById(id).parentElement; // .inv-scroll
+    syncTop(id);
+    top.addEventListener("scroll", function () { wrap.scrollLeft = top.scrollLeft; });
+    wrap.addEventListener("scroll", function () { top.scrollLeft = wrap.scrollLeft; });
+  });
+  // Recompute widths when a section is first opened (details toggle).
+  document.querySelectorAll("details.sect").forEach(function (d) {
+    d.addEventListener("toggle", function () {
+      d.querySelectorAll(".inv-scrolltop").forEach(function (t) { syncTop(t.dataset.scrollfor); });
+    });
+  });
+
+  // Piece 28.4: filter every inventory table (products, tools, vehicles) as you
+  // type. Rows that don't match hide; sections with matches auto-open, empty
+  // sections hide, and clearing the box restores the default (first open).
+  (function () {
+    var box = document.getElementById("inv-search");
+    if (!box) return;
+    var sects = Array.prototype.slice.call(document.querySelectorAll("details.sect"));
+    var hint = document.getElementById("inv-search-hint");
+    var nomatch = document.getElementById("inv-nomatch");
+    box.addEventListener("input", function () {
+      var q = box.value.trim().toLowerCase();
+      var total = 0;
+      sects.forEach(function (d, i) {
+        var rows = d.querySelectorAll("tbody tr");
+        var shown = 0;
+        rows.forEach(function (tr) {
+          var match = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+          tr.style.display = match ? "" : "none";
+          if (match) shown++;
+        });
+        if (!q) { d.style.display = ""; d.open = (i === 0); }
+        else { d.style.display = shown ? "" : "none"; if (shown) d.open = true; }
+        if (q) total += shown;
+        // Keep the top scrollbar in sync when a section opens on match.
+        d.querySelectorAll(".inv-scrolltop").forEach(function (t) { syncTop(t.dataset.scrollfor); });
+      });
+      if (q) { hint.style.display = ""; hint.textContent = total + " item" + (total === 1 ? "" : "s") + " match “" + box.value.trim() + "”."; }
+      else { hint.style.display = "none"; }
+      nomatch.style.display = (q && total === 0) ? "" : "none";
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Assistant{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1 style="margin:0;">💬 Compendium Assistant</h1>
+  {% if is_admin %}
+  <a href="{{ url_for('assistant_settings_page') }}" class="btn btn-secondary"
+     style="padding:0.3rem 0.7rem; font-size:0.85rem;">⚙️ AI settings</a>
+  {% endif %}
+</div>
+<p class="muted" style="margin-top:0;">Ask about jobs, clients, tasks and the schedule.
+  Answers are grounded in <strong>what you're allowed to see</strong> and the assistant
+  is <strong>read-only</strong> — it can explain and summarize, but never changes anything.
+  Needs an internet connection.</p>
+
+{% if not providers %}
+<div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+  🔌 <strong>No AI provider is set up yet.</strong>
+  {% if is_admin %}Add a Claude or Gemini API key under
+    <a href="{{ url_for('assistant_settings_page') }}">AI settings</a> to switch it on.
+  {% else %}Ask an admin to add a Claude or Gemini API key in AI settings.{% endif %}
+</div>
+{% else %}
+<div class="card">
+  <div id="chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
+    <div class="muted" id="chat-empty" style="font-size:0.9rem;">
+      Try: “Which jobs are in Job Prep?”, “What are my open tasks?”, or
+      “How many overdue tasks are there?”
+    </div>
+  </div>
+  <div id="status" class="flash" style="display:none;"></div>
+  <form id="ask-form" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+    <div class="field" style="flex:1 1 20rem;">
+      <label for="question">Your question</label>
+      <textarea id="question" name="question" rows="2"
+                placeholder="Ask about jobs, clients, tasks…" required></textarea>
+    </div>
+    {% if providers|length > 1 %}
+    <div class="field" style="flex:0 0 auto;">
+      <label for="provider">Model</label>
+      <select id="provider" name="provider">
+        {% for p in providers %}
+        <option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>
+          {{ 'Claude' if p == 'claude' else 'Gemini' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <input type="hidden" id="provider" name="provider" value="{{ default_provider }}">
+    {% endif %}
+    <div class="field" style="flex:0 0 auto;">
+      <label>&nbsp;</label>
+      <button type="submit" id="ask-btn" class="btn">Ask</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById("ask-form");
+  var chat = document.getElementById("chat");
+  var empty = document.getElementById("chat-empty");
+  var box = document.getElementById("question");
+  var btn = document.getElementById("ask-btn");
+  var status = document.getElementById("status");
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]);
+    });
+  }
+  function msg(text, kind) {
+    status.textContent = text || "";
+    status.className = "flash " + (kind || "");
+    status.style.display = text ? "block" : "none";
+  }
+  function bubble(who, text, cls) {
+    if (empty) { empty.remove(); empty = null; }
+    var wrap = document.createElement("div");
+    wrap.style.cssText = "max-width:92%; padding:0.55rem 0.8rem; border-radius:10px; white-space:pre-wrap; line-height:1.4;" +
+      (cls === "you"
+        ? " align-self:flex-end; background:var(--brand); color:#fff;"
+        : " align-self:flex-start; background:var(--bg); border:1px solid var(--border);");
+    wrap.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">' +
+      esc(who) + '</div>' + esc(text);
+    chat.appendChild(wrap);
+    wrap.scrollIntoView({ block: "nearest" });
+    return wrap;
+  }
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var q = box.value.trim();
+    if (!q) return;
+    if (!navigator.onLine) { msg("You're offline — the assistant needs an internet connection.", "error"); return; }
+    msg("", "");
+    bubble("You", q, "you");
+    box.value = "";
+    btn.disabled = true; btn.textContent = "Thinking…";
+    var thinking = bubble("Assistant", "…", "ai");
+    var data = new URLSearchParams();
+    data.append("question", q);
+    data.append("provider", document.getElementById("provider").value);
+    fetch("{{ url_for('assistant_ask') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      body: data.toString()
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || res.d.error) {
+          thinking.remove();
+          msg(res.d.error || "Something went wrong.", "error");
+        } else {
+          thinking.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">' +
+            esc(res.d.provider === "gemini" ? "Gemini" : "Claude") + '</div>' + esc(res.d.answer);
+        }
+      }).catch(function () {
+        thinking.remove();
+        msg("Couldn't reach the assistant. Check your connection and try again.", "error");
+      }).finally(function () {
+        btn.disabled = false; btn.textContent = "Ask";
+      });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

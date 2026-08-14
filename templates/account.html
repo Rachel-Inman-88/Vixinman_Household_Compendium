@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}My account{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>My account</h1>
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Home</a>
+</div>
+
+<div class="card">
+  <dl class="profile">
+    <dt>Name</dt><dd>{{ user["name"] }}</dd>
+    <dt>Username</dt><dd>{{ user["username"] }}</dd>
+    <dt>Access level</dt><dd>{{ user["access_level"] or "—" }}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🎒 Work Bag</h2>
+  <p class="muted" style="margin-top:0;">Your assigned tasks in a page that keeps
+  working when you lose signal in the field — update them offline, then submit
+  your completed work and hours for your manager to approve.</p>
+  <a href="{{ url_for('work_bag') }}" class="btn">Open Work Bag</a>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Change password</h2>
+  {% if pending %}
+  <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+    ⏳ You have a password change <strong>awaiting admin approval</strong>
+    (requested {{ pending["requested_at"][:16] }}). It takes effect once an
+    admin approves it.
+    <form method="post" action="{{ url_for('cancel_password_change') }}" style="display:inline; margin-left:0.5rem;">
+      <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.8rem;">Cancel request</button>
+    </form>
+  </div>
+  {% endif %}
+  <p class="muted" style="margin-top:0;">For security, a password change must be
+  approved by an admin before it takes effect. Submitting a new one replaces any
+  request still waiting.</p>
+  <form method="post" action="{{ url_for('request_password_change') }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="current_password">Current password</label>
+        <input id="current_password" name="current_password" type="password" required autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="new_password">New password <span class="muted">(min 6 characters)</span></label>
+        <input id="new_password" name="new_password" type="password" required autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="confirm_password">Confirm new password</label>
+        <input id="confirm_password" name="confirm_password" type="password" required autocomplete="new-password">
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">Submit for approval</button></div>
+  </form>
+  <p class="muted" style="margin-bottom:0; font-size:0.85rem;">Locked out and
+  can't sign in? Set up the security questions below, and you can reset your own
+  password from the sign-in page. An admin can also reset it from your profile.</p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔑 Security questions
+    {% if enrolled %}<span class="badge" style="vertical-align:middle;">✓ set up</span>
+    {% else %}<span class="badge warn" style="vertical-align:middle;">not set up</span>{% endif %}
+  </h2>
+  <p class="muted" style="margin-top:0;">Pick {{ questions_required }} questions and
+    give answers only you know. If you ever forget your password, answering these on
+    the sign-in page lets you set a new one yourself — no waiting on an admin. You'll
+    be asked {{ questions_answered }} of your {{ questions_required }} questions at
+    random. Answers are stored scrambled (hashed) and are <strong>case-sensitive</strong>
+    (type them exactly as you do here, capitals and spaces included).
+    {% if enrolled %}<br><strong>You're set up.</strong> Re-saving replaces your current questions.{% endif %}</p>
+  <form method="post" action="{{ url_for('save_security_questions') }}">
+    {% for i in range(questions_required) %}
+    <div class="form-grid" style="align-items:end;">
+      <div class="field wide">
+        <label for="question_{{ i }}">Question {{ i + 1 }}</label>
+        <select id="question_{{ i }}" name="question_{{ i }}" required>
+          <option value="">— choose a question —</option>
+          {% for q in security_questions %}
+          <option value="{{ q }}"{% if enrolled and enrolled[i] and enrolled[i]["question"] == q %} selected{% endif %}>{{ q }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field wide">
+        <label for="answer_{{ i }}">Your answer</label>
+        <input id="answer_{{ i }}" name="answer_{{ i }}" required autocomplete="off"
+               placeholder="{% if enrolled %}enter to re-confirm{% endif %}">
+      </div>
+    </div>
+    {% endfor %}
+    <div class="field" style="max-width:22rem;">
+      <label for="sq_current_password">Confirm with your current password</label>
+      <input id="sq_current_password" name="current_password" type="password" required autocomplete="current-password">
+    </div>
+    <div class="actions"><button type="submit" class="btn">Save security questions</button></div>
+  </form>
+</div>
+{% endblock %}

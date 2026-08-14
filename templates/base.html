@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Compendium{% endblock %} · Vixinman Designs</title>
+  <style>
+    :root {
+      --brand: #1a6e3c;
+      --brand-dark: #12522c;
+      --bg: #f6f7f5;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: var(--brand);
+      color: white;
+      padding: 0.9rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header a { color: white; text-decoration: none; font-weight: 600; font-size: 1.15rem; }
+    header .sub { font-size: 0.85rem; opacity: 0.85; }
+    /* Grouped nav dropdown (e.g. "Databases"), JS-free via <details>. */
+    .navdrop { position: relative; }
+    .navdrop > summary {
+      color: white; cursor: pointer; font-size: 0.9rem; font-weight: 500;
+      list-style: none; user-select: none; white-space: nowrap;
+    }
+    .navdrop > summary::-webkit-details-marker { display: none; }
+    .navdrop > summary::after { content: " ▾"; opacity: 0.85; font-size: 0.75rem; }
+    .navdrop[open] > summary::after { content: " ▴"; }
+    .navdrop-menu {
+      position: absolute; top: calc(100% + 0.55rem); left: 0; z-index: 60;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18); min-width: 190px; padding: 0.3rem;
+      display: flex; flex-direction: column; gap: 0.1rem;
+    }
+    .navdrop-menu a {
+      color: #1f2937 !important; font-size: 0.9rem; font-weight: 500;
+      padding: 0.45rem 0.6rem; border-radius: 6px; white-space: nowrap;
+    }
+    .navdrop-menu a:hover { background: var(--bg); }
+    /* Piece 28.4: nav search over clients & jobs, with an autocomplete dropdown. */
+    .navsearch { position: relative; }
+    .navsearch input {
+      width: 230px; max-width: 42vw; padding: 0.4rem 0.65rem; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.15);
+      color: #fff; font: inherit; font-size: 0.9rem; font-weight: 400;
+    }
+    .navsearch input::placeholder { color: rgba(255,255,255,0.85); }
+    .navsearch input:focus { outline: none; background: #fff; color: #1f2937; border-color: #fff; }
+    .navsearch-menu {
+      position: absolute; top: calc(100% + 0.4rem); left: 0; z-index: 70;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18); min-width: 280px; max-width: 380px;
+      max-height: 60vh; overflow-y: auto; padding: 0.25rem;
+    }
+    .navsearch-item {
+      display: block; padding: 0.45rem 0.6rem; border-radius: 6px; text-decoration: none;
+      color: #1f2937 !important; font-weight: 600; font-size: 0.9rem;
+    }
+    .navsearch-item:hover, .navsearch-item.active { background: var(--bg); }
+    .navsearch-item .ns-type { font-size: 0.72rem; color: var(--muted); font-weight: 500; margin-right: 0.3rem; }
+    .navsearch-item .ns-sub { display: block; color: var(--muted); font-size: 0.78rem; font-weight: 400; }
+    main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:last-child td { border-bottom: none; }
+    .muted { color: var(--muted); }
+    .empty { color: var(--muted); padding: 1rem 0; }
+    a { color: var(--brand); }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .toolbar h1 { margin: 0; }
+    .btn {
+      display: inline-block;
+      background: var(--brand);
+      color: white !important;
+      text-decoration: none;
+      border: none;
+      border-radius: 8px;
+      padding: 0.55rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--brand-dark); }
+    .btn-secondary { background: transparent; color: var(--brand) !important; border: 1px solid var(--brand); }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.9rem;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .field.wide { grid-column: 1 / -1; }
+    label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+    input, textarea, select {
+      font: inherit;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
+    .actions { margin-top: 1.1rem; display: flex; gap: 0.6rem; }
+    .flash {
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      margin-bottom: 1rem;
+      background: #e7f4ec;
+      border: 1px solid #bfe3cd;
+      color: #14532d;
+    }
+    .flash.error { background: #fdecec; border-color: #f5c2c2; color: #7f1d1d; }
+    dl.profile { display: grid; grid-template-columns: 180px 1fr; gap: 0.45rem 1rem; margin: 0; }
+    dl.profile dt { color: var(--muted); font-size: 0.85rem; }
+    dl.profile dd { margin: 0; }
+    fieldset.section {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem 1rem 1rem;
+      margin: 0;
+      background: #fafbf9;
+    }
+    fieldset.section legend {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--brand-dark);
+      padding: 0 0.4rem;
+    }
+    .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.4rem; }
+    label.check { font-weight: normal; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 0.45rem; }
+    label.check input { width: auto; }
+    .badge {
+      display: inline-block;
+      background: #e7f4ec;
+      border: 1px solid #bfe3cd;
+      color: #14532d;
+      border-radius: 999px;
+      padding: 0.15rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin: 0 0.3rem 0.3rem 0;
+    }
+    .badge.warn { background: #fef6e7; border-color: #f5d9a2; color: #7c4a03; }
+    .badge.danger { background: #fdecec; border-color: #f5c2c2; color: #7f1d1d; }
+    .badge.neutral { background: #f1f3f5; border-color: #e0e3e7; color: #495057; }
+    /* Piece 31.1: catalog era badges — Modern stays green, Vintage is orange. */
+    .badge.era-vintage { background: #fff1e0; border-color: #f6c98a; color: #9a4a06; }
+    .tab-bar {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      font: inherit;
+      font-weight: 600;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      padding: 0.55rem 0.9rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .tab-btn:hover { color: var(--brand-dark); }
+    .tab-btn.active { color: var(--brand-dark); border-bottom-color: var(--brand); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    details.req-group { border-bottom: 1px solid var(--border); padding: 0.45rem 0; }
+    details.req-group:last-of-type { border-bottom: none; }
+    details.req-group summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    details.req-group summary::before { content: "▸ "; margin-right: 0.35rem; }
+    details.req-group[open] summary::before { content: "▾ "; }
+    details.req-group summary::-webkit-details-marker { display: none; }
+    .count-badge {
+      background: var(--brand);
+      color: white;
+      border-radius: 999px;
+      min-width: 1.6rem;
+      text-align: center;
+      padding: 0.1rem 0.5rem;
+      font-size: 0.8rem;
+    }
+    /* Piece 20.2: per-job pipeline progress widget — a segmented bar, one
+       segment per stage, filled up to the current stage, with the next step
+       called out beneath. */
+    .jobprog { margin: 0.2rem 0; }
+    .jobprog-track {
+      display: flex;
+      gap: 3px;
+      width: 100%;
+    }
+    .jobprog-seg {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 0 0.2rem;
+      border-radius: 4px;
+      background: var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .jobprog-seg:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+    .jobprog-seg:last-child  { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+    .jobprog-seg.is-done { background: var(--brand); color: #fff; }
+    .jobprog-seg.is-current {
+      background: var(--brand-dark);
+      color: #fff;
+      box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--brand-dark);
+      background-image: linear-gradient(45deg,
+        rgba(255,255,255,0.16) 25%, transparent 25%,
+        transparent 50%, rgba(255,255,255,0.16) 50%,
+        rgba(255,255,255,0.16) 75%, transparent 75%, transparent);
+      background-size: 16px 16px;
+      animation: jobprog-move 1.2s linear infinite;
+    }
+    @keyframes jobprog-move { from { background-position: 0 0; } to { background-position: 16px 0; } }
+    @media (prefers-reduced-motion: reduce) { .jobprog-seg.is-current { animation: none; } }
+    .jobprog-seg.is-skip { background: repeating-linear-gradient(45deg,
+        #f1d5d5, #f1d5d5 6px, #f6e4e4 6px, #f6e4e4 12px); color: #a04141; }
+    .jobprog-next { margin-top: 0.35rem; font-size: 0.85rem; color: var(--text); }
+    .jobprog-next .jobprog-arrow { color: var(--brand); font-weight: 700; }
+    .jobprog-next .jobprog-stage { font-weight: 700; }
+    .jobprog-next .jobprog-done { color: var(--brand); font-weight: 700; }
+    .jobprog-next .jobprog-lostlbl { color: #b02a2a; font-weight: 700; }
+    .jobprog--compact .jobprog-seg { height: 9px; padding: 0; }
+    .jobprog--compact .jobprog-next { margin-top: 0.25rem; font-size: 0.8rem; }
+    /* Rules display: verification callout chips + compact instance bullets. */
+    .flag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .flag-verify { background: #fdf0d5; color: #8a5a00; border: 1px solid #eccf8f; }
+    .flag-unverified { background: #fbe0e0; color: #9a2222; border: 1px solid #eeb5b5; }
+    .flag-corrected { background: #e3f0e8; color: #1a6e3c; border: 1px solid #bcdcc7; }
+    ul.instances {
+      margin: 0.2rem 0 0.1rem;
+      padding-left: 1.1rem;
+      list-style: none;
+    }
+    ul.instances li {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    ul.instances li::before { content: "•"; color: var(--brand); margin-right: 0.4rem; }
+    .verify-legend { font-size: 0.8rem; color: var(--muted); margin: 0.3rem 0 0; }
+    /* Collapsible section cards (Piece 20.7): a .card that is a <details>. The
+       summary is the section header with a ▸/▾ toggle. */
+    details.sect { }
+    details.sect > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    details.sect > summary::-webkit-details-marker { display: none; }
+    details.sect > summary::before {
+      content: "▾";
+      color: var(--brand);
+      font-size: 0.8rem;
+      width: 0.9rem;
+      flex: none;
+    }
+    details.sect:not([open]) > summary::before { content: "▸"; }
+    details.sect > summary .sect-sub {
+      font-weight: 400;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    details.sect > summary .sect-count {
+      margin-left: auto;
+      font-weight: 400;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    details.sect[open] > summary { margin-bottom: 0.6rem; }
+
+    /* ============================================================
+       Piece 31.6: responsive layout for phones & tablets (Windows,
+       Android, iOS). Desktop is unchanged; the nav collapses behind a
+       hamburger and wide content is kept from blowing out the viewport.
+       ============================================================ */
+    header { flex-wrap: wrap; }
+    /* On desktop the nav's children flow into the header's flex row exactly
+       as before (contents makes the <nav> box itself disappear). */
+    .mainnav { display: contents; }
+    .nav-toggle {
+      display: none; margin-left: auto; background: rgba(255,255,255,0.15);
+      color: #fff; border: 1px solid rgba(255,255,255,0.45); border-radius: 8px;
+      padding: 0.4rem 0.7rem; font: inherit; font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; line-height: 1;
+    }
+    /* Wrap any wide table (see the auto-wrapper script) so it scrolls
+       within its card instead of stretching the page. */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+    img, video, canvas, svg { max-width: 100%; height: auto; }
+
+    @media (max-width: 820px) {
+      header { padding: 0.7rem 1rem; gap: 0.45rem 0.6rem; }
+      .nav-toggle { display: block; }
+      /* Collapse the nav into a full-width vertical panel toggled by ☰. */
+      .mainnav {
+        display: none; flex-basis: 100%; width: 100%;
+        flex-direction: column; align-items: stretch; gap: 0.1rem;
+        margin-top: 0.5rem;
+      }
+      .mainnav.open { display: flex; }
+      .mainnav > a, .navdrop > summary {
+        padding: 0.65rem 0.5rem; border-radius: 8px;
+        font-size: 1rem !important; line-height: 1.2;
+      }
+      .mainnav > a:hover, .navdrop > summary:hover { background: rgba(255,255,255,0.12); }
+      /* Cancel the desktop right-pushes so items stack from the left. */
+      .mainnav > a[style*="margin-left:auto"] { margin-left: 0 !important; }
+      /* Search: full width at the top of the open menu. */
+      .navsearch { width: 100%; }
+      .navsearch input { width: 100%; max-width: none; }
+      .navsearch-menu { width: 100%; max-width: none; }
+      /* Dropdowns expand inline (not floating) inside the vertical menu. */
+      .navdrop { width: 100%; }
+      .navdrop-menu {
+        position: static; box-shadow: none; border: none; min-width: 0;
+        background: rgba(255,255,255,0.08); padding: 0.15rem 0.15rem 0.15rem 1rem;
+        margin: 0.1rem 0 0.2rem;
+      }
+      .navdrop-menu a { color: #fff !important; }
+      .navdrop-menu a:hover { background: rgba(255,255,255,0.14); }
+      /* User / logout block: left-aligned, full width. */
+      .mainnav > div[style*="align-items:flex-end"] {
+        align-items: flex-start !important; margin-top: 0.35rem;
+      }
+
+      main { margin: 1rem auto; padding: 0 0.8rem; }
+      .card { padding: 1rem; }
+      .toolbar { flex-wrap: wrap; gap: 0.5rem; }
+      h1 { font-size: 1.25rem; }
+      dl.profile { grid-template-columns: 1fr; gap: 0.1rem 0; }
+      dl.profile dt { margin-top: 0.55rem; }
+      .actions { flex-wrap: wrap; }
+      .actions .btn { flex: 1 1 auto; text-align: center; }
+      /* iOS zooms the page in when a focused field is < 16px — force ≥16px. */
+      input, textarea, select { font-size: 16px; }
+    }
+    /* Dense (3+ column) tables restack into labelled rows on phones so no
+       column is cut off. The label comes from each table's own header via a
+       tiny script that tags cells with data-label; .rstack is added only to
+       tables wide enough to need it. */
+    @media (max-width: 560px) {
+      table.rstack, table.rstack tbody { display: block; width: 100%; }
+      table.rstack thead { position: absolute; width: 1px; height: 1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      table.rstack tr {
+        display: block; border: 1px solid var(--border); border-radius: 8px;
+        padding: 0.35rem 0.6rem; margin-bottom: 0.55rem; background: var(--card);
+      }
+      table.rstack td {
+        display: flex; justify-content: space-between; gap: 1rem;
+        align-items: baseline; text-align: right; border: none;
+        padding: 0.3rem 0; border-bottom: 1px dashed var(--border);
+      }
+      table.rstack tr td:last-child { border-bottom: none; }
+      table.rstack td::before {
+        content: attr(data-label); font-weight: 700; color: var(--muted);
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;
+        text-align: left; flex: 0 0 40%; margin-right: 0.5rem;
+      }
+      /* Cells under a blank header (action buttons) sit on their own, right-aligned. */
+      table.rstack td[data-label=""] { justify-content: flex-end; }
+      table.rstack td[data-label=""]::before { content: ""; margin: 0; flex: 0; }
+    }
+    @media (max-width: 420px) {
+      header > a[href="/"] { font-size: 1.05rem; }
+      header .sub { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">☀️ Compendium</a>
+    <span class="sub">Vixinman Designs internal tool</span>
+    {% if current_user or not login_active %}
+    {# Piece 31.6: hamburger toggles the nav into a vertical panel on small
+       screens; on desktop .mainnav is display:contents so the row is unchanged. #}
+    <button class="nav-toggle" type="button" aria-label="Menu"
+            aria-controls="mainnav" aria-expanded="false">☰ Menu</button>
+    <nav id="mainnav" class="mainnav">
+    <div class="navsearch">
+      <input id="navsearch-input" type="search" autocomplete="off"
+             placeholder="🔍 Search clients & jobs…" aria-label="Search clients and jobs">
+      <div id="navsearch-menu" class="navsearch-menu" style="display:none;"></div>
+    </div>
+    {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
+    {# Order (left→right): Tasks · Boards · Work Bag · Approvals · Team · Databases · Admin #}
+    <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
+    <a href="{{ url_for('boards_page') }}" style="font-size:0.9rem; font-weight:500;">📋 Boards</a>
+    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
+    {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
+    {% if can_payroll %}
+    <details class="navdrop">
+      <summary>👥 Team</summary>
+      <div class="navdrop-menu">
+        <a href="/employees">👥 Employees</a>
+        <a href="/payroll">💵 Payroll</a>
+      </div>
+    </details>
+    {% else %}
+    <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
+    {% endif %}
+    <details class="navdrop">
+      <summary>🗄 Databases</summary>
+      <div class="navdrop-menu">
+        <a href="/">🗂 Client Profiles</a>
+        <a href="/rules">⚙️ Rules Editor</a>
+        <a href="/directory">📖 L/P/C Directory</a>
+        <a href="/inventory">📦 Inventory</a>
+        <a href="/catalog">🔌 Calculator Catalog</a>
+        {% if can_payroll %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
+        {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed jobs</a>{% endif %}
+      </div>
+    </details>
+    {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
+       a single reachable item stays a plain link (no one-item menu). #}
+    {% set adm_log = can('audit.view') %}
+    {% set adm_trash = can('delete') %}
+    {% set adm_access = is_gm %}
+    {% set adm_count = (adm_log|int) + (adm_trash|int) + (adm_access|int) %}
+    {% if adm_count > 1 %}
+    <details class="navdrop">
+      <summary>🔧 Admin</summary>
+      <div class="navdrop-menu">
+        {% if adm_log %}<a href="/audit">🧾 Log</a>{% endif %}
+        {% if adm_trash %}<a href="/trash">🗑 Trash</a>{% endif %}
+        {% if adm_access %}<a href="/access">🔐 Access</a>{% endif %}
+      </div>
+    </details>
+    {% elif adm_count == 1 %}
+    {% if adm_log %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
+    {% if adm_trash %}<a href="/trash" style="font-size:0.9rem; font-weight:500;">🗑 Trash</a>{% endif %}
+    {% if adm_access %}<a href="/access" style="font-size:0.9rem; font-weight:500;">🔐 Access</a>{% endif %}
+    {% endif %}
+    {% if login_active and current_user %}
+    <a href="{{ url_for('assistant_page') }}" title="Ask the Compendium Assistant"
+       style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">💬 Assistant</a>
+    <a href="{{ url_for('help_page') }}" title="Tutorials &amp; FAQ"
+       style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">❓ Help</a>
+    <a href="{{ url_for('notifications_page') }}" title="Notifications"
+       style="position:relative; font-size:1.15rem; text-decoration:none; margin-left:0.3rem;">🔔{% if unread_notifications %}<span style="position:absolute; top:-0.4rem; right:-0.5rem; background:#dc2626; color:#fff; font-size:0.62rem; font-weight:700; min-width:1rem; height:1rem; line-height:1rem; text-align:center; border-radius:999px; padding:0 0.2rem;">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>{% endif %}</a>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; line-height:1.1;">
+    <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
+       title="My account">
+      {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</a>
+    <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+      <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
+    </form>
+    </div>
+    {% endif %}
+    </nav>
+    {% endif %}
+  </header>
+  <main>
+    {% if not login_active %}
+    <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+      🔓 <strong>No logins set up.</strong> Anyone can access everything. To turn on
+      sign-in and admin permissions, go to <a href="{{ url_for('accounts_page') }}">Accounts</a>
+      and give someone a Username, Password, and Admin access level.
+    </div>
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+    <footer style="margin: 2rem 0 1rem; text-align: center; color: var(--muted); font-size: 0.85rem;">
+      Compendium · <strong style="color: var(--brand-dark);">Version {{ version_number }}</strong>
+    </footer>
+  </main>
+  <script>
+    // Piece 24.9: register the offline service worker. When the viewer is
+    // logged out, tell it to forget cached authenticated pages on this device.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").then(function () {
+          {% if not current_user %}
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: "clear-pages" });
+          }
+          {% endif %}
+        }).catch(function () { /* SW unsupported or blocked — app still works */ });
+      });
+    }
+  </script>
+  <script>
+    // Piece 28.4: nav search over client & job names with an autocomplete menu.
+    (function () {
+      var input = document.getElementById("navsearch-input");
+      if (!input) return;
+      var menu = document.getElementById("navsearch-menu");
+      var results = [], active = -1, timer = null, lastQ = null;
+      function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g,
+        function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]); }); }
+      function hide() { menu.style.display = "none"; active = -1; }
+      function render() {
+        if (!results.length) {
+          menu.innerHTML = '<div style="padding:0.5rem 0.6rem; color:var(--muted); font-size:0.85rem;">No matching clients or jobs.</div>';
+          menu.style.display = "block"; return;
+        }
+        menu.innerHTML = results.map(function (r, i) {
+          var icon = r.type === "job" ? "📋 Job" : "🗂 Client";
+          return '<a class="navsearch-item' + (i === active ? ' active' : '') + '" href="' + esc(r.url) + '">' +
+            '<span class="ns-type">' + icon + '</span>' + esc(r.label) +
+            (r.sub ? '<span class="ns-sub">' + esc(r.sub) + '</span>' : '') + '</a>';
+        }).join("");
+        menu.style.display = "block";
+      }
+      function fetchResults(q) {
+        fetch("/api/quick-search?q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { results = d.results || []; active = -1; render(); })
+          .catch(function () { hide(); });
+      }
+      input.addEventListener("input", function () {
+        var q = input.value.trim();
+        if (q === lastQ) return; lastQ = q;
+        if (!q) { hide(); return; }
+        clearTimeout(timer);
+        timer = setTimeout(function () { fetchResults(q); }, 150);
+      });
+      input.addEventListener("keydown", function (e) {
+        var open = menu.style.display !== "none";
+        if (e.key === "ArrowDown" && open) { e.preventDefault(); active = Math.min(active + 1, results.length - 1); render(); }
+        else if (e.key === "ArrowUp" && open) { e.preventDefault(); active = Math.max(active - 1, -1); render(); }
+        else if (e.key === "Enter") {
+          e.preventDefault();
+          if (open && active >= 0 && results[active]) { window.location.href = results[active].url; }
+          else if (input.value.trim()) { window.location.href = "/search?q=" + encodeURIComponent(input.value.trim()); }
+        } else if (e.key === "Escape") { hide(); }
+      });
+      input.addEventListener("focus", function () { if (results.length) render(); });
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest || !e.target.closest(".navsearch")) hide();
+      });
+    })();
+  </script>
+  <script>
+    // Piece 31.0: on desktop, nav dropdowns behave like normal menus — opening
+    // one closes the others, and clicking away (or Escape) closes them, so they
+    // can't overlap and cause misclicks. On touch/mobile the native <details>
+    // "sticky" behaviour is left untouched (matchMedia guards this whole block).
+    (function () {
+      var desktop = window.matchMedia("(min-width: 700px) and (pointer: fine)");
+      var drops = Array.prototype.slice.call(document.querySelectorAll("details.navdrop"));
+      if (!drops.length) return;
+      function closeOthers(except) {
+        if (!desktop.matches) return;
+        drops.forEach(function (d) { if (d !== except && d.open) d.open = false; });
+      }
+      function closeAll() {
+        if (!desktop.matches) return;
+        drops.forEach(function (d) { if (d.open) d.open = false; });
+      }
+      drops.forEach(function (d) {
+        d.addEventListener("toggle", function () { if (d.open) closeOthers(d); });
+      });
+      document.addEventListener("click", function (e) {
+        if (!desktop.matches) return;
+        if (!e.target.closest || !e.target.closest("details.navdrop")) closeAll();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeAll();
+      });
+    })();
+  </script>
+  <script>
+    // Piece 31.6: mobile hamburger — toggle the collapsed nav panel.
+    (function () {
+      var btn = document.querySelector(".nav-toggle");
+      var nav = document.getElementById("mainnav");
+      if (!btn || !nav) return;
+      btn.addEventListener("click", function () {
+        var open = nav.classList.toggle("open");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      // Tapping a real navigation link closes the menu (the page will reload,
+      // but this keeps it tidy for in-page anchors too).
+      nav.addEventListener("click", function (e) {
+        var a = e.target.closest ? e.target.closest("a") : null;
+        if (a && nav.classList.contains("open")) {
+          nav.classList.remove("open");
+          btn.setAttribute("aria-expanded", "false");
+        }
+      });
+    })();
+  </script>
+  <script>
+    // Piece 31.6: make wide tables mobile-friendly. Each table is (a) wrapped in
+    // a horizontal-scroll container so it never stretches the page, and (b) if it
+    // has a proper header with 3+ columns, tagged so it can restack into labelled
+    // rows on phones (see .rstack CSS) — the label for each cell is copied from
+    // that table's own header, so no template needs per-cell markup.
+    (function () {
+      var tables = document.querySelectorAll("main table");
+      for (var i = 0; i < tables.length; i++) {
+        var t = tables[i];
+        if (!t.closest(".table-scroll")) {
+          var wrap = document.createElement("div");
+          wrap.className = "table-scroll";
+          t.parentNode.insertBefore(wrap, t);
+          wrap.appendChild(t);
+        }
+        var headRow = t.tHead && t.tHead.rows.length ? t.tHead.rows[0] : null;
+        if (!headRow || headRow.cells.length < 3) continue;
+        var labels = [];
+        for (var h = 0; h < headRow.cells.length; h++) {
+          labels.push((headRow.cells[h].textContent || "").trim());
+        }
+        var bodies = t.tBodies.length ? t.tBodies : [t];
+        var tagged = false;
+        for (var bi = 0; bi < bodies.length; bi++) {
+          var rows = bodies[bi].rows;
+          for (var r = 0; r < rows.length; r++) {
+            var cells = rows[r].cells;
+            // Skip special rows (colspan spacers, empty-state) that don't line
+            // up with the header, so labels never land on the wrong cell.
+            if (cells.length !== labels.length) continue;
+            for (var c = 0; c < cells.length; c++) {
+              if (!cells[c].hasAttribute("data-label")) {
+                cells[c].setAttribute("data-label", labels[c]);
+              }
+            }
+            tagged = true;
+          }
+        }
+        if (tagged) t.classList.add("rstack");
+      }
+    })();
+  </script>
+</body>
+</html>

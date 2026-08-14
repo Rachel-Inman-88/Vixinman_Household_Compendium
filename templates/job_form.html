@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}{% if editing_job_id %}Edit job{% else %}New job{% endif %} — {{ client["name"] }}{% endblock %}
+{% block content %}
+{% if editing_job_id %}
+<h1>Edit “{{ values.get('job_name') or 'Job #' ~ editing_job_id }}”</h1>
+<p class="muted">Saving keeps the current state as a numbered version for
+recordkeeping.</p>
+{% else %}
+<h1>Create a job under “{{ client["name"] }}”</h1>
+{% endif %}
+<form method="post" class="card">
+  <div class="form-grid">
+    <div class="field wide">
+      <label for="job_name">Job name * <span class="muted">(used in bookkeeping records)</span></label>
+      <input id="job_name" name="job_name"
+             placeholder="e.g. {{ client['name'] }} — 8kW PV + battery"
+             value="{{ values.get('job_name', '') }}" required>
+    </div>
+    <div class="field" style="grid-column: 1 / -2;">
+      <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
+      <input id="site_location" name="site_location"
+             placeholder="123 County Rd 45, Estancia, NM — or 35.0844, -106.6504"
+             value="{{ values.get('site_location', '') }}" required>
+    </div>
+    <div class="field">
+      <label for="property_type">Property type</label>
+      <select id="property_type" name="property_type">
+        <option value="Residential" {% if values.get('property_type', 'Residential') != 'Commercial' %}selected{% endif %}>Residential</option>
+        <option value="Commercial" {% if values.get('property_type') == 'Commercial' %}selected{% endif %}>Commercial</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="county">County</label>
+      <input id="county" name="county" value="{{ values.get('county', '') }}"
+             list="county_list" placeholder="Mora County">
+      <datalist id="county_list">
+        {% for c in counties %}<option value="{{ c }}">{% endfor %}
+      </datalist>
+    </div>
+    <div class="field">
+      <label for="utility_provider">Utility provider</label>
+      <div style="display:flex; gap:0.4rem; align-items:center;">
+        <select id="utility_provider" name="utility_provider" style="flex:1;"
+                data-current="{{ values.get('utility_provider', '') }}"></select>
+        <button type="button" id="util_override" class="btn btn-secondary"
+                style="padding:0.4rem 0.7rem; white-space:nowrap;"
+                title="Show every utility statewide — for a client who doesn't follow the standard county mapping">Manual override</button>
+      </div>
+      <p id="util_note" class="muted" style="margin:0.25rem 0 0; font-size:0.8rem;"></p>
+    </div>
+    {% if editing_job_id %}
+    <div class="field wide">
+      <label for="electric_loads">Electric loads <span class="muted">(loads summary — the detailed worksheet is on the Loads &amp; Sizing page)</span></label>
+      <textarea id="electric_loads" name="electric_loads" rows="2"
+                placeholder="3-ton AC, well pump, shop sub-panel…">{{ values.get('electric_loads', '') }}</textarea>
+    </div>
+    {% else %}
+    <div class="field wide">
+      <p class="muted" style="margin:0.2rem 0 0; font-size:0.85rem;">⚡ <strong>Electric loads</strong> are
+      collected during the proposal walkthrough — not at job creation. After the
+      site visit, record them on the job's <strong>Loads &amp; Sizing</strong> page;
+      the Proposal stage can't advance until they're recorded.</p>
+    </div>
+    {% endif %}
+    <div class="field">
+      <label for="warranty_type">Warranty type</label>
+      <input id="warranty_type" name="warranty_type"
+             value="{{ values.get('warranty_type', '') }}">
+    </div>
+    <div class="field">
+      <label for="cost_method">Payment *</label>
+      {% set cm = values.get('cost_method', '') %}
+      <select id="cost_method" name="cost_method" required>
+        <option value="" {% if not cm %}selected{% endif %} disabled>— how are they paying? —</option>
+        {% for term in payment_terms %}
+        <option value="{{ term }}" {% if cm == term %}selected{% endif %}>{{ term }}</option>
+        {% endfor %}
+        {# Preserve any legacy free-text value (e.g. "Cash") so edits don't lose it. #}
+        {% if cm and cm not in payment_terms %}
+        <option value="{{ cm }}" selected>{{ cm }}</option>
+        {% endif %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="tax_credit">Tax credit</label>
+      <select id="tax_credit" name="tax_credit">
+        <option value="No" {% if values.get('tax_credit', 'No') == 'No' %}selected{% endif %}>No</option>
+        <option value="Yes" {% if values.get('tax_credit') == 'Yes' %}selected{% endif %}>Yes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="expand_option">Expand option</label>
+      <select id="expand_option" name="expand_option">
+        <option value="No" {% if values.get('expand_option', 'No') == 'No' %}selected{% endif %}>No</option>
+        <option value="Yes" {% if values.get('expand_option') == 'Yes' %}selected{% endif %}>Yes</option>
+      </select>
+    </div>
+    <div class="field wide">
+      <label>Products / services * <span class="muted">(select all that apply)</span></label>
+      <fieldset class="section" style="margin-bottom: 0.5rem;">
+        <legend>⚡ Energy systems <span class="muted">(share one utility connection)</span></legend>
+        <div class="check-grid">
+          {% for p in ["PV Systems", "Battery Banks", "Generators"] %}
+          <label class="check">
+            <input type="checkbox" name="products" value="{{ p }}"
+                   {% if p in selected %}checked{% endif %}>
+            {{ p }}
+          </label>
+          {% endfor %}
+        </div>
+        <div id="grid_options" style="display: none; margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.6rem;">
+          <label style="font-size:0.8rem; color:var(--muted); font-weight:600;">Utility connection — applies to all selected energy systems</label>
+          <div class="check-grid">
+            {% for opt in utility_connections %}
+            <label class="check">
+              <input type="radio" name="utility_connection" value="{{ opt }}"
+                     {% if values.get('utility_connection') == opt %}checked{% endif %}>
+              {{ opt }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </fieldset>
+      <div class="check-grid">
+        {% for p in products if p not in ["PV Systems", "Battery Banks", "Generators"] %}
+        <label class="check">
+          <input type="checkbox" name="products" value="{{ p }}"
+                 {% if p in selected %}checked{% endif %}>
+          {{ p }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <fieldset class="section" id="pv_options" style="grid-column: 1 / -1; display: none;">
+      <legend>☀️ PV Systems options</legend>
+      <div class="field">
+        <label>Mounting type</label>
+        <div class="check-grid">
+          {% for opt in mounting_types %}
+          <label class="check">
+            <input type="radio" name="pv_mounting_type" value="{{ opt }}"
+                   {% if values.get('pv_mounting_type') == opt %}checked{% endif %}>
+            {{ opt }}
+          </label>
+          {% endfor %}
+          <label class="check" id="manufactured_row" style="display: none;">
+            <input type="checkbox" name="pv_manufactured_house" value="Yes"
+                   {% if values.get('pv_manufactured_house') == 'Yes' %}checked{% endif %}>
+            Manufactured house?
+          </label>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="section" id="service_options" style="grid-column: 1 / -1; display: none;">
+      <legend>🛠️ Technician Service options</legend>
+      {% if existing_jobs %}
+      <div class="field" style="margin-bottom: 0.7rem;">
+        <label for="prefill_select">This client has jobs on the books — pre-fill from one? (optional)</label>
+        <select id="prefill_select">
+          <option value="">— no, start a blank service ticket —</option>
+          {% for ej in existing_jobs %}
+          <option value="{{ ej['id'] }}">{{ ej["job_name"] or "Job #" ~ ej["id"] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="field">
+        <label>Service type *</label>
+        <div class="check-grid">
+          {% for opt in service_types %}
+          <label class="check">
+            <input type="radio" name="service_type" value="{{ opt }}"
+                   {% if values.get('service_type') == opt %}checked{% endif %}>
+            {{ opt }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <p class="muted" style="margin: 0.6rem 0 0;">Then check the products above
+      that describe the part of the system needing service — their options and
+      requirements apply to the ticket.</p>
+    </fieldset>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create job{% endif %}</button>
+    {% if editing_job_id %}
+    <a href="{{ url_for('job_detail', job_id=editing_job_id) }}" class="btn btn-secondary">Cancel</a>
+    {% else %}
+    <a href="{{ url_for('client_detail', client_id=client['id']) }}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+  </div>
+</form>
+<script>
+  // Show each product's options section only while that product is checked,
+  // and the manufactured-house question only for roof-mounted PV.
+  const sectionFor = {
+    "PV Systems": "pv_options",
+    "Technician Service": "service_options",
+  };
+  const gridProducts = ["PV Systems", "Battery Banks", "Generators"];
+  const productBoxes = document.querySelectorAll('input[name="products"]');
+  function updateSections() {
+    const checked = new Set(
+      [...productBoxes].filter(b => b.checked).map(b => b.value)
+    );
+    for (const [product, id] of Object.entries(sectionFor)) {
+      document.getElementById(id).style.display = checked.has(product) ? "" : "none";
+    }
+    // One shared utility-connection choice when any energy system is on.
+    document.getElementById("grid_options").style.display =
+      gridProducts.some(p => checked.has(p)) ? "" : "none";
+    const mounting = document.querySelector('input[name="pv_mounting_type"]:checked');
+    document.getElementById("manufactured_row").style.display =
+      (mounting && mounting.value === "Roof mounted") ? "" : "none";
+  }
+  productBoxes.forEach(b => b.addEventListener("change", updateSections));
+  document.querySelectorAll('input[name="pv_mounting_type"]')
+    .forEach(r => r.addEventListener("change", updateSections));
+  updateSections();
+
+  // Service pre-fill: reload the form seeded from the chosen existing job.
+  const prefill = document.getElementById("prefill_select");
+  if (prefill) {
+    prefill.addEventListener("change", () => {
+      if (prefill.value) {
+        window.location = "{{ url_for('new_job', client_id=client['id']) }}?prefill=" + prefill.value;
+      }
+    });
+  }
+
+  // County-aware utility dropdown. Choosing a county filters the utility list
+  // to the providers that serve it (verified doc-03 table); "Manual override"
+  // opens the full statewide list for the rare non-standard case. The utility
+  // still matters off-grid — the meter/account ties to the provider, so we keep
+  // the field regardless of grid-tie vs off-grid.
+  const COUNTY_UTILITIES = {{ county_utilities_json|safe }};
+  const ALL_UTILITIES = {{ utilities_json|safe }};
+  const countyInput = document.getElementById("county");
+  const utilSel = document.getElementById("utility_provider");
+  const overrideBtn = document.getElementById("util_override");
+  const utilNote = document.getElementById("util_note");
+  let manualOverride = false;
+
+  function mappedUtilities(raw) {
+    const c = (raw || "").trim();
+    if (COUNTY_UTILITIES[c]) return COUNTY_UTILITIES[c];
+    if (COUNTY_UTILITIES[c + " County"]) return COUNTY_UTILITIES[c + " County"];
+    const lc = c.toLowerCase();
+    for (const k in COUNTY_UTILITIES) {
+      if (k.toLowerCase() === lc) return COUNTY_UTILITIES[k];
+    }
+    return null;
+  }
+
+  function buildUtilOptions(isInitial) {
+    const prev = isInitial ? (utilSel.dataset.current || "") : utilSel.value;
+    const mapped = mappedUtilities(countyInput.value);
+    const useAll = manualOverride || !mapped;
+    let list = (useAll ? ALL_UTILITIES : mapped).slice();
+    if (!list.includes("N/A")) list.push("N/A");   // off-grid / no utility
+    let selected = "";
+    if (prev && list.includes(prev)) {
+      selected = prev;
+    } else if (isInitial && prev) {                 // keep a saved out-of-map value
+      list.unshift(prev);
+      selected = prev;
+    } else if (!useAll && mapped && mapped.length === 1) {
+      selected = mapped[0];                         // single serving utility → auto-match
+    }
+    utilSel.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = ""; blank.textContent = "— select utility —";
+    utilSel.appendChild(blank);
+    list.forEach(u => {
+      const o = document.createElement("option");
+      o.value = u; o.textContent = u;
+      if (u === selected) o.selected = true;
+      utilSel.appendChild(o);
+    });
+    if (manualOverride) {
+      utilNote.textContent = "Manual override on — showing all NM utilities.";
+    } else if (mapped && mapped.length > 1) {
+      utilNote.textContent = "Multiple utilities serve this county — pick the one on the customer's bill.";
+    } else if (mapped && mapped.length === 1) {
+      utilNote.textContent = "Auto-matched from the county. Useful even off-grid (ties the meter to the provider).";
+    } else {
+      utilNote.textContent = "Choose a county to auto-match its utilities, or use Manual override for the full list.";
+    }
+    overrideBtn.textContent = manualOverride ? "Match to county" : "Manual override";
+  }
+
+  overrideBtn.addEventListener("click", () => {
+    manualOverride = !manualOverride;
+    buildUtilOptions(false);
+  });
+  countyInput.addEventListener("input", () => buildUtilOptions(false));
+  countyInput.addEventListener("change", () => buildUtilOptions(false));
+  buildUtilOptions(true);
+</script>
+{% endblock %}

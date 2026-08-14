@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit unit" if vehicle else "New unit" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🚚 {{ "Edit vehicle / equipment" if vehicle else "New vehicle / equipment" }}</h1>
+  <a href="{{ url_for('inventory_page') }}" class="btn btn-secondary">← Back to Inventory</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('inventory_vehicle_edit', vehicle_id=vehicle['id']) if vehicle else url_for('inventory_vehicle_new') }}">
+    <div class="form-grid">
+      <div class="field wide"><label>Unit name *</label><input name="name" required value="{{ vehicle['name'] if vehicle else '' }}" placeholder="e.g. Bucket / lift truck"></div>
+      <div class="field"><label>Nickname</label><input name="nickname" value="{{ vehicle['nickname'] if vehicle else '' }}" placeholder="shop name, e.g. Big Blue"></div>
+      <div class="field"><label>Category</label><input name="category" value="{{ vehicle['category'] if vehicle else '' }}" list="veh-cat-list" placeholder="e.g. Truck"></div>
+      <datalist id="veh-cat-list">
+        <option value="Truck"><option value="Trailer"><option value="Heavy equipment">
+        <option value="Lift"><option value="Trencher"><option value="Misc">
+      </datalist>
+      <div class="field"><label>Make</label><input name="make" value="{{ vehicle['make'] if vehicle else '' }}"></div>
+      <div class="field"><label>Model</label><input name="model" value="{{ vehicle['model'] if vehicle else '' }}"></div>
+      <div class="field"><label>Year</label><input name="year" value="{{ vehicle['year'] if vehicle else '' }}" placeholder="e.g. 2019"></div>
+      <div class="field wide"><label>Description</label><input name="description" value="{{ vehicle['description'] if vehicle else '' }}"></div>
+      <div class="field">
+        <label>Vendor / dealer</label>
+        <select name="vendor_id">
+          <option value="">— none —</option>
+          {% for vend in vendor_list %}<option value="{{ vend['id'] }}" {% if vehicle and vehicle['vendor_id'] == vend['id'] %}selected{% endif %}>{{ vend['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Cost $</label><input name="cost" type="number" step="0.01" min="0" value="{{ '%.2f'|format(vehicle['cost']) if vehicle and vehicle['cost'] is not none else '' }}"></div>
+      <div class="field wide"><label>Purchase / listing URL</label><input name="purchase_url" value="{{ vehicle['purchase_url'] if vehicle else '' }}" placeholder="https://…"></div>
+      <div class="field wide"><label>Manual / datasheet URL</label><input name="manual_url" value="{{ vehicle['manual_url'] if vehicle else '' }}" placeholder="https://…"></div>
+      <div class="field wide"><label>Notes</label><input name="notes" value="{{ vehicle['notes'] if vehicle else '' }}" placeholder="e.g. VIN, plate, service due"></div>
+    </div>
+    <div class="actions" style="margin-top:0.8rem;"><button type="submit" class="btn">{{ "Save changes" if vehicle else "＋ Add unit" }}</button></div>
+  </form>
+</div>
+
+{% if vehicle %}
+<div class="card">
+  <form method="post" action="{{ url_for('inventory_vehicle_delete', vehicle_id=vehicle['id']) }}"
+        onsubmit="return confirm('Move this unit to the trash?');" style="margin:0;">
+    <button type="submit" class="btn btn-secondary" style="color:#b02a2a !important; border-color:#b02a2a;">🗑 Move to trash</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

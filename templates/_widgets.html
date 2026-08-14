@@ -1,0 +1,26 @@
+{# Piece 20.2: per-job pipeline progress widget. Pass a dict built by
+   build_job_progress(db, job). Set compact=true for a slim bar in lists/rows
+   (segment labels are dropped; the stage name moves into the caption). #}
+{% macro job_progress(p, compact=false) %}
+<div class="jobprog{% if compact %} jobprog--compact{% endif %}">
+  <div class="jobprog-track" role="img"
+       aria-label="Pipeline stage {{ p.status }}, {{ p.pct }} percent through the job.{% if not (p.lost or p.complete) %} Next step: {{ p.next_label }}.{% endif %}">
+    {% for s in p.stages %}
+    <div class="jobprog-seg is-{{ s.state }}"
+         title="{{ s.name }}{% if s.state == 'current' %} — current stage{% elif s.state == 'done' %} — done{% endif %}">
+      {% if not compact %}{{ s.short }}{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="jobprog-next">
+    {% if p.complete %}
+      <span class="jobprog-done">✓ Job complete</span>
+    {% elif p.lost %}
+      <span class="jobprog-lostlbl">✕ Marked Lost</span>
+    {% else %}
+      {% if compact %}<span class="jobprog-stage">{{ p.status }}</span> · {% endif %}
+      <span class="jobprog-arrow">▶ Next:</span> {{ p.next_label }}{% if p.next_who and not compact %} <span class="muted">· {{ p.next_who }}</span>{% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

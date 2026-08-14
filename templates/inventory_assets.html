@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Asset labels{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🏷 Barcodes &amp; assets</h1>
+  <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory_scan') }}" class="btn">📷 Scan</a>
+    <a href="{{ url_for('inventory_page') }}" class="btn btn-secondary">← Inventory</a>
+  </div>
+</div>
+<p class="muted" style="margin-top:0;">Register a physical unit to mint a serial and print its barcode.
+<strong>Consumables</strong> (components/hardware) get one SKU label — scanning it out records stock used on a job.
+<strong>Non-consumables</strong> (tools, PPE, vehicles) get one tag per unit that toggles In&nbsp;stock ↔ Out.</p>
+
+{% if can('inventory.register') %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Register &amp; print labels</h2>
+  <form method="post" action="{{ url_for('inventory_asset_register') }}" class="form-grid" style="align-items:end;">
+    <div class="field wide">
+      <label>What to tag</label>
+      <select name="entity" required>
+        <option value="">— choose an item, tool, or vehicle —</option>
+        {% set groups = choices | groupby(1) %}
+        {% for gname, opts in groups %}
+        <optgroup label="{{ gname }}">
+          {% for value, _g, label in opts %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>How many tags</label>
+      <input type="number" name="qty" min="1" max="200" value="1">
+      <span class="muted" style="font-size:0.75rem;">Non-consumables: one per physical unit. Consumables: always 1 SKU label.</span>
+    </div>
+    <div class="field"><button type="submit" class="btn">＋ Register &amp; print</button></div>
+  </form>
+</div>
+{% else %}
+<div class="card"><p class="muted" style="margin:0;">🔒 Registering new tags is the
+  warehouse manager's job. You can still look up and print existing labels, and
+  <a href="{{ url_for('inventory_load') }}">load a truck</a> by scanning.</p></div>
+{% endif %}
+
+<form method="get" class="card" style="display:flex; gap:0.7rem; align-items:end; flex-wrap:wrap;">
+  <div class="field" style="margin:0;"><label>Search</label><input name="q" value="{{ q }}" placeholder="serial or name"></div>
+  <div class="field" style="margin:0;">
+    <label>Status</label>
+    <select name="status">
+      <option value="">— all —</option>
+      {% for s in ["In stock", "Out", "Retired"] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field" style="margin:0;"><button type="submit" class="btn btn-secondary">Filter</button></div>
+  <span class="muted" style="margin-left:auto;">{{ total }} shown · {{ out_count }} out</span>
+</form>
+
+<div class="card">
+  {% if assets %}
+  <div style="overflow-x:auto;">
+  <table class="inv-table" style="font-size:0.85rem;">
+    <thead><tr><th>Serial</th><th>Item</th><th>Kind</th><th>Status</th><th>On job</th><th>Last action</th><th></th></tr></thead>
+    <tbody>
+      {% for a in assets %}
+      <tr>
+        <td style="font-family:monospace; white-space:nowrap;">{{ a["serial"] }}</td>
+        <td>{{ a["label"] }}</td>
+        <td class="muted">{{ "Consumable" if a["kind"] == "consumable" else "Non-consumable" }}</td>
+        <td>
+          {% if a["status"] == "Out" %}<span class="badge warn">Out</span>
+          {% elif a["status"] == "Retired" %}<span class="badge neutral">Retired</span>
+          {% else %}<span class="badge">In stock</span>{% endif %}
+        </td>
+        <td class="muted">{{ a["job_name"] or "—" }}</td>
+        <td class="muted" style="font-size:0.78rem;">{{ a["last_action"] }}{% if a["last_action_at"] %} · {{ a["last_action_at"][:10] }}{% endif %}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('inventory_asset_labels', ids=a['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;" title="Print label" target="_blank">🖨</a>
+          {% if a["status"] != "Retired" and can('inventory.register') %}
+          <form method="post" action="{{ url_for('inventory_asset_retire', asset_id=a['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Retire this tag?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;">Retire</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty" style="margin:0;">No labels registered yet — register one above to get started.</p>
+  {% endif %}
+</div>
+{% endblock %}

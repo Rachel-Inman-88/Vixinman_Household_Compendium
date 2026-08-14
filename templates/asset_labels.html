@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Print labels{% endblock %}
+{% block content %}
+<style>
+  .label-grid { display:flex; flex-wrap:wrap; gap:0.5rem; }
+  .label {
+    border:1px solid #bbb; border-radius:6px; padding:0.5rem 0.6rem;
+    width:2.6in; text-align:center; background:#fff; break-inside:avoid;
+  }
+  .label .name { font-size:0.72rem; font-weight:600; line-height:1.15;
+    margin-bottom:0.2rem; overflow:hidden; }
+  .label svg { max-width:100%; height:auto; }
+  @media print {
+    .no-print { display:none !important; }
+    body { background:#fff; }
+    .label { border:1px solid #999; }
+  }
+</style>
+
+<div class="toolbar no-print">
+  <h1>🖨 Print labels</h1>
+  <div style="display:flex; gap:0.5rem;">
+    <button type="button" class="btn" onclick="window.print()">🖨 Print</button>
+    <a href="{{ url_for('inventory_assets') }}" class="btn btn-secondary">← Back</a>
+  </div>
+</div>
+<p class="muted no-print" style="margin-top:0;">Peel-and-stick these on the units.
+  Print on label stock (≈2.6″ wide) or plain paper and tape. Test-scan one before
+  a big run.</p>
+
+{% if labels %}
+<div class="label-grid">
+  {% for L in labels %}
+  <div class="label">
+    <div class="name">{{ L.a["label"] }}</div>
+    {{ L.svg | safe }}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">Nothing to print.</p>
+{% endif %}
+{% endblock %}

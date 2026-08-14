@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Field work approvals{% endblock %}
+{% block content %}
+{% set sc = {"Pending": "warn", "Approved": "", "Rejected": "danger"} %}
+<div class="toolbar">
+  <h1>🕗 Field work approvals</h1>
+  <div style="display:flex; gap:0.4rem;">
+    <a href="{{ url_for('submissions_page', show='pending') }}" class="btn {{ 'btn-secondary' if show != 'pending' }}">Pending</a>
+    <a href="{{ url_for('submissions_page', show='all') }}" class="btn {{ 'btn-secondary' if show == 'pending' }}">All</a>
+  </div>
+</div>
+<p class="muted">Completed field work submitted from the Work Bag. Approving
+applies the task changes and logs the worker's hours as authoritative;
+rejecting discards it. Nothing here counts in the system until you approve it.</p>
+
+{% if subs %}
+  {% for s in subs %}
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:0.4rem;">
+      <h2 style="margin:0; font-size:1.05rem;">{{ s["emp_name"] }}
+        <span class="badge {{ sc[s['status']] }}">{{ s["status"] }}</span></h2>
+      <span class="muted" style="font-size:0.85rem;">submitted {{ s["submitted_at"][:16] }}</span>
+    </div>
+    <dl class="profile" style="grid-template-columns:auto 1fr;">
+      <dt>Work date</dt><dd>{{ s["work_date"] or "—" }}</dd>
+      <dt>Reported hours</dt><dd>{{ s["reported_hours"] if s["reported_hours"] is not none else "—" }}</dd>
+      {% if s["status"] != "Pending" %}
+      <dt>Approved hours</dt><dd>{{ s["approved_hours"] if s["approved_hours"] is not none else "—" }}</dd>
+      <dt>Reviewed by</dt><dd>{{ s["reviewed_by"] or "—" }}{% if s["reviewed_at"] %} · {{ s["reviewed_at"][:16] }}{% endif %}</dd>
+      {% endif %}
+      {% if s["note"] %}<dt>Worker note</dt><dd>{{ s["note"] }}</dd>{% endif %}
+    </dl>
+    {% set items = items_by_sub.get(s["id"], []) %}
+    {% if items %}
+    <table>
+      <thead><tr><th>Task</th><th>Marked</th><th>Time (by pay type)</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it["task_title"] }}</td>
+          <td><span class="badge {{ 'danger' if it['new_status'] == 'Blocked' else '' }}">{{ it["new_status"] }}</span></td>
+          <td>
+            {% if it["segments"] %}
+              {% for seg in it["segments"] %}<span class="badge neutral" style="margin:0 0.15rem 0.15rem 0;">{{ seg["pay_type_name"] }}: {{ "%.2f"|format(seg["hours"]|float) }}h</span>{% endfor %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="muted">{{ it["new_notes"] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Hours-only submission (no task changes).</p>
+    {% endif %}
+    {% if s["status"] == "Pending" %}
+    <p class="muted" style="margin:0.6rem 0 0; font-size:0.83rem;">Approving confirms the
+    task changes and posts the time above as <strong>pending payroll</strong> (by pay type)
+    for Finance to approve. The "confirm hours" total is the field-work summary on record.</p>
+    <form method="post" action="{{ url_for('approve_submission', sub_id=s['id']) }}"
+          style="margin-top:0.5rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">
+      <div class="field" style="max-width:12rem;">
+        <label>Confirm hours</label>
+        <input type="number" step="0.25" min="0" name="approved_hours"
+               value="{{ s['reported_hours'] if s['reported_hours'] is not none else '' }}">
+      </div>
+      <button type="submit" class="btn">Approve</button>
+      <button type="submit" class="btn btn-secondary"
+              formaction="{{ url_for('reject_submission', sub_id=s['id']) }}"
+              onclick="return confirm('Reject this submission? No changes will be applied.');">Reject</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+<p class="empty">No {{ "pending " if show == "pending" }}submissions.</p>
+{% endif %}
+{% endblock %}

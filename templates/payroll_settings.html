@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Pay settings{% endblock %}
+{% block content %}
+<div style="margin-bottom:0.8rem;"><a href="{{ url_for('payroll') }}" class="btn btn-secondary">← Back to payroll</a></div>
+<h1>⚙ Pay settings</h1>
+{% set ns = namespace(active=0) %}
+{% for t in types if t["active"] %}{% set ns.active = ns.active + 1 %}{% endfor %}
+
+<details class="card sect" open>
+  <summary>⏱ Overtime rule</summary>
+  <form method="post" action="{{ url_for('save_ot_rules') }}" style="display:flex; gap:0.8rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0;"><label>Hours/week before OT</label><input name="ot_threshold" type="number" step="0.5" min="0" value="{{ '%.0f'|format(ot_threshold) }}" style="width:8rem;"></div>
+    <div class="field" style="margin:0;"><label>OT multiplier</label><input name="ot_multiplier" type="number" step="0.05" min="1" value="{{ '%.2f'|format(ot_mult) }}" style="width:8rem;"></div>
+    <button type="submit" class="btn btn-secondary">Save</button>
+  </form>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.82rem;">Once someone passes
+  this many hours of overtime-eligible time in a week, the extra hours automatically
+  earn the multiplier — nobody logs overtime as its own type.</p>
+</details>
+
+<details class="card sect" open>
+  <summary>Pay types <span class="sect-count">{{ ns.active }}</span></summary>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">A <strong>multiplier</strong>
+  type pays the employee's base wage × the multiplier. A <strong>flat</strong> type
+  pays a fixed $/hr regardless of base wage. "Counts toward OT" = these hours add up
+  toward the weekly overtime threshold (turn it off for PTO/Holiday). "<strong>Leave</strong>"
+  = vacation/PTO/sick — these hours can't take a week past the overtime threshold (they
+  can't earn OT); only the GM can override that on the approval form. Values are the
+  defaults; override them per person below.</p>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Name</th><th>Method</th><th>Default value</th><th>Counts toward OT</th><th>Leave</th><th></th><th></th></tr></thead>
+    <tbody>
+      {% for t in types if t["active"] %}
+      <tr>
+        <form method="post" action="{{ url_for('save_pay_type') }}" style="display:contents;">
+        <input type="hidden" name="id" value="{{ t['id'] }}">
+        <td><input name="name" value="{{ t['name'] }}" required style="padding:0.25rem; width:100%;"></td>
+        <td>
+          <select name="method" style="padding:0.25rem;">
+            {% for m in pay_methods %}<option value="{{ m }}" {% if t['method'] == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          </select>
+        </td>
+        <td><input name="value" type="number" step="0.01" min="0" value="{{ '%.2f'|format(t['value']) }}" style="padding:0.25rem; width:7rem;"></td>
+        <td style="text-align:center;"><input type="checkbox" name="ot_eligible" value="1" {% if t['ot_eligible'] %}checked{% endif %}></td>
+        <td style="text-align:center;"><input type="checkbox" name="is_leave" value="1" {% if "is_leave" in t.keys() and t['is_leave'] %}checked{% endif %}></td>
+        <td><button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button></td>
+        </form>
+        <td>
+          <form method="post" action="{{ url_for('delete_pay_type', type_id=t['id']) }}" style="margin:0;"
+                onsubmit="return confirm('Remove this pay type?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="{{ url_for('save_pay_type') }}" style="margin-top:0.8rem;">
+    <div class="form-grid">
+      <div class="field"><label>New pay type</label><input name="name" placeholder="e.g. On-call" required></div>
+      <div class="field"><label>Method</label>
+        <select name="method">{% for m in pay_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select>
+      </div>
+      <div class="field"><label>Default value <span class="muted">(× base, or $/hr)</span></label><input name="value" type="number" step="0.01" min="0" placeholder="1.00"></div>
+      <div class="field"><label>Counts toward OT?</label><input type="checkbox" name="ot_eligible" value="1" checked></div>
+      <div class="field"><label>Leave (PTO/vacation)?</label><input type="checkbox" name="is_leave" value="1"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add pay type</button></div>
+  </form>
+</details>
+
+<details class="card sect" open>
+  <summary>Employee wages & rate overrides <span class="sect-count">{{ employees|length }}</span></summary>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Set each person's base
+  hourly wage. Leave an override blank to use the pay type's default value;
+  fill it to give that person a different multiplier or flat $/hr.</p>
+  {% for e in employees %}
+  <form method="post" action="{{ url_for('save_employee_rates', employee_id=e['id']) }}"
+        style="border-bottom:1px solid var(--border); padding:0.6rem 0; margin:0;">
+    <div style="display:flex; gap:0.8rem; align-items:end; flex-wrap:wrap;">
+      <div class="field" style="margin:0;">
+        <label style="font-weight:700;">{{ e["name"] }} — base wage $/hr</label>
+        <input name="base_wage" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(e['base_wage']|float) if e['base_wage'] else '' }}"
+               placeholder="0.00" style="padding:0.3rem; width:8rem;">
+      </div>
+      {% for t in types if t["active"] %}
+      <div class="field" style="margin:0;">
+        <label style="font-size:0.78rem;">{{ t["name"] }}<br><span class="muted">({{ "×base" if t["method"] == "multiplier" else "$/hr" }})</span></label>
+        <input name="rate_{{ t['id'] }}" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(rates[(e['id'], t['id'])]) if (e['id'], t['id']) in rates else '' }}"
+               placeholder="{{ '%.2f'|format(t['value']) }}" style="padding:0.3rem; width:6rem;">
+      </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
+    </div>
+  </form>
+  {% endfor %}
+</details>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🔑 Accounts</h1>
+  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Employees</a>
+</div>
+<p class="muted">Who can sign in to Compendium and at what level. Logins are set
+on each person's employee profile. <strong>Admin</strong> can edit Rules,
+Catalog, Employees/accounts and view the Log; <strong>Standard</strong> does
+everyday work.</p>
+
+{% if not login_active %}
+<div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+  🔓 No logins are active yet. Give someone an <strong>Admin</strong> login below
+  to turn on sign-in for everyone.
+</div>
+{% endif %}
+
+{% if dup_usernames %}
+<div class="flash error">
+  ⚠️ <strong>Duplicate usernames (case-insensitive).</strong> Since login now
+  ignores capitalization, these accounts share a username and a sign-in would be
+  ambiguous — give each a distinct username on their employee profile:
+  <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
+    {% for group in dup_usernames %}
+    <li>{% for e in group %}<a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a> (“{{ e["username"] }}”){% if not loop.last %} · {% endif %}{% endfor %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if pending %}
+<div class="card" style="border-color:#f5d9a2;">
+  <h2 style="margin-top:0; font-size:1.05rem;">⏳ Pending password changes ({{ pending|length }})</h2>
+  <p class="muted" style="margin-top:0;">Approve to apply the new password (you
+  don't see it — it's applied straight to their account), or reject to discard.</p>
+  <table>
+    <thead><tr><th>Employee</th><th>Username</th><th>Requested</th><th></th></tr></thead>
+    <tbody>
+      {% for r in pending %}
+      <tr>
+        <td>{{ r["emp_name"] }}</td>
+        <td>{{ r["username"] }}</td>
+        <td class="muted">{{ r["requested_at"][:16] }}</td>
+        <td>
+          <div style="display:flex; gap:0.4rem;">
+            <form method="post" action="{{ url_for('approve_password_change', req_id=r['id']) }}" style="margin:0;">
+              <button type="submit" class="btn" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Approve</button>
+            </form>
+            <form method="post" action="{{ url_for('reject_password_change', req_id=r['id']) }}" style="margin:0;"
+                  onsubmit="return confirm('Reject this password change?');">
+              <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Reject</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.5rem;">
+    <h2 style="margin:0; font-size:1.05rem;">Sign-in accounts ({{ with_login|length }})</h2>
+    <span class="muted" style="font-size:0.85rem;">{{ admin_count }} admin{{ "s" if admin_count != 1 }}</span>
+  </div>
+  {% if with_login %}
+  <table>
+    <thead><tr><th>Name</th><th>Username</th><th>Access level</th><th>Password set</th><th></th></tr></thead>
+    <tbody>
+      {% for e in with_login %}
+      <tr>
+        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
+        <td>{{ e["username"] }}</td>
+        <td>
+          {% if e["access_level"] == "Admin" %}<span class="badge warn">Admin</span>
+          {% elif e["access_level"] == "Standard" %}<span class="badge">Standard</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{% if e["pw"] %}✓{% else %}<span class="badge danger">no password</span>{% endif %}</td>
+        <td><a href="{{ url_for('edit_employee', employee_id=e['id']) }}">Edit login</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No sign-in accounts yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Employees without a login ({{ without_login|length }})</h2>
+  {% if without_login %}
+  <table>
+    <thead><tr><th>Name</th><th></th></tr></thead>
+    <tbody>
+      {% for e in without_login %}
+      <tr>
+        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
+        <td><a href="{{ url_for('edit_employee', employee_id=e['id']) }}">Set up login</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Everyone has a login.</p>
+  {% endif %}
+</div>
+{% endblock %}

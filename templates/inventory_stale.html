@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Stale stock{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🕰️ Stale stock review</h1>
+  <a href="{{ url_for('inventory_page') }}" class="btn btn-secondary">← Back to Inventory</a>
+</div>
+<p class="muted" style="margin-top:0;">Active items with <strong>zero on hand</strong> that haven't been
+used in <strong>{{ months }} months</strong>. For each, tell the shop whether it's still
+carried — <strong>Keep active</strong> re-checks in {{ months }} months,
+<strong>Discontinue</strong> keeps the record but retires it, and
+<strong>Move to trash</strong> removes it (restorable from Trash).</p>
+
+{% if items %}
+<div class="card">
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table" style="font-size:0.85rem;">
+    <thead><tr><th>Category</th><th>Make</th><th>Model</th><th>Vendor</th><th>Last used</th><th>Decision</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="muted">{{ it['category'] }}</td>
+        <td>{{ it['make'] or '—' }}</td>
+        <td>{{ it['model'] or '—' }}</td>
+        <td class="muted">{{ it['vendor_name'] or '—' }}</td>
+        <td style="white-space:nowrap;">{{ it['last_used'] }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('inventory_stale_keep', item_id=it['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;">Keep active</button>
+          </form>
+          <form method="post" action="{{ url_for('inventory_stale_discontinue', item_id=it['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;">Discontinue</button>
+          </form>
+          <form method="post" action="{{ url_for('inventory_stale_trash', item_id=it['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Move {{ (it['make'] ~ ' ' ~ it['model'])|trim }} to the trash?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem; color:#b02a2a !important; border-color:#b02a2a;">🗑 Trash</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="card"><p class="muted" style="margin:0;">✅ Nothing stale right now — every active item is either in stock or has been used within the last {{ months }} months.</p></div>
+{% endif %}
+{% endblock %}

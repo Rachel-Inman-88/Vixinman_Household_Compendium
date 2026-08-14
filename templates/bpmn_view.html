@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Process steps — {{ job["job_name"] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Process steps <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('job_bpmn', job_id=job['id']) }}" class="btn">⬇ Export BPMN diagram</a>
+    <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Job</a>
+  </div>
+</div>
+<p class="muted">The master Vixinman pipeline instantiated for this job, start to
+finish — resolved permits expand the permitting phase, off-grid jobs skip
+interconnection. Open any step for its particulars, filed documents, and
+materials. The exported .bpmn opens in
+<a href="https://demo.bpmn.io" target="_blank">demo.bpmn.io</a> or Camunda
+Modeler for the visual diagram.</p>
+
+<div class="card">
+  {% set counter = namespace(n=0) %}
+  {% for s in steps %}
+    {% if s["kind"].endswith("Gateway") %}
+      <div style="padding:0.45rem 0.2rem; color:var(--muted); font-size:0.85rem; border-bottom:1px solid var(--border);">
+        ◆ {{ s["name"] or "Parallel split/join" }} <span class="muted">· {{ s["lane"] }}</span>
+      </div>
+    {% else %}
+      {% set counter.n = counter.n + 1 %}
+      <details class="req-group">
+        <summary>
+          <span style="text-transform:none; letter-spacing:0; font-size:0.95rem; color:var(--text);">
+            {{ "%02d"|format(counter.n) }} · {{ s["name"] }}
+            {% if s["id"] is defined %}{% endif %}
+            {% for item in s["items"] %}{% if item.label in files_by_label %}<span title="document on file">📎</span>{% endif %}{% endfor %}
+            {% if s["name"].startswith("Order all components") and materials %}<span title="material list">🧰 {{ materials|length }}</span>{% endif %}
+          </span>
+          <span class="badge">{{ s["lane"] }}</span>
+        </summary>
+        <div style="padding:0.5rem 0 0.6rem 1.6rem;">
+          {% if s["items"] %}
+          <ul style="margin:0; padding-left:1.1rem;">
+            {% for item in s["items"] %}
+            <li style="margin-bottom:0.35rem;">
+              <strong>{{ item.label }}</strong> <span class="badge">{{ item.category }}</span>
+              {% if item.notes %}<span class="muted">— {{ item.notes }}</span>{% endif %}
+              {% if item.url %} · <a href="{{ item.url }}" target="_blank">{{ item.link_text or item.url.split("//")[-1].split("/")[0] }}</a>{% endif %}
+              {% if item.phone %} · 📞 {{ item.phone }}{% endif %}
+              {% if item.label in files_by_label %}
+              <ul style="margin:0.2rem 0 0; padding-left:1.1rem;">
+                {% for f in files_by_label[item.label] %}
+                <li>📎 <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+                    <span class="muted">{{ f["uploaded_at"][:10] }}</span></li>
+                {% endfor %}
+              </ul>
+              {% elif item.category in ("Permit", "License", "Compliance") %}
+              <div class="muted" style="font-size:0.8rem;">no document on file yet — upload on the job page</div>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% elif s["name"].startswith("Order all components") %}
+            {% if materials %}
+            <p class="muted" style="margin:0 0 0.4rem;">
+              {% for status, n in material_counts.items() %}{{ n }} {{ status }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </p>
+            <ul style="margin:0; padding-left:1.1rem;">
+              {% for m in materials %}
+              <li>{{ m["item"] }}{% if m["quantity"] %} — {{ m["quantity"] }} {{ m["unit"] }}{% endif %}
+                  <span class="badge">{{ m["status"] }}</span>
+                  {% if m["supplier"] %}<span class="muted">{{ m["supplier"] }}</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="muted" style="margin:0;">No materials listed yet — add them on the job page.</p>
+            {% endif %}
+          {% else %}
+          <p class="muted" style="margin:0;">Standard pipeline step — responsibility: {{ s["lane"] }}.</p>
+          {% endif %}
+        </div>
+      </details>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}
