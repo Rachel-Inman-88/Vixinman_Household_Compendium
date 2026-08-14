@@ -599,7 +599,7 @@ COMPANY_INFO = {
     "address": "1212 Railroad Ave",
     "city_state_zip": "Las Vegas, NM 87701",
     "phone": "(505) 454-0614",
-    "email": "rachel@eccsolar.com",
+    "email": "rachel@vixinmandesigns.com",
     "terms_days": 15,   # net terms for the Progress / Final invoices
 }
 # New Mexico gross-receipts tax on the customer invoice. The rate is per job
@@ -4150,7 +4150,7 @@ def _task_events(rows):
         desc = f"Client: {t['client_name']}\nStatus: {t['status']}"
         if t["pipeline_status"]:
             desc += f"\nStage: {t['pipeline_status']}"
-        events.append({"uid": f"compendium-task-{t['id']}@eccsolar",
+        events.append({"uid": f"compendium-task-{t['id']}@vixinmandesigns",
                        "date": t["due_date"], "summary": f"{t['title']} — {job}",
                        "description": desc})
     return events
@@ -4175,7 +4175,7 @@ def my_calendar_ics():
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
-        events.append({"uid": f"compendium-install-{j['id']}@eccsolar",
+        events.append({"uid": f"compendium-install-{j['id']}@vixinmandesigns",
                        "date": j["install_date"],
                        "summary": f"🔧 Install: {j['job_name'] or 'Job #' + str(j['id'])}",
                        "description": f"Client: {j['client_name']}"})
@@ -4194,7 +4194,7 @@ def job_calendar_ics(job_id):
         (job["job_name"], job["client_name"], job_id)).fetchall()
     events = _task_events(rows)
     if job["install_date"]:
-        events.append({"uid": f"compendium-install-{job_id}@eccsolar",
+        events.append({"uid": f"compendium-install-{job_id}@vixinmandesigns",
                        "date": job["install_date"],
                        "summary": f"🔧 Install: {job['job_name'] or 'Job #' + str(job_id)}",
                        "description": f"Client: {job['client_name']}"})
