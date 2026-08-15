@@ -2,10 +2,10 @@
 
 Piece 1: Flask skeleton backed by SQLite; home page lists client profiles.
 Piece 2: "New client" form and individual client profile pages.
-Piece 3: job profiles stored under each client.
-Piece 4: rules engine — job selections resolve to required licenses,
-permits, and compliance items; service tickets; exportable job report.
-Piece 33: the multi-client model (Pieces 1-3 above) was removed — jobs
+Piece 3: project profiles stored under each client.
+Piece 4: rules engine — project selections resolve to required licenses,
+permits, and compliance items; service tickets; exportable project report.
+Piece 33: the multi-client model (Pieces 1-3 above) was removed — projects
 belong to the household directly now; the home page is the dashboard.
 
 Run it:
@@ -108,8 +108,8 @@ def ensure_backlog_reminders(db):
         db.commit()
 
 
-# Job profile columns (products is stored as a comma-separated list).
-JOB_FIELDS = [
+# Project profile columns (products is stored as a comma-separated list).
+PROJECT_FIELDS = [
     "job_name", "site_location", "county", "electric_loads", "utility_provider",
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
     "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
@@ -118,8 +118,8 @@ JOB_FIELDS = [
 ]
 
 # Labels used on the report and anywhere a field needs a human name.
-JOB_FIELD_LABELS = {
-    "job_name": "Job name", "site_location": "Site location",
+PROJECT_FIELD_LABELS = {
+    "job_name": "Project name", "site_location": "Site location",
     "county": "County", "electric_loads": "Electric loads",
     "utility_provider": "Utility provider", "warranty_type": "Warranty type",
     "cost_method": "Payment", "tax_credit": "Tax credit",
@@ -229,7 +229,7 @@ ONBOARDING_SEED = [
     ("Electrical & jobsite safety review", "OSHA-10 / lockout-tagout / arc-flash awareness as applicable.", "Safety"),
     ("Vehicle & driving policy", "Company-vehicle assignment, driving record and fuel-card rules.", "Operations"),
     ("Tool issue & barcode-tag training", "Issue tools; show how to scan/register inventory tags.", "Operations"),
-    ("Walk through job workflow & Work Bag", "How jobs flow through the pipeline and how to use the field Work Bag.", "Operations"),
+    ("Walk through project workflow & Work Bag", "How projects flow through the pipeline and how to use the field Work Bag.", "Operations"),
     ("Assign a mentor & first-week schedule", "Pair with an experienced installer and set the first-week plan.", "Operations"),
 ]
 
@@ -268,7 +268,7 @@ def seed_finance_reference(db):
                 order += 1
         db.execute("INSERT INTO meta (key, value) VALUES ('cost_model_seeded','1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-        # Align the per-job travel $/mile with the Vehicle Trips line (direct SQL:
+        # Align the per-project travel $/mile with the Vehicle Trips line (direct SQL:
         # init_db's connection has no Row factory, so avoid _meta_get/_meta_set).
         if not db.execute("SELECT 1 FROM meta WHERE key = 'travel_rate_per_mile'"
                           ).fetchone():
@@ -281,11 +281,11 @@ EMPLOYEE_FIELD_LABELS = {
 # Columns a user fills in when adding a license/certification.
 CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes"]
 # A credential within this many days of its expiry date is flagged
-# "expiring soon" on the employee and job pages.
+# "expiring soon" on the employee and project pages.
 EXPIRY_SOON_DAYS = 60
 # Vixinman's roles, grouped by department (Piece 16.1) so the employee form's role
 # picker reads like the org chart. An employee may hold any number; roles are
-# stored comma-separated, like the job form's products. EMPLOYEE_ROLES is the
+# stored comma-separated, like the project form's products. EMPLOYEE_ROLES is the
 # flat list derived from the groups, so the two never drift apart.
 # Piece 30.9: the org chart as a hierarchy (matches the finance team's outline).
 # This single tree drives the New Employee "Roles" picker (rendered as an indented
@@ -381,7 +381,7 @@ SERVICE_TYPES = ["General service", "Warranty service"]
 PROPERTY_TYPES = ["Residential", "Commercial"]
 
 # Which variant fields belong to which product — used by the rule
-# directory so filtering by job type also scopes its variants.
+# directory so filtering by project type also scopes its variants.
 VARIANT_OWNERS = {
     "pv_utility_connection": "PV Systems",
     "pv_mounting_type": "PV Systems",
@@ -395,8 +395,8 @@ CONNECTION_FIELDS = {
     "battery_utility_connection",
 }
 
-# Standard documents every job collects, shown as their own upload slots on the
-# Documents tab (Piece 20.9) alongside the job's resolved requirements. Format
+# Standard documents every project collects, shown as their own upload slots on the
+# Documents tab (Piece 20.9) alongside the project's resolved requirements. Format
 # restrictions per slot to be added later.
 STANDARD_JOB_DOCS = [
     "Signed Contract", "Site Photos", "Design / One-Line", "Site Plan (KMZ/KML)",
@@ -490,7 +490,7 @@ EXPENSE_CATEGORIES = [
 # Piece 26.2: expense categories offered on the Work Bag receipt capture.
 RECEIPT_CATEGORIES = ["Materials", "Meals", "Tools and Supplies", "Overhead"]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
-# Piece 31.8: how the customer pays for the job (the job form's "Payment" field,
+# Piece 31.8: how the customer pays for the project (the project form's "Payment" field,
 # stored in cost_method). Two choices — pay the full amount up front, or finance.
 PAYMENT_TERMS = ["Pay in full", "Financing"]
 
@@ -502,13 +502,13 @@ PAYMENT_TERMS = ["Pay in full", "Financing"]
 # A blank doc type is a plain ledger note with no paperwork behind it.
 DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 
-# New Mexico gross-receipts tax. The rate is per job (it varies by the install
+# New Mexico gross-receipts tax. The rate is per project (it varies by the install
 # location), defaulting to 0% because Vixinman's solar systems are
 # GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance sets a
 # rate on the Billing tab where any receipts are taxable.
 GRT_DEFAULT_RATE = 0.0
 # Piece 29.6: the 33 New Mexico counties, seeded (at 0%) into county_tax_rates
-# so Finance can enter each county's current GRT rate. A job's GRT rate
+# so Finance can enter each county's current GRT rate. A project's GRT rate
 # auto-fills from its install county. Rates change biannually — enter the
 # current NM TRD figures; they are NOT bundled to avoid shipping stale tax data.
 NM_COUNTIES = [
@@ -531,7 +531,7 @@ TRAVEL_RATE_DEFAULT = 0.0
 # sheet). Sections in display order; each line = (item, unit, default_qty,
 # unit_cost, markup_pct). Equipment Inventory rows carry only a markup (they
 # price the BOM). Overhead rows carry a percent (in the markup slot) applied to
-# the whole job subtotal. Seeded once; fully editable on the Cost Model page.
+# the whole project subtotal. Seeded once; fully editable on the Cost Model page.
 COST_MODEL_SECTIONS = ["Equipment Inventory", "Equipment Non-Inventory",
                        "Labor", "Travel", "Adders", "Overhead"]
 COST_MODEL_SEED = {
@@ -725,7 +725,7 @@ SEED_RULES_V6 = [
 
 # Batch 7 — authoritative links from the "NM Solar Contractor Website
 # Reference List" (June 2026), attached to the rules they support, plus
-# utility-specific interconnection links keyed on the job's utility
+# utility-specific interconnection links keyed on the project's utility
 # provider. The source document contains no phone numbers.
 _CID_LICENSING = "https://www.rld.nm.gov/construction-industries-public-works/construction-industries/"
 _CID_PORTAL = "https://nmrld.my.site.com/MHD/s/"
@@ -801,7 +801,7 @@ def _link_sql(label, url, field=None):
     return f"UPDATE resource_rules SET url = '{url}' WHERE {where}"
 
 
-# Utility-specific portals become Link rules keyed on the job's utility
+# Utility-specific portals become Link rules keyed on the project's utility
 # provider (both utilities appear in the document).
 SEED_RULES_V7 = [
     ("utility_provider", "PNM", "equals", "Link",
@@ -810,11 +810,11 @@ SEED_RULES_V7 = [
      "Kit Carson Electric Cooperative", "", "", "", "equals"),
 ]
 
-# Canonical values suggested on the job form so free-typed utilities and
+# Canonical values suggested on the project form so free-typed utilities and
 # counties actually match the rules below.
 UTILITIES = UTILITIES_ALL
 
-# These products share one utility-connection choice on the job form.
+# These products share one utility-connection choice on the project form.
 GRID_PRODUCTS = ["PV Systems", "Battery Banks", "Generators"]
 GRID_CONNECTION_FIELDS = {
     "PV Systems": "pv_utility_connection",
@@ -827,7 +827,7 @@ COUNTIES = COUNTIES_ALL
 # Forms documents (June 2026): per-utility forms/contacts and quirks,
 # per-county AHJ permits, and new-well drilling subcontract notes.
 SEED_RULES_V8 = [
-    # --- Utility contacts & forms (fire on the job's utility provider) ---
+    # --- Utility contacts & forms (fire on the project's utility provider) ---
     dict(field_name="utility_provider", field_value="MSMEC", category="Link",
          label="MSMEC — Interconnection Forms Hub",
          url="https://morasanmiguel.coop/forms",
@@ -863,7 +863,7 @@ SEED_RULES_V8 = [
          url="https://www.pnm.com/interconnection",
          phone="888-342-5766",
          notes="visible-air-gap lockable disconnect required (breakers/software modes do not qualify); permanent weatherproof one-line at point of service"),
-    # --- AHJ building/structural permits (fire on the job's county) ---
+    # --- AHJ building/structural permits (fire on the project's county) ---
     dict(field_name="county", field_value="Santa Fe County", category="Permit",
          label="Santa Fe County Development Permit (PV Solar)",
          url="https://www.santafecountynm.gov/growth-management/building-development/permitpackets",
@@ -1006,7 +1006,7 @@ SEED_BATCH_SQL = {
     11: CORRECTIONS_V11,
 }
 
-# Vixinman's main products/services — the multi-select on the job form.
+# Vixinman's main products/services — the multi-select on the project form.
 PRODUCTS = [
     "PV Systems",
     "Generators",
@@ -1027,8 +1027,8 @@ ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "heic", "gif", "doc", "docx", "xls", "xlsx",
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
-# Piece 21.7: field crews snap job photos from the Work Bag. Photos are stored
-# as job_files tagged with FIELD_PHOTO_LABEL and the originating task.
+# Piece 21.7: field crews snap project photos from the Work Bag. Photos are stored
+# as project_files tagged with FIELD_PHOTO_LABEL and the originating task.
 PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "heic", "gif"}
 FIELD_PHOTO_LABEL = "Field Photo"
 # Piece 21.8: every pipeline step that requires photographic documentation gets
@@ -1051,56 +1051,61 @@ def _is_photo_step(title):
 MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
                      "Received", "On hand", "Installed"]
 # Piece 12 (revised Piece 33): categories for household-wide documents
-# (distinct from a job's requirement categories — these aren't tied to a
+# (distinct from a project's requirement categories — these aren't tied to a
 # specific project).
 HOUSEHOLD_FILE_CATEGORIES = ["Insurance", "Warranty", "Correspondence", "Other"]
-# Piece 16: job pipeline stages, redefined to match Vixinman's process phases.
+# Piece 16: project pipeline stages, redefined to match Vixinman's process phases.
 # (Renaming these stages to fit the household model is a separate future piece.)
-JOB_STATUSES = ["Proposal", "Job Prep", "Installation", "Inspections",
-                "Closing", "Complete", "Lost"]
-JOB_STATUS_CLASS = {
-    "Proposal": "neutral", "Job Prep": "warn", "Installation": "warn",
-    "Inspections": "warn", "Closing": "warn", "Complete": "", "Lost": "danger",
+# Piece 34: pipeline stages renamed for the household reorg. Inspections and
+# Closing (two solar-installer-specific back-half stages) merge into one
+# Wrap-up stage — that's a genuine merge, not a 1:1 rename, so STAGE_ORDER
+# drops from 6 stages to 5.
+PROJECT_STATUSES = ["Planning", "Prep", "In Progress", "Wrap-up",
+                "Done", "Abandoned"]
+PROJECT_STATUS_CLASS = {
+    "Planning": "neutral", "Prep": "warn", "In Progress": "warn",
+    "Wrap-up": "warn", "Done": "", "Abandoned": "danger",
 }
-DEFAULT_JOB_STATUS = "Proposal"
+DEFAULT_PROJECT_STATUS = "Planning"
 # Piece 18: which department governs each pipeline status, the functions that
 # staff it (each resolved to its head via best_assignee_for_lane on the BPMN
 # lane), and the exit criteria to advance. Kept standardized but flexible —
-# the rules engine still drives which job-specific steps actually apply.
+# the rules engine still drives which project-specific steps actually apply.
 STATUS_OWNERSHIP = {
-    "Proposal": {"dept": "Sales", "exit": "Sales signs the contract.",
+    "Planning": {"dept": "Sales", "exit": "Sales signs the contract.",
                  "team": [("Sales", "Sales"), ("Design", "Design")]},
-    "Job Prep": {"dept": "Operations — parallel functions",
+    "Prep": {"dept": "Operations — parallel functions",
                  "exit": "All permits filed and an install date set "
-                         "(setting the install date advances the job).",
+                         "(setting the install date advances the project).",
                  "team": [("Permits", "Permits"),
                           ("Finance", "Finance"),
                           ("Purchasing", "Purchasing"),
                           ("Install prep", "Installation")]},
-    "Installation": {"dept": "Service & Technician", "exit": "Install complete.",
+    "In Progress": {"dept": "Service & Technician", "exit": "Install complete.",
                      "team": [("Install", "Installation")]},
-    "Inspections": {"dept": "Operations — same team as Job Prep",
-                    "exit": "Inspection passed and signed off.",
-                    "team": [("Permits", "Permits"),
-                             ("Fixes", "Installation")]},
-    "Closing": {"dept": "All departments — one final task each",
-                "exit": "Final invoice, walkthrough, and paperwork done.",
-                "team": [("Finance", "Finance"),
+    # Piece 34: merged from the old Inspections + Closing stages.
+    "Wrap-up": {"dept": "Operations & all departments — sign-off, then one final task each",
+                "exit": "Inspection passed and signed off; final invoice,"
+                        " walkthrough, and paperwork done.",
+                "team": [("Permits", "Permits"),
+                         ("Fixes", "Installation"),
+                         ("Finance", "Finance"),
                          ("Sales", "Sales"), ("Sign-off", "Executive")]},
-    "Complete": {"dept": "—", "exit": "Job closed.", "team": []},
-    "Lost": {"dept": "—", "exit": "", "team": []},
+    "Done": {"dept": "—", "exit": "Project closed.", "team": []},
+    "Abandoned": {"dept": "—", "exit": "", "team": []},
 }
-# The linear advance path (Lost is an off-path terminal state).
-STAGE_ORDER = ["Proposal", "Job Prep", "Installation", "Inspections",
-               "Closing", "Complete"]
-# Short labels for the tight per-job progress widget (Piece 20.2).
-STAGE_SHORT = {"Proposal": "Proposal", "Job Prep": "Prep",
-               "Installation": "Install", "Inspections": "Inspect",
-               "Closing": "Closing", "Complete": "Done"}
+# The linear advance path (Abandoned is an off-path terminal state).
+STAGE_ORDER = ["Planning", "Prep", "In Progress", "Wrap-up", "Done"]
+# Short labels for the tight per-project progress widget (Piece 20.2).
+STAGE_SHORT = {"Planning": "Plan", "Prep": "Prep",
+               "In Progress": "Progress", "Wrap-up": "Wrap-up", "Done": "Done"}
 # Piece 21.6: the stages a crew physically works on site. The Work Bag and the
 # Foreman's "My tasks" show only these — office/scheduling steps stay on the
-# dashboards where they belong.
-FIELD_STAGES = {"Installation", "Inspections"}
+# dashboards where they belong. Wrap-up stays included post-merge: it still
+# holds genuine field work (inspection sign-off, meter-set fixes) alongside
+# office tasks; my_tasks is already scoped to the viewer's own assignments
+# first, so this doesn't leak unrelated work onto an installer's list.
+FIELD_STAGES = {"In Progress", "Wrap-up"}
 
 
 def next_stage(status):
@@ -1114,24 +1119,27 @@ def next_stage(status):
 # Piece 19: role-based My Dashboard. A person belongs to a department if they
 # hold one of its roles; the dashboard stacks a section per department they're
 # in (with a mode switch to focus on one). `stages` are the pipeline statuses
-# whose active jobs that department needs to work.
+# whose active projects that department needs to work. Department names below
+# are org-chart/role groupings, kept as-is by the Piece 34 stage rename (e.g.
+# "Installation" the department is distinct from "In Progress" the stage it
+# tracks) — only the `stages` values themselves were updated.
 DASHBOARD_DEPARTMENTS = {
-    "Sales": {"icon": "💬", "stages": ["Proposal"],
+    "Sales": {"icon": "💬", "stages": ["Planning"],
               "roles": {"Sales & Marketing Manager", "Outside Sales Rep",
                         "Inside Sales Rep", "Marketing Associate"}},
-    "Design": {"icon": "📐", "stages": ["Proposal"], "roles": {"Designer"}},
-    "Permits": {"icon": "📋", "stages": ["Job Prep", "Inspections"],
+    "Design": {"icon": "📐", "stages": ["Planning"], "roles": {"Designer"}},
+    "Permits": {"icon": "📋", "stages": ["Prep", "Wrap-up"],
                 "roles": {"Permit Coordinator"}},
-    "Finance": {"icon": "💵", "stages": ["Job Prep", "Installation", "Closing"],
+    "Finance": {"icon": "💵", "stages": ["Prep", "In Progress", "Wrap-up"],
                 "roles": {"Finance Manager", "Bookkeeper", "Payroll Manager",
                           "Payroll Administrator"}},
-    "Purchasing": {"icon": "📦", "stages": ["Job Prep"],
+    "Purchasing": {"icon": "📦", "stages": ["Prep"],
                    "roles": {"Inventory Manager", "Purchasing Agent",
                              "Warehouse Assistant"}},
-    "Installation": {"icon": "🔧", "stages": ["Installation", "Inspections"],
+    "Installation": {"icon": "🔧", "stages": ["In Progress", "Wrap-up"],
                      "roles": {"Lead Installer", "Installer",
                                "Service Technician", "Scheduling Coordinator"}},
-    "Operations": {"icon": "🛠️", "stages": ["Job Prep", "Installation", "Inspections"],
+    "Operations": {"icon": "🛠️", "stages": ["Prep", "In Progress", "Wrap-up"],
                    "roles": {"Operations Manager"}},
     "Administration": {"icon": "🗂️", "stages": [],
                        "roles": {"Administration Manager", "Administrative Assistant",
@@ -1146,13 +1154,14 @@ DASHBOARD_DEPARTMENTS = {
 # department stays for role grouping/permissions, it just isn't a focus tab.
 DASHBOARD_MODE_EXCLUDE = {"Administration"}
 
-# Piece 30.5: a virtual dashboard mode. Sales sees the pipeline's tail as
-# "Closing" (final walkthrough, final invoice, balance due) rather than the
-# install-crew "Installation" view — so for anyone holding a Sales role, their
-# Installation mode is presented as Closing (see _viewer_modes). MODE_CONFIG is
-# DASHBOARD_DEPARTMENTS plus this Closing mode, used when rendering the switcher.
+# Piece 30.5 (relabeled Piece 34): a virtual dashboard mode. Sales sees the
+# pipeline's tail as "Wrap-up" (inspection sign-off, final walkthrough, final
+# invoice, balance due) rather than the install-crew "Installation" view — so
+# for anyone holding a Sales role, their Installation mode is presented as
+# Wrap-up (see _viewer_modes). MODE_CONFIG is DASHBOARD_DEPARTMENTS plus this
+# Wrap-up mode, used when rendering the switcher.
 MODE_CONFIG = dict(DASHBOARD_DEPARTMENTS)
-MODE_CONFIG["Closing"] = {"icon": "🏁", "stages": ["Closing"], "roles": set()}
+MODE_CONFIG["Wrap-up"] = {"icon": "🏁", "stages": ["Wrap-up"], "roles": set()}
 SALES_ROLES = DASHBOARD_DEPARTMENTS["Sales"]["roles"]
 
 
@@ -1175,21 +1184,30 @@ def user_departments(user):
 
 def _viewer_modes(user):
     """The dashboard modes to offer this viewer — like user_departments, but for
-    a Sales-role holder the 'Installation' mode is presented as 'Closing'
-    (Piece 30.5). The GM is exempt — a General Manager keeps every mode as-is,
-    including Installation (Piece 30.6)."""
+    a Sales-role holder the 'Installation' mode is presented as 'Wrap-up'
+    (Piece 30.5, relabeled Piece 34). The GM is exempt — a General Manager keeps
+    every mode as-is, including Installation (Piece 30.6)."""
     depts = user_departments(user)
     if (_holds_sales_role(user) and not _has_gm_role(user)
             and "Installation" in depts):
-        depts = ["Closing" if d == "Installation" else d for d in depts]
+        depts = ["Wrap-up" if d == "Installation" else d for d in depts]
     return depts
-# Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
+# Migrate Piece 12.1 statuses to the Piece 16 phases (renamed Piece 34) so
+# existing projects survive.
 OLD_TO_NEW_STATUS = {
-    "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
-    "Permitting": "Job Prep", "Scheduled": "Installation",
-    "Installed": "Inspections", "Closed": "Complete",
+    "Lead": "Planning", "Quoted": "Planning", "Sold": "Prep",
+    "Permitting": "Prep", "Scheduled": "In Progress",
+    "Installed": "Wrap-up", "Closed": "Done",
 }
-# Piece 10: per-job task assignment.
+# Piece 34: the Piece-16-vocabulary -> household-vocabulary stage migration
+# map, applied once to any existing project rows by the projects_rename_v1
+# block in init_db(). Inspections and Closing both collapse into Wrap-up.
+OLD_TO_NEW_STAGE = {
+    "Proposal": "Planning", "Job Prep": "Prep", "Installation": "In Progress",
+    "Inspections": "Wrap-up", "Closing": "Wrap-up", "Complete": "Done",
+    "Lost": "Abandoned",
+}
+# Piece 10: per-project task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # Piece 10.2 / 24.5: map each BPMN lane (now a functional department) to the
 # real Vixinman role(s) that own its steps, so a step auto-assigns to the person who
@@ -1225,7 +1243,7 @@ TASK_DUE_SPACING_DAYS = 2
 # was completed (for the very first step there's nothing completed yet, so it
 # counts from the day the steps are generated). When a step is marked Done we
 # re-default the next open step to this many days out. Rough on purpose —
-# meant to be tightened by hand per job.
+# meant to be tightened by hand per project.
 TASK_DEFAULT_LEAD_DAYS = 7
 
 # Piece 17.2: for tasks that don't carry a process lane in their notes (the
@@ -1258,22 +1276,24 @@ TITLE_LANE_KEYWORDS = [
 ]
 
 # Piece 18.1: infer a pipeline stage for an existing (un-tagged) task from its
-# title, so current jobs show stage progress. Order matters — specific first.
+# title, so current projects show stage progress. Order matters — specific
+# first. Piece 34: the old Inspections and Closing keyword groups both now
+# map to the merged Wrap-up stage.
 TITLE_STATUS_KEYWORDS = [
-    ("sales walkthrough", "Closing"), ("client review", "Closing"),
-    ("final 10%", "Closing"), ("final invoice", "Closing"),
-    ("final paperwork", "Closing"),
-    ("meter set", "Inspections"), ("inspection", "Inspections"),
-    ("sticker", "Inspections"), ("letter of compliance", "Inspections"),
-    ("install walkthrough", "Installation"), ("site installation", "Installation"),
-    ("doc tube", "Installation"), ("monitoring", "Installation"),
-    ("40%", "Installation"),
-    ("site visit", "Proposal"), ("questionnaire", "Proposal"),
-    ("draft", "Proposal"), ("finalize", "Proposal"), ("design", "Proposal"),
-    ("contract", "Job Prep"), ("deposit", "Job Prep"), ("50%", "Job Prep"),
-    ("permit", "Job Prep"), ("interconnection", "Job Prep"),
-    ("order", "Job Prep"), ("credit", "Job Prep"),
-    ("installation date", "Job Prep"), ("plan review", "Job Prep"),
+    ("sales walkthrough", "Wrap-up"), ("client review", "Wrap-up"),
+    ("final 10%", "Wrap-up"), ("final invoice", "Wrap-up"),
+    ("final paperwork", "Wrap-up"),
+    ("meter set", "Wrap-up"), ("inspection", "Wrap-up"),
+    ("sticker", "Wrap-up"), ("letter of compliance", "Wrap-up"),
+    ("install walkthrough", "In Progress"), ("site installation", "In Progress"),
+    ("doc tube", "In Progress"), ("monitoring", "In Progress"),
+    ("40%", "In Progress"),
+    ("site visit", "Planning"), ("questionnaire", "Planning"),
+    ("draft", "Planning"), ("finalize", "Planning"), ("design", "Planning"),
+    ("contract", "Prep"), ("deposit", "Prep"), ("50%", "Prep"),
+    ("permit", "Prep"), ("interconnection", "Prep"),
+    ("order", "Prep"), ("credit", "Prep"),
+    ("installation date", "Prep"), ("plan review", "Prep"),
 ]
 
 # Piece 9: Electric Loads Calculator / System Sizing config (ported from
@@ -1289,7 +1309,7 @@ COMPONENT_CATEGORIES = [
     "Electrical", "Enclosure", "Generator", "Inverter", "mc4", "Monitoring",
     "Office Supplies", "Optimizer", "Pumping", "PV Module", "Racking", "Wire",
 ]
-# system_type presets auto-fill sizing fields on the job page; system_type
+# system_type presets auto-fill sizing fields on the project page; system_type
 # reverts to "custom" on manual edit of a preset-controlled field.
 SYSTEM_TYPE_PRESETS = {
     "offgrid": {"derate_pct": 70, "autonomy_days": 3},
@@ -1374,17 +1394,17 @@ def close_db(exc):
 # the view function name (e.g. delete_component_catalog -> "Delete component
 # catalog"), so new routes are logged readably without extra wiring.
 ACTION_LABELS = {
-    "new_job": "Create job",
-    "edit_job": "Edit job", "add_rule": "Add rule", "delete_rule": "Delete rule",
+    "new_project": "Create project",
+    "edit_project": "Edit project", "add_rule": "Add rule", "delete_rule": "Delete rule",
     "backlog_new": "Add backlog idea", "backlog_edit": "Edit backlog idea",
     "backlog_start": "Start idea as a project", "backlog_delete": "Delete backlog idea",
     "new_employee": "Add employee", "edit_employee": "Edit employee",
-    "delete_employee": "Delete employee", "upload_file": "Upload job document",
+    "delete_employee": "Delete employee", "upload_file": "Upload project document",
     "generate_tasks": "Generate tasks from process",
     "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
     "set_task_due": "Change task due date", "set_ui_mode": "Change sizing view mode",
     "update_sizing": "Update system sizing",
-    "cancel_job": "Cancel job (mark Lost)", "reopen_job": "Reopen job",
+    "cancel_project": "Cancel project (mark Abandoned)", "reopen_project": "Reopen project",
 }
 # Endpoints whose POSTs are not user data changes worth logging.
 AUDIT_SKIP_ENDPOINTS = set()
@@ -1546,18 +1566,18 @@ def supervisors_or_gm_ids(db, exclude_id=None):
     return [i for i in sups if i != exclude_id]
 
 
-def job_involved_ids(db, job, exclude_id=None):
-    """Piece 30.3: employees involved in a job so far — anyone assigned a task on
+def project_involved_ids(db, project, exclude_id=None):
+    """Piece 30.3: employees involved in a project so far — anyone assigned a task on
     it, or anyone who logged time to it. Only those with a login (who can read
     an inbox); the given id is dropped."""
     ids = set()
-    for r in db.execute("SELECT DISTINCT employee_id FROM job_tasks"
-                        " WHERE job_id = ? AND employee_id IS NOT NULL",
-                        (job["id"],)).fetchall():
+    for r in db.execute("SELECT DISTINCT employee_id FROM project_tasks"
+                        " WHERE project_id = ? AND employee_id IS NOT NULL",
+                        (project["id"],)).fetchall():
         ids.add(r["employee_id"])
     for r in db.execute("SELECT DISTINCT employee_id FROM time_entries"
-                        " WHERE job_id = ? AND employee_id IS NOT NULL",
-                        (job["id"],)).fetchall():
+                        " WHERE project_id = ? AND employee_id IS NOT NULL",
+                        (project["id"],)).fetchall():
         ids.add(r["employee_id"])
     ids.discard(None)
     ids.discard(exclude_id)
@@ -1582,7 +1602,7 @@ def unread_notification_count(user):
 
 def department_employee_ids(db, dept_names):
     """Piece 29.4: the signed-in employees whose roles place them in any of the
-    given departments (used to notify the team a job just turned over to)."""
+    given departments (used to notify the team a project just turned over to)."""
     roles = set()
     for d in dept_names:
         roles |= DASHBOARD_DEPARTMENTS.get(d, {}).get("roles", set())
@@ -1598,10 +1618,10 @@ def department_employee_ids(db, dept_names):
     return ids
 
 
-def notify_stage_turnover(db, job, new_status, exclude_id=None):
-    """Piece 29.4: when a job turns over to a pipeline stage, notify the
+def notify_stage_turnover(db, project, new_status, exclude_id=None):
+    """Piece 29.4: when a project turns over to a pipeline stage, notify the
     department(s) that own that stage. The recipient's copy clears once they
-    open it (or open the job). The person who triggered the move is skipped."""
+    open it (or open the project). The person who triggered the move is skipped."""
     own = STATUS_OWNERSHIP.get(new_status)
     if not own:
         return
@@ -1610,13 +1630,13 @@ def notify_stage_turnover(db, job, new_status, exclude_id=None):
     recipients = [i for i in department_employee_ids(db, depts) if i != exclude_id]
     if not recipients:
         return
-    jobname = job["job_name"] or f"Job #{job['id']}"
+    jobname = project["job_name"] or f"Project #{project['id']}"
     labels = ", ".join(dict.fromkeys(label for label, _dept in team))
     notify_employees(
         db, recipients,
         f"📋 {jobname} turned over to "
         f"{new_status}{(' — ' + labels + ' up next') if labels else ''}.",
-        link=url_for("job_detail", job_id=job["id"]), kind="stage")
+        link=url_for("project_detail", project_id=project["id"]), kind="stage")
 
 
 def security_questions_enrolled(employee_id):
@@ -1751,7 +1771,7 @@ VIEW_PERMISSION = {
     "inventory_stale_discontinue": "inventory.manage",
     "inventory_toggle_stale": "inventory.manage",   # Piece 30.4
     # Piece 26.0/26.1: registering & printing tags is the warehouse manager's
-    # job; scanning to load a truck is open to any signed-in worker (Installers
+    # project; scanning to load a truck is open to any signed-in worker (Installers
     # included) so a crew can load in parallel — those routes are NOT listed here.
     "inventory_assets": "inventory.manage",
     "inventory_asset_register": "inventory.register",
@@ -1804,7 +1824,7 @@ def _can_payroll():
 
 def _can_see_pricing():
     """Piece 29.7: who may see the internal cost/margin pricing breakdown —
-    Finance, Admin, GM, and (because they price and design jobs) Sales & Design.
+    Finance, Admin, GM, and (because they price and design projects) Sales & Design.
     Deliberately NOT the whole company: it exposes cost and margin."""
     user = current_user()
     if user is None:
@@ -1958,9 +1978,9 @@ def _count(db, sql, params):
     return db.execute(sql, params).fetchone()[0]
 
 
-def _job_name(db, jid):
-    r = db.execute("SELECT job_name FROM jobs WHERE id = ?", (jid,)).fetchone()
-    return (r["job_name"] if r and r["job_name"] else f"Job #{jid}")
+def _project_name(db, jid):
+    r = db.execute("SELECT job_name FROM projects WHERE id = ?", (jid,)).fetchone()
+    return (r["job_name"] if r and r["job_name"] else f"Project #{jid}")
 
 
 def _emp_name(db, eid):
@@ -1970,19 +1990,19 @@ def _emp_name(db, eid):
 
 def _component_uses(db, cid):
     uses = []
-    n = _count(db, "SELECT COUNT(*) FROM job_bom WHERE component_id = ?", (cid,))
+    n = _count(db, "SELECT COUNT(*) FROM project_bom WHERE component_id = ?", (cid,))
     if n:
-        uses.append(f"{n} job bill-of-materials line(s)")
-    n = _count(db, "SELECT COUNT(*) FROM job_sizing WHERE selected_battery_id = ?"
+        uses.append(f"{n} project bill-of-materials line(s)")
+    n = _count(db, "SELECT COUNT(*) FROM project_sizing WHERE selected_battery_id = ?"
                " OR selected_pv_module_id = ?", (cid, cid))
     if n:
-        uses.append(f"{n} job sizing selection(s)")
+        uses.append(f"{n} project sizing selection(s)")
     return uses
 
 
 def _employee_uses(db, eid):
     uses = []
-    n = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (eid,))
+    n = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE employee_id = ?", (eid,))
     if n:
         uses.append(f"{n} assigned task(s)")
     n = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (eid,))
@@ -1997,37 +2017,37 @@ TRASH_REGISTRY = {
     "rule": {"table": "resource_rules", "label": lambda r: r["label"],
              "found_in": lambda db, r: "Rules",
              "in_use": lambda db, r: (
-                 [f"{_count(db, 'SELECT COUNT(*) FROM job_files WHERE rule_label = ?', (r['label'],))} filed document(s)"]
-                 if _count(db, "SELECT COUNT(*) FROM job_files WHERE rule_label = ?", (r["label"],)) else [])},
+                 [f"{_count(db, 'SELECT COUNT(*) FROM project_files WHERE rule_label = ?', (r['label'],))} filed document(s)"]
+                 if _count(db, "SELECT COUNT(*) FROM project_files WHERE rule_label = ?", (r["label"],)) else [])},
     "appliance": {"table": "appliance_catalog", "label": lambda r: r["name"],
                   "found_in": lambda db, r: "Appliance catalog",
                   "in_use": lambda db, r: []},
     "component": {"table": "component_catalog", "label": lambda r: r["name"],
                   "found_in": lambda db, r: "Component catalog",
                   "in_use": lambda db, r: _component_uses(db, r["id"])},
-    "material": {"table": "job_materials", "label": lambda r: r["item"],
-                 "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Materials",
+    "material": {"table": "project_materials", "label": lambda r: r["item"],
+                 "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Materials",
                  "in_use": lambda db, r: []},
-    "task": {"table": "job_tasks", "label": lambda r: r["title"],
-             "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Tasks",
+    "task": {"table": "project_tasks", "label": lambda r: r["title"],
+             "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Tasks",
              "in_use": lambda db, r: (
                  [f"{_count(db, 'SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?', (r['id'],))} field submission(s)"]
                  if _count(db, "SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?", (r["id"],)) else [])},
-    "load_room": {"table": "job_load_rooms", "label": lambda r: r["name"],
-                  "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Loads",
+    "load_room": {"table": "project_load_rooms", "label": lambda r: r["name"],
+                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Loads",
                   "in_use": lambda db, r: (
-                      [f"{_count(db, 'SELECT COUNT(*) FROM job_load_items WHERE room_id = ?', (r['id'],))} appliance(s) in the room"]
-                      if _count(db, "SELECT COUNT(*) FROM job_load_items WHERE room_id = ?", (r["id"],)) else [])},
-    "load_item": {"table": "job_load_items", "label": lambda r: r["appliance"],
-                  "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Loads",
+                      [f"{_count(db, 'SELECT COUNT(*) FROM project_load_items WHERE room_id = ?', (r['id'],))} appliance(s) in the room"]
+                      if _count(db, "SELECT COUNT(*) FROM project_load_items WHERE room_id = ?", (r["id"],)) else [])},
+    "load_item": {"table": "project_load_items", "label": lambda r: r["appliance"],
+                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Loads",
                   "in_use": lambda db, r: []},
-    "bom": {"table": "job_bom", "label": lambda r: r["component_name"],
-            "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Components",
+    "bom": {"table": "project_bom", "label": lambda r: r["component_name"],
+            "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Components",
             "in_use": lambda db, r: []},
-    "job_file": {"table": "job_files", "label": lambda r: r["original_name"],
-                 "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Documents",
+    "project_file": {"table": "project_files", "label": lambda r: r["original_name"],
+                 "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Documents",
                  "in_use": lambda db, r: [],
-                 "file": lambda r: UPLOADS_DIR / f"job_{r['job_id']}" / r["stored_name"]},
+                 "file": lambda r: UPLOADS_DIR / f"job_{r['project_id']}" / r["stored_name"]},
     "household_file": {"table": "household_files", "label": lambda r: r["original_name"],
                        "found_in": lambda db, r: "Household Files",
                        "in_use": lambda db, r: [],
@@ -2228,7 +2248,7 @@ def login():
             session["last_active"] = datetime.now().isoformat(timespec="seconds")
             flash(f"Signed in as {user['name']}.")
             session.pop("dash_mode", None)  # start on their saved default
-            # Honor a deep link (e.g. a specific job someone opened while
+            # Honor a deep link (e.g. a specific project someone opened while
             # logged out). "/" and "/dashboard" are the same view now, so the
             # nxt != "/" exclusion below is just a no-op landing normalization.
             nxt = request.form.get("next") or ""
@@ -2784,6 +2804,40 @@ def cleanup_inventory(db):
 def init_db():
     """Create tables if missing and upgrade older databases."""
     db = sqlite3.connect(DATABASE)
+    # Piece 34: if this is a pre-rename database (still has a "jobs" table),
+    # rename it and its child tables/columns to the new project_* names
+    # *before* running schema.sql below — schema.sql's CREATE TABLE IF NOT
+    # EXISTS would otherwise create a fresh empty "projects" table first and
+    # block this rename with a "table already exists" conflict. The literal
+    # old-name strings below are intentional and must stay exactly as
+    # written — they're what makes this block able to find a database from
+    # before this piece.
+    legacy_tables = {row[0] for row in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "jobs" in legacy_tables:
+        db.execute("ALTER TABLE jobs RENAME TO projects")
+        for old, new in (
+            ("job_versions", "project_versions"), ("job_materials", "project_materials"),
+            ("job_files", "project_files"), ("job_notes", "project_notes"),
+            ("job_load_rooms", "project_load_rooms"), ("job_load_items", "project_load_items"),
+            ("job_bom", "project_bom"), ("job_sizing", "project_sizing"),
+            ("job_tasks", "project_tasks"), ("job_estimate_lines", "project_estimate_lines"),
+            ("job_transactions", "project_transactions"),
+        ):
+            db.execute(f"ALTER TABLE {old} RENAME TO {new}")
+        for t in ("project_versions", "project_materials", "project_files",
+                  "project_notes", "project_load_rooms", "project_load_items",
+                  "project_bom", "project_sizing", "project_tasks",
+                  "project_estimate_lines", "project_transactions",
+                  "time_entries", "inventory_txns", "inventory_assets"):
+            cols = {r[1] for r in db.execute(f"PRAGMA table_info({t})")}
+            if "job_id" in cols:
+                db.execute(f"ALTER TABLE {t} RENAME COLUMN job_id TO project_id")
+        hi_cols = {r[1] for r in db.execute("PRAGMA table_info(household_ideas)")}
+        if "started_job_id" in hi_cols:
+            db.execute("ALTER TABLE household_ideas"
+                       " RENAME COLUMN started_job_id TO started_project_id")
+        db.commit()
     db.executescript((BASE_DIR / "schema.sql").read_text())
     # Piece 33: the multi-client model is gone (household_ideas/household_files
     # replace clients/cold_leads/lead_followups/client_versions/client_files).
@@ -2793,45 +2847,45 @@ def init_db():
         for legacy_table in ("clients", "cold_leads", "lead_followups",
                               "client_versions", "client_files"):
             db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
-        job_cols = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+        job_cols = {row[1] for row in db.execute("PRAGMA table_info(projects)")}
         if "client_id" in job_cols:
-            db.execute("ALTER TABLE jobs DROP COLUMN client_id")
+            db.execute("ALTER TABLE projects DROP COLUMN client_id")
         db.execute("INSERT INTO meta (key, value) VALUES ('clients_removed_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    ensure_columns(db, "jobs", JOB_FIELDS + ["status", "install_date"])
+    ensure_columns(db, "projects", PROJECT_FIELDS + ["status", "install_date"])
     # Piece 21: contract total for the Finance viewport (dollar amounts).
-    ensure_columns(db, "jobs", ["contract_amount"])
+    ensure_columns(db, "projects", ["contract_amount"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
-    ensure_columns(db, "job_transactions", ["doc_type"])
+    ensure_columns(db, "project_transactions", ["doc_type"])
     # Piece 27.3: generated-invoice fields on the ledger row + the BOM cutoff the
     # deposit invoice captures (BOM added after it counts as billable extras).
-    ensure_columns(db, "job_transactions",
+    ensure_columns(db, "project_transactions",
                    ["invoice_number", "milestone", "due_date", "contract_snapshot",
                     "base_amount", "extras_amount", "bom_snapshot",
                     "grt_rate", "grt_amount"])   # Piece 27.4: GRT snapshot per invoice
-    ensure_columns(db, "jobs", ["deposit_bom_cutoff_id", "grt_rate"])
+    ensure_columns(db, "projects", ["deposit_bom_cutoff_id", "grt_rate"])
     # Piece 27.9: per-task time split by pay type (+ its work date) carried on a
     # field-submission item, so approving a completed task posts Pending payroll
     # entries (one per pay-type segment) for Finance to approve.
     ensure_columns(db, "field_submission_items", ["hours_json", "work_date"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
-    ensure_columns(db, "job_files", ["task_id"])
+    ensure_columns(db, "project_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
-    ensure_columns(db, "job_files", ["txn_id"])
+    ensure_columns(db, "project_files", ["txn_id"])
     # Piece 26.4: a room's appliance-catalog "type" (Kitchen, Garage, …) so the
     # load-survey picker can default to that room's appliances.
-    ensure_columns(db, "job_load_rooms", ["category"])
+    ensure_columns(db, "project_load_rooms", ["category"])
     # Piece 25.2: per-slot accepted file formats (comma-separated extensions) on
     # a rule, so a document slot can require e.g. PDF only.
     ensure_columns(db, "resource_rules", ["allowed_formats"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
-        db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
-    db.execute(f"UPDATE jobs SET status = '{DEFAULT_JOB_STATUS}'"
+        db.execute("UPDATE projects SET status = ? WHERE status = ?", (new, old))
+    db.execute(f"UPDATE projects SET status = '{DEFAULT_PROJECT_STATUS}'"
                f" WHERE COALESCE(status, '') = ''")
     # Piece 14: change-tracking for task sync; seed blanks from created_at.
-    ensure_columns(db, "job_tasks", ["updated_at", "pipeline_status"])
-    db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
+    ensure_columns(db, "project_tasks", ["updated_at", "pipeline_status"])
+    db.execute("UPDATE project_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
                    + ["dashboard_mode", "base_wage"]  # Piece 21.2: hourly base wage
@@ -2899,8 +2953,8 @@ def init_db():
     # Piece 30.1: the ⚠ Verify / ⚠ Unverified callout is an explicit editable
     # field now (was inferred from caution words in the notes).
     ensure_columns(db, "resource_rules", ["verify_status"])
-    # Piece 27.1: sample client/job seed removed for production. A fresh
-    # database now starts with NO clients, jobs, tasks, or sample employees
+    # Piece 27.1: sample client/project seed removed for production. A fresh
+    # database now starts with NO clients, projects, tasks, or sample employees
     # — only the reference databases (staff roster, inventory, calculator
     # catalog, rules, pay types) seed. (History has the old demo data.)
     if db.execute("SELECT COUNT(*) FROM resource_rules").fetchone()[0] == 0:
@@ -2958,12 +3012,25 @@ def init_db():
     seed_org_team(db)
     seed_onboarding_steps(db)  # Piece 29.2: default onboarding checklist
     seed_finance_reference(db)  # Piece 29.6: county GRT + markup categories
-    ensure_columns(db, "jobs", ["travel_miles"])       # Piece 29.6
-    # Piece 30.2: cancellation (Lost) metadata — reason, who/when, and the stage
-    # to restore on reopen.
-    ensure_columns(db, "jobs", ["cancel_reason", "cancelled_at", "cancelled_by",
-                                "pre_lost_status"])
-    ensure_columns(db, "job_bom", ["markup_pct"])      # per-line markup override
+    ensure_columns(db, "projects", ["travel_miles"])       # Piece 29.6
+    # Piece 30.2: cancellation (Abandoned) metadata — reason, who/when, and the
+    # stage to restore on reopen.
+    ensure_columns(db, "projects", ["cancel_reason", "cancelled_at", "cancelled_by",
+                                    "pre_lost_status"])
+    ensure_columns(db, "project_bom", ["markup_pct"])      # per-line markup override
+    # Piece 34: remap old pipeline-stage values (Proposal/Job Prep/Installation/
+    # Inspections/Closing/Complete/Lost) to the new household vocabulary on any
+    # rows still carrying them — a no-op on a genuinely fresh database. Runs
+    # once; guarded by the same meta key as the table rename above.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'projects_rename_v1'").fetchone():
+        proj_cols = {r[1] for r in db.execute("PRAGMA table_info(projects)")}
+        for old, new in OLD_TO_NEW_STAGE.items():
+            db.execute("UPDATE projects SET status = ? WHERE status = ?", (new, old))
+            if "pre_lost_status" in proj_cols:
+                db.execute("UPDATE projects SET pre_lost_status = ?"
+                           " WHERE pre_lost_status = ?", (new, old))
+        db.execute("INSERT INTO meta (key, value) VALUES ('projects_rename_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
     ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
     ensure_columns(db, "inventory_items", ["stale_flag"])   # Piece 30.4: manual "stale" mark
@@ -3031,13 +3098,13 @@ def insert_seed_rules(db, rows):
     )
 
 
-def condition_met(job, field, value, match_type):
-    """One rule condition: the job's field equals the value
+def condition_met(project, field, value, match_type):
+    """One rule condition: the project's field equals the value
     (case-insensitive), or — for 'contains' — the value appears in the
     field's comma-separated list (used for products)."""
-    if field not in job.keys():
+    if field not in project.keys():
         return False
-    actual = str(job[field] or "").strip()
+    actual = str(project[field] or "").strip()
     if not actual:
         return False
     target = value.strip().lower()
@@ -3046,16 +3113,16 @@ def condition_met(job, field, value, match_type):
     return actual.lower() == target
 
 
-def match_rules(job, rules):
+def match_rules(project, rules):
     """A rule matches when its condition holds — and, for compound rules,
     when the second condition holds too."""
     hits = []
     for rule in rules:
-        if not condition_met(job, rule["field_name"], rule["field_value"],
+        if not condition_met(project, rule["field_name"], rule["field_value"],
                              rule["match_type"]):
             continue
         if rule["field_name2"] and not condition_met(
-                job, rule["field_name2"], rule["field_value2"],
+                project, rule["field_name2"], rule["field_value2"],
                 rule["match_type2"] or "equals"):
             continue
         hits.append(rule)
@@ -3064,7 +3131,7 @@ def match_rules(job, rules):
 
 def _instance_label(rule):
     """Human-readable "what triggered this" for the compact instance bullets:
-    the job selection(s) behind a requirement (e.g. "PV Systems")."""
+    the project selection(s) behind a requirement (e.g. "PV Systems")."""
     fv = (rule["field_value"] or "").strip()
     fv2 = (rule["field_value2"] or "").strip() if rule["field_name2"] else ""
     return f"{fv} + {fv2}" if fv2 else fv
@@ -3103,7 +3170,7 @@ def _rule_alert(rule):
 
 
 def group_rules(matched, dedupe=True):
-    """Group matched rules by category in a fixed order. On job pages,
+    """Group matched rules by category in a fixed order. On project pages,
     de-duplicate shared requirements (e.g. PV and Battery both need EE-98) and
     collapse them into one entry that carries the list of triggering selections
     (`instances`), so a requirement shows once with its instances beneath it
@@ -3208,7 +3275,7 @@ def credential_status(expires):
 def license_staffing():
     """For each License requirement label, the employees who hold a
     matching credential (tied via rule_label), each with its expiry state.
-    Drives the 'who on staff is licensed' badges on job pages."""
+    Drives the 'who on staff is licensed' badges on project pages."""
     rows = get_db().execute(
         "SELECT c.rule_label, c.expires, e.name AS emp_name"
         " FROM employee_credentials c"
@@ -3225,14 +3292,14 @@ def license_staffing():
 
 
 # ------------------------------------------------------- Piece 9: loads/sizing
-def fetch_job_sizing(db, job_id):
-    """One job_sizing row always exists once a job's Loads tab is opened;
+def fetch_job_sizing(db, project_id):
+    """One project_sizing row always exists once a project's Loads tab is opened;
     create it lazily with defaults from the schema."""
-    row = db.execute("SELECT * FROM job_sizing WHERE job_id = ?", (job_id,)).fetchone()
+    row = db.execute("SELECT * FROM project_sizing WHERE project_id = ?", (project_id,)).fetchone()
     if row is None:
-        db.execute("INSERT INTO job_sizing (job_id) VALUES (?)", (job_id,))
+        db.execute("INSERT INTO project_sizing (project_id) VALUES (?)", (project_id,))
         db.commit()
-        row = db.execute("SELECT * FROM job_sizing WHERE job_id = ?", (job_id,)).fetchone()
+        row = db.execute("SELECT * FROM project_sizing WHERE project_id = ?", (project_id,)).fetchone()
     return row
 
 
@@ -3319,7 +3386,7 @@ def _rank_role(label, unit, cands):
 
 def suggest_components(db, array_kw, peak_w, battery_kwh_needed):
     """Read the specs on ACTIVE inventory items and propose the components that
-    fit the sized job — PV modules, batteries, and the inverter. For each role
+    fit the sized project — PV modules, batteries, and the inverter. For each role
     the fitting items are ranked (in-stock first, then the tidiest fit and the
     lower cost) and the top three are returned: a primary "Recommended" pick
     plus up to two "Alternate" 2nd/3rd choices, each with the quantity needed
@@ -3433,7 +3500,7 @@ def _notify_board_assignee(db, board_id, title, assignee_id, actor):
 
 @app.route("/boards")
 def boards_page():
-    """The Boards list — standalone to-dos not tied to a job.
+    """The Boards list — standalone to-dos not tied to a project.
     Filter by assignee (mine / unassigned / a person / all) and open vs. all."""
     db = get_db()
     me = current_user()
@@ -3640,20 +3707,21 @@ def board_delete(board_id):
 
 
 def _closing_worklist(db):
-    """Jobs in the Closing stage with balance due and remaining close-out steps —
-    the Executive overview's Closing worklist, also the Sales 'Closing' mode."""
+    """Projects in the Wrap-up stage with balance due and remaining close-out
+    steps — the Executive overview's Wrap-up worklist, also the Sales
+    'Wrap-up' mode."""
     out = []
-    for j in db.execute(
-            "SELECT * FROM jobs"
-            " WHERE status = 'Closing' ORDER BY id").fetchall():
-        b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+    for p in db.execute(
+            "SELECT * FROM projects"
+            " WHERE status = 'Wrap-up' ORDER BY id").fetchall():
+        b = project_billing(db, p["id"], p["contract_amount"] or 0.0)
         steps = db.execute(
-            "SELECT title, status FROM job_tasks WHERE job_id = ?"
-            " AND pipeline_status = 'Closing' ORDER BY sort_order, id",
-            (j["id"],)).fetchall()
+            "SELECT title, status FROM project_tasks WHERE project_id = ?"
+            " AND pipeline_status = 'Wrap-up' ORDER BY sort_order, id",
+            (p["id"],)).fetchall()
         open_steps = [s for s in steps if s["status"] != "Done"]
         out.append({
-            "job": j, "balance": max(b["contract"] - b["collected"], 0.0),
+            "project": p, "balance": max(b["contract"] - b["collected"], 0.0),
             "open": len(open_steps), "total": len(steps),
             "next": open_steps[0]["title"] if open_steps else ""})
     return out
@@ -3673,7 +3741,7 @@ def dashboard():
     user = current_user()
     db = get_db()
     ensure_backlog_reminders(db)
-    depts = _viewer_modes(user)   # Piece 30.5: Sales sees 'Closing', not 'Installation'
+    depts = _viewer_modes(user)   # Piece 30.5: Sales sees 'Wrap-up', not 'Installation'
     # Mode: ?mode= sets it for the session; else the saved default; else All.
     if request.args.get("mode"):
         session["dash_mode"] = request.args.get("mode")
@@ -3681,9 +3749,9 @@ def dashboard():
              and "dashboard_mode" in user.keys() else "")
     # No "All" view (Piece 20.8) — always focused on one role at a time.
     mode = session.get("dash_mode") or saved or (depts[0] if depts else "")
-    # A Sales-role viewer's saved/linked 'Installation' resolves to 'Closing'.
-    if mode == "Installation" and "Closing" in depts:
-        mode = "Closing"
+    # A Sales-role viewer's saved/linked 'Installation' resolves to 'Wrap-up'.
+    if mode == "Installation" and "Wrap-up" in depts:
+        mode = "Wrap-up"
     if mode not in depts:
         mode = depts[0] if depts else ""
     shown = [mode] if mode else []
@@ -3691,88 +3759,88 @@ def dashboard():
     my_tasks = []
     if user is not None:
         my_tasks = db.execute(
-            "SELECT t.*, j.job_name, j.id AS job_id"
-            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
-            " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
+            "SELECT t.*, p.job_name, p.id AS project_id"
+            " FROM project_tasks t JOIN projects p ON p.id = t.project_id"
+            " WHERE t.employee_id = ? AND t.status != 'Done' AND p.status != 'Abandoned'"
+            " ORDER BY (t.due_date = ''), t.due_date, p.id", (user["id"],)).fetchall()
     # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
     # punch list — trim it to on-site field work, dropping office/scheduling
     # steps (e.g. Set Installation Date) that live on other dashboards.
     if mode == "Installation":
         my_tasks = [t for t in my_tasks
                     if (t["pipeline_status"] or "") in FIELD_STAGES]
-    # Piece 26.7: group My Tasks under each job so the board reads as a banner per
-    # job with its tasks beneath, instead of one flat list. First-seen order keeps
-    # the overdue/soonest-due job on top (my_tasks is already sorted that way).
+    # Piece 26.7: group My Tasks under each project so the board reads as a banner per
+    # project with its tasks beneath, instead of one flat list. First-seen order keeps
+    # the overdue/soonest-due project on top (my_tasks is already sorted that way).
     task_groups = []
     _tg_index = {}
     for t in my_tasks:
-        jid = t["job_id"]
+        jid = t["project_id"]
         if jid not in _tg_index:
             _tg_index[jid] = len(task_groups)
             task_groups.append({
-                "job_id": jid, "job_name": t["job_name"], "tasks": []})
+                "project_id": jid, "job_name": t["job_name"], "tasks": []})
         task_groups[_tg_index[jid]]["tasks"].append(t)
 
     sections = []
     for d in shown:
         cfg = MODE_CONFIG[d]
-        jobs = []
+        projects = []
         if cfg["stages"]:
             placeholders = ", ".join("?" * len(cfg["stages"]))
-            jobs = db.execute(
+            projects = db.execute(
                 f"SELECT id, job_name, status, install_date, electric_loads"
-                f" FROM jobs WHERE status IN ({placeholders})"
+                f" FROM projects WHERE status IN ({placeholders})"
                 f" ORDER BY status, id", cfg["stages"]).fetchall()
-        sections.append({"name": d, "icon": cfg["icon"], "jobs": jobs,
+        sections.append({"name": d, "icon": cfg["icon"], "projects": projects,
                          "stages": cfg["stages"]})
 
-    # Progress + loads-recorded status for every job shown across the sections.
+    # Progress + loads-recorded status for every project shown across the sections.
     progress_by_job = {}
     loads_by_job = {}
     for sec in sections:
-        for j in sec["jobs"]:
+        for j in sec["projects"]:
             if j["id"] not in progress_by_job:
-                progress_by_job[j["id"]] = build_job_progress(db, j)
+                progress_by_job[j["id"]] = build_project_progress(db, j)
                 loads_by_job[j["id"]] = _loads_recorded(db, j)
 
-    # Permits viewport: permit filing coverage (X/Y) per job on the jobs table.
+    # Permits viewport: permit filing coverage (X/Y) per project on the projects table.
     show_permits = "Permits" in shown
     permits_by_job = {}
     if show_permits:
         rules = db.execute("SELECT * FROM resource_rules").fetchall()
         for sec in sections:
             if sec["name"] == "Permits":
-                for j in sec["jobs"]:
-                    full = db.execute("SELECT * FROM jobs WHERE id = ?", (j["id"],)).fetchone()
-                    permits_by_job[j["id"]] = job_permit_coverage(db, full, rules)
+                for j in sec["projects"]:
+                    full = db.execute("SELECT * FROM projects WHERE id = ?", (j["id"],)).fetchone()
+                    permits_by_job[j["id"]] = project_permit_coverage(db, full, rules)
 
-    # Purchasing viewport: procurement rollup — material counts by status per job.
+    # Purchasing viewport: procurement rollup — material counts by status per project.
     show_procurement = "Purchasing" in shown
     procurement = []
     if show_procurement:
         for sec in sections:
             if sec["name"] == "Purchasing":
-                for j in sec["jobs"]:
+                for j in sec["projects"]:
                     counts = {s: 0 for s in MATERIAL_STATUSES}
                     total = 0
                     for m in db.execute(
-                            "SELECT status, COUNT(*) AS n FROM job_materials"
-                            " WHERE job_id = ? GROUP BY status", (j["id"],)).fetchall():
+                            "SELECT status, COUNT(*) AS n FROM project_materials"
+                            " WHERE project_id = ? GROUP BY status", (j["id"],)).fetchall():
                         counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
                         total += m["n"]
                     outstanding = (counts.get("Needed", 0) + counts.get("Quoted", 0)
                                    + counts.get("Backordered", 0))
-                    procurement.append({"job": j, "counts": counts, "total": total,
+                    procurement.append({"project": j, "counts": counts, "total": total,
                                         "outstanding": outstanding})
 
-    # Piece 30.5: Sales 'Closing' viewport — Closing-stage jobs with balance due
-    # and remaining close-out steps (reuses the Executive Closing worklist).
-    show_closing = "Closing" in shown
+    # Piece 30.5: Sales 'Wrap-up' viewport — Wrap-up-stage projects with balance
+    # due and remaining close-out steps (reuses the Executive Wrap-up worklist).
+    show_closing = "Wrap-up" in shown
     closing_jobs = _closing_worklist(db) if show_closing else []
 
-    # Piece 21.6: Installation (Foreman) viewport — split the Installation /
-    # Inspections jobs by install-date timing so the crew sees what's imminent.
+    # Piece 21.6: Installation (Foreman) viewport — split the In Progress /
+    # Wrap-up projects by install-date timing so the crew sees what's imminent.
     show_install = "Installation" in shown
     install_buckets = []
     if show_install:
@@ -3787,7 +3855,7 @@ def dashboard():
         wk, up, other = [], [], []
         for sec in sections:
             if sec["name"] == "Installation":
-                for j in sec["jobs"]:
+                for j in sec["projects"]:
                     d = _idate(j)
                     if d and today_d <= d <= week_end:
                         wk.append((d, j))
@@ -3801,65 +3869,65 @@ def dashboard():
                 rows, key=lambda x: (x[0] is None, x[0] or date.max))]
         install_buckets = [
             {"key": "week", "label": "🔨 This week",
-             "hint": "installs in the next 7 days", "jobs": _srt(wk)},
+             "hint": "installs in the next 7 days", "projects": _srt(wk)},
             {"key": "upcoming", "label": "📅 Upcoming",
-             "hint": "scheduled further out", "jobs": _srt(up)},
-            {"key": "other", "label": "🔎 In inspection / unscheduled",
-             "hint": "install date passed or not set yet", "jobs": _srt(other)},
+             "hint": "scheduled further out", "projects": _srt(up)},
+            {"key": "other", "label": "🔎 Wrap-up / unscheduled",
+             "hint": "install date passed or not set yet", "projects": _srt(other)},
         ]
 
     # Piece 22.3: Executive (GM) overview — a whole-company snapshot: pipeline
     # counts by stage, money in flight, what needs attention, this week's
-    # installs, and a Closing worklist (balance due + remaining closing steps).
+    # installs, and a Wrap-up worklist (balance due + remaining close-out steps).
     show_exec = "Executive" in shown
     gm = None
     if show_exec:
         today_s = datetime.now().date().strftime("%Y-%m-%d")
-        exec_stages = STAGE_ORDER[:-1]           # Proposal .. Closing
+        exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
         counts = {s: 0 for s in exec_stages}
         money = {"contract": 0.0, "collected": 0.0,
                  "outstanding": 0.0, "expense": 0.0}
         for j in db.execute(
-                "SELECT id, status, contract_amount FROM jobs"
-                " WHERE status != 'Lost'").fetchall():
+                "SELECT id, status, contract_amount FROM projects"
+                " WHERE status != 'Abandoned'").fetchall():
             if j["status"] in counts:
                 counts[j["status"]] += 1
-            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+            b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
             for k in money:
                 money[k] += b[k]
         overdue = db.execute(
-            "SELECT COUNT(*) FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
             " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
-            " AND j.status NOT IN ('Lost', 'Complete')", (today_s,)).fetchone()[0]
-        # Stalled: active jobs whose newest task activity is over 14 days old
-        # (jobs that had movement and then went quiet; brand-new no-task jobs
-        # are excluded).
+            " AND j.status NOT IN ('Abandoned', 'Done')", (today_s,)).fetchone()[0]
+        # Stalled: active projects whose newest task activity is over 14 days
+        # old (projects that had movement and then went quiet; brand-new
+        # no-task projects are excluded).
         cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         stalled = db.execute(
             "SELECT j.id, j.job_name, j.status,"
-            " MAX(t.updated_at) AS last FROM jobs j"
-            " JOIN job_tasks t ON t.job_id = j.id"
-            " WHERE j.status NOT IN ('Lost', 'Complete')"
+            " MAX(t.updated_at) AS last FROM projects j"
+            " JOIN project_tasks t ON t.project_id = j.id"
+            " WHERE j.status NOT IN ('Abandoned', 'Done')"
             " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
             " ORDER BY last", (cutoff,)).fetchall()
         wk_end = (datetime.now().date() + timedelta(days=7)).strftime("%Y-%m-%d")
         installs_week = db.execute(
-            "SELECT id, job_name, status, install_date FROM jobs"
+            "SELECT id, job_name, status, install_date FROM projects"
             " WHERE install_date != '' AND install_date BETWEEN ? AND ?"
-            " AND status != 'Lost' ORDER BY install_date",
+            " AND status != 'Abandoned' ORDER BY install_date",
             (today_s, wk_end)).fetchall()
         closing = _closing_worklist(db)
-        # Ready for design: Proposal jobs whose load survey is captured (the
-        # step before design) but whose design isn't finalized yet — the
-        # Sales → Designer hand-off queue.
+        # Ready for design: Planning-stage projects whose load survey is
+        # captured (the step before design) but whose design isn't finalized
+        # yet — the Sales → Designer hand-off queue.
         ready_design = []
         for j in db.execute(
-                "SELECT id, job_name, electric_loads FROM jobs"
-                " WHERE status = 'Proposal' ORDER BY id").fetchall():
+                "SELECT id, job_name, electric_loads FROM projects"
+                " WHERE status = 'Planning' ORDER BY id").fetchall():
             if not _loads_recorded(db, j):
                 continue
             designed = db.execute(
-                "SELECT 1 FROM job_tasks WHERE job_id = ?"
+                "SELECT 1 FROM project_tasks WHERE project_id = ?"
                 " AND LOWER(title) LIKE '%finalize%design%' AND status = 'Done'"
                 " LIMIT 1", (j["id"],)).fetchone()
             if not designed:
@@ -3871,21 +3939,18 @@ def dashboard():
               "overdue": overdue, "stalled": stalled, "ready_design": ready_design,
               "installs_week": installs_week, "closing": closing}
 
-    # Leads worklist (Piece 20.8): active leads (not yet converted) with their
-    # next open follow-up, for the Sales viewport. Replaces the generic Client
-    # Profiles list here — converted clients now live under Active Proposals.
-    # Finance viewport: Payments table across every active job (all in-flight
-    # money — deposits, invoices, expenses), with a QuickBooks export.
+    # Finance viewport: Payments table across every active project (all
+    # in-flight money — deposits, invoices, expenses).
     show_payments = "Finance" in shown
     payments = []
     pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
                   "expense": 0.0, "net": 0.0}
     if show_payments:
         for j in db.execute(
-                "SELECT id, job_name, status, contract_amount FROM jobs"
-                " WHERE status != 'Lost' ORDER BY status, id").fetchall():
-            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
-            payments.append({"job": j, "b": b})
+                "SELECT id, job_name, status, contract_amount FROM projects"
+                " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
+            b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+            payments.append({"project": j, "b": b})
             for k in pay_totals:
                 pay_totals[k] += b[k]
 
@@ -3914,7 +3979,7 @@ def dashboard():
         p_start, p_end = _pay_period()
         payroll_reminder = payroll_status(db, p_start, p_end)
     # Piece 31.8: the 50/40/10 pay-scheme callout moved off the dashboard and
-    # into the job Estimate (Sales/Finance only, before the contract is signed).
+    # into the project Estimate (Sales/Finance only, before the contract is signed).
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
         stale_stock=stale_stock, task_groups=task_groups,
@@ -3929,7 +3994,7 @@ def dashboard():
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
         show_install=show_install, install_buckets=install_buckets, gm=gm,
         show_closing=show_closing, closing_jobs=closing_jobs,   # Piece 30.5
-        job_status_class=JOB_STATUS_CLASS)
+        job_status_class=PROJECT_STATUS_CLASS)
 
 
 @app.route("/dashboard/default", methods=["POST"])
@@ -3996,72 +4061,72 @@ def _ics_response(calname, events, filename):
 def _task_events(rows):
     events = []
     for t in rows:
-        job = t["job_name"] or f"Job #{t['job_id']}"
+        project = t["job_name"] or f"Project #{t['project_id']}"
         desc = f"Status: {t['status']}"
         if t["pipeline_status"]:
             desc += f"\nStage: {t['pipeline_status']}"
         events.append({"uid": f"compendium-task-{t['id']}@vixinmandesigns",
-                       "date": t["due_date"], "summary": f"{t['title']} — {job}",
+                       "date": t["due_date"], "summary": f"{t['title']} — {project}",
                        "description": desc})
     return events
 
 
 @app.route("/calendar/my.ics")
 def my_calendar_ics():
-    """The signed-in person's task due dates + install dates for their jobs,
+    """The signed-in person's task due dates + install dates for their projects,
     as an importable calendar. In open mode (no login) exports everything."""
     db = get_db()
     user = current_user()
-    tsql = ("SELECT t.*, j.job_name FROM job_tasks t"
-            " JOIN jobs j ON j.id = t.job_id"
+    tsql = ("SELECT t.*, j.job_name FROM project_tasks t"
+            " JOIN projects j ON j.id = t.project_id"
             " WHERE COALESCE(t.due_date, '') != ''")
-    jsql = ("SELECT DISTINCT id, job_name, install_date FROM jobs"
+    jsql = ("SELECT DISTINCT id, job_name, install_date FROM projects"
             " WHERE COALESCE(install_date, '') != ''")
     params = []
     if user:
         tsql += " AND t.employee_id = ?"
-        jsql += " AND id IN (SELECT job_id FROM job_tasks WHERE employee_id = ?)"
+        jsql += " AND id IN (SELECT project_id FROM project_tasks WHERE employee_id = ?)"
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
         events.append({"uid": f"compendium-install-{j['id']}@vixinmandesigns",
                        "date": j["install_date"],
-                       "summary": f"🔧 Install: {j['job_name'] or 'Job #' + str(j['id'])}",
+                       "summary": f"🔧 Install: {j['job_name'] or 'Project #' + str(j['id'])}",
                        "description": ""})
     name = f"Compendium — {user['name']}" if user else "Compendium — due dates"
     return _ics_response(name, events, "compendium-my-dates.ics")
 
 
-@app.route("/jobs/<int:job_id>/calendar.ics")
-def job_calendar_ics(job_id):
-    """One job's task due dates + its install date, as an importable calendar."""
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/calendar.ics")
+def project_calendar_ics(project_id):
+    """One project's task due dates + its install date, as an importable calendar."""
+    project = fetch_project(project_id)
     db = get_db()
     rows = db.execute(
-        "SELECT t.*, ? AS job_name FROM job_tasks t"
-        " WHERE t.job_id = ? AND COALESCE(t.due_date, '') != ''",
-        (job["job_name"], job_id)).fetchall()
+        "SELECT t.*, ? AS job_name FROM project_tasks t"
+        " WHERE t.project_id = ? AND COALESCE(t.due_date, '') != ''",
+        (project["job_name"], project_id)).fetchall()
     events = _task_events(rows)
-    if job["install_date"]:
-        events.append({"uid": f"compendium-install-{job_id}@vixinmandesigns",
-                       "date": job["install_date"],
-                       "summary": f"🔧 Install: {job['job_name'] or 'Job #' + str(job_id)}",
+    if project["install_date"]:
+        events.append({"uid": f"compendium-install-{project_id}@vixinmandesigns",
+                       "date": project["install_date"],
+                       "summary": f"🔧 Install: {project['job_name'] or 'Project #' + str(project_id)}",
                        "description": ""})
-    label = job["job_name"] or f"Job #{job_id}"
-    return _ics_response(f"Compendium — {label}", events, f"compendium-job-{job_id}.ics")
+    label = project["job_name"] or f"Project #{project_id}"
+    return _ics_response(f"Compendium — {label}", events, f"compendium-project-{project_id}.ics")
 
 
 @app.route("/search")
 def search():
-    """Quick lookup across jobs (site/county/products) and the household idea
+    """Quick lookup across projects (site/county/products) and the household idea
     backlog (name/notes)."""
     q = (request.args.get("q") or "").strip()
-    jobs, ideas = [], []
+    projects, ideas = [], []
     if q:
         like = f"%{q}%"
         db = get_db()
-        jobs = db.execute(
-            "SELECT * FROM jobs"
+        projects = db.execute(
+            "SELECT * FROM projects"
             " WHERE job_name LIKE ? OR site_location LIKE ? OR county LIKE ?"
             " OR products LIKE ? ORDER BY created_at DESC",
             (like, like, like, like)).fetchall()
@@ -4069,13 +4134,13 @@ def search():
             "SELECT * FROM household_ideas"
             " WHERE name LIKE ? OR notes LIKE ? ORDER BY created_at DESC",
             (like, like)).fetchall()
-    return render_template("search.html", q=q, jobs=jobs, ideas=ideas,
-                           job_status_class=JOB_STATUS_CLASS)
+    return render_template("search.html", q=q, projects=projects, ideas=ideas,
+                           job_status_class=PROJECT_STATUS_CLASS)
 
 
 @app.route("/api/quick-search")
 def api_quick_search():
-    """Piece 28.4 (revised 33): autocomplete for the nav search — job and
+    """Piece 28.4 (revised 33): autocomplete for the nav search — project and
     household-idea NAMES only."""
     q = (request.args.get("q") or "").strip()
     results = []
@@ -4083,12 +4148,12 @@ def api_quick_search():
         like = f"%{q}%"
         db = get_db()
         for j in db.execute(
-                "SELECT id, job_name FROM jobs WHERE job_name LIKE ?"
+                "SELECT id, job_name FROM projects WHERE job_name LIKE ?"
                 " ORDER BY created_at DESC LIMIT 8", (like,)).fetchall():
-            results.append({"type": "job",
-                            "label": j["job_name"] or f"Job #{j['id']}",
+            results.append({"type": "project",
+                            "label": j["job_name"] or f"Project #{j['id']}",
                             "sub": "",
-                            "url": url_for("job_detail", job_id=j["id"])})
+                            "url": url_for("project_detail", project_id=j["id"])})
         for i in db.execute(
                 "SELECT id, name FROM household_ideas WHERE name LIKE ?"
                 " ORDER BY created_at DESC LIMIT 6", (like,)).fetchall():
@@ -4204,23 +4269,23 @@ def backlog_status(idea_id):
 
 @app.route("/backlog/<int:idea_id>/start", methods=["POST"])
 def backlog_start(idea_id):
-    """Turn an idea into a real job/project — a bare row the user fills in
-    via the normal job form."""
+    """Turn an idea into a real project/project — a bare row the user fills in
+    via the normal project form."""
     db = get_db()
     idea = db.execute("SELECT * FROM household_ideas WHERE id = ?",
                       (idea_id,)).fetchone()
     if idea is None:
         abort(404)
     cur = db.execute(
-        "INSERT INTO jobs (job_name, site_location) VALUES (?, ?)",
+        "INSERT INTO projects (job_name, site_location) VALUES (?, ?)",
         (idea["name"], ""))
     db.execute(
-        "UPDATE household_ideas SET status = 'Started', started_job_id = ?,"
+        "UPDATE household_ideas SET status = 'Started', started_project_id = ?,"
         " started_at = ? WHERE id = ?",
         (cur.lastrowid, datetime.now().isoformat(timespec="seconds"), idea_id))
     db.commit()
     flash(f"Started: {idea['name']} — fill in the rest below.")
-    return redirect(url_for("edit_job", job_id=cur.lastrowid))
+    return redirect(url_for("edit_project", project_id=cur.lastrowid))
 
 
 @app.route("/backlog/<int:idea_id>/delete", methods=["POST"])
@@ -4294,50 +4359,50 @@ def delete_household_file(file_id):
     return redirect(url_for("household_files_page"))
 
 
-@app.route("/jobs/new", methods=["GET", "POST"])
-def new_job():
+@app.route("/projects/new", methods=["GET", "POST"])
+def new_project():
     db = get_db()
     if request.method == "POST":
-        values, selected, errors = read_job_form()
+        values, selected, errors = read_project_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_job_form(values, selected, existing_jobs=True), 400
+            return render_project_form(values, selected, existing_jobs=True), 400
         cur = db.execute(
-            f"INSERT INTO jobs ({', '.join(JOB_FIELDS)})"
-            f" VALUES ({', '.join('?' * len(JOB_FIELDS))})",
-            [values[f] for f in JOB_FIELDS],
+            f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)})"
+            f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))})",
+            [values[f] for f in PROJECT_FIELDS],
         )
-        # Piece 29.4: a new job turns over to Proposal — alert Sales & Design.
+        # Piece 29.4: a new project turns over to Proposal — alert Sales & Design.
         new_job_row = {"id": cur.lastrowid, "job_name": values["job_name"]}
         actor = current_user()
         notify_stage_turnover(db, new_job_row,
-                              values.get("status") or DEFAULT_JOB_STATUS,
+                              values.get("status") or DEFAULT_PROJECT_STATUS,
                               exclude_id=actor["id"] if actor else None)
         db.commit()
-        flash(f"Job created: {values['job_name']}")
-        return redirect(url_for("job_detail", job_id=cur.lastrowid))
-    # For service tickets: optionally pre-fill from a job already on the books.
+        flash(f"Project created: {values['job_name']}")
+        return redirect(url_for("project_detail", project_id=cur.lastrowid))
+    # For service tickets: optionally pre-fill from a project already on the books.
     values = {"site_location": ""}
     selected = []
     prefill_id = request.args.get("prefill", type=int)
     if prefill_id:
         source = db.execute(
-            "SELECT * FROM jobs WHERE id = ?", (prefill_id,),
+            "SELECT * FROM projects WHERE id = ?", (prefill_id,),
         ).fetchone()
         if source:
-            values = {f: source[f] for f in JOB_FIELDS}
+            values = {f: source[f] for f in PROJECT_FIELDS}
             values["utility_connection"] = next(
                 (source[f] for f in GRID_CONNECTION_FIELDS.values() if source[f]), "")
-            values["job_name"] = f"Service — {source['job_name'] or 'Job #' + str(source['id'])}"
+            values["job_name"] = f"Service — {source['job_name'] or 'Project #' + str(source['id'])}"
             selected = [p.strip() for p in source["products"].split(",") if p.strip()]
             if "Technician Service" not in selected:
                 selected.append("Technician Service")
-    return render_job_form(values, selected, existing_jobs=True)
+    return render_project_form(values, selected, existing_jobs=True)
 
 
-def read_job_form():
-    """Validate and normalize a submitted job form (create or edit)."""
-    values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
+def read_project_form():
+    """Validate and normalize a submitted project form (create or edit)."""
+    values = {f: request.form.get(f, "").strip() for f in PROJECT_FIELDS}
     selected = request.form.getlist("products")
     values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
     # One shared utility-connection choice covers PV, Battery, and
@@ -4357,7 +4422,7 @@ def read_job_form():
         values["service_type"] = ""
     errors = []
     if not values["job_name"]:
-        errors.append("Job name is required.")
+        errors.append("Project name is required.")
     if not values["site_location"]:
         errors.append("Site location is required.")
     if not values["cost_method"]:
@@ -4369,12 +4434,12 @@ def read_job_form():
     return values, selected, errors
 
 
-def render_job_form(values, selected, existing_jobs=False,
+def render_project_form(values, selected, existing_jobs=False,
                     editing_job_id=None):
     jobs_on_books = []
     if existing_jobs and not editing_job_id:
         jobs_on_books = get_db().execute(
-            "SELECT id, job_name FROM jobs ORDER BY created_at DESC").fetchall()
+            "SELECT id, job_name FROM projects ORDER BY created_at DESC").fetchall()
     return render_template(
         "job_form.html", values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
@@ -4387,46 +4452,46 @@ def render_job_form(values, selected, existing_jobs=False,
     )
 
 
-@app.route("/jobs/<int:job_id>/edit", methods=["GET", "POST"])
-def edit_job(job_id):
+@app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
+def edit_project(project_id):
     db = get_db()
-    job = fetch_job(job_id)
+    project = fetch_project(project_id)
     if request.method == "POST":
-        values, selected, errors = read_job_form()
+        values, selected, errors = read_project_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_job_form(values, selected,
-                                   editing_job_id=job_id), 400
+            return render_project_form(values, selected,
+                                   editing_job_id=project_id), 400
         # Keep the outgoing state for recordkeeping before overwriting.
-        snapshot = {f: job[f] for f in JOB_FIELDS}
+        snapshot = {f: project[f] for f in PROJECT_FIELDS}
         version = db.execute(
-            "SELECT COALESCE(MAX(version), 0) + 1 FROM job_versions"
-            " WHERE job_id = ?", (job_id,)).fetchone()[0]
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM project_versions"
+            " WHERE project_id = ?", (project_id,)).fetchone()[0]
         db.execute(
-            "INSERT INTO job_versions (job_id, version, data) VALUES (?, ?, ?)",
-            (job_id, version, json.dumps(snapshot)),
+            "INSERT INTO project_versions (project_id, version, data) VALUES (?, ?, ?)",
+            (project_id, version, json.dumps(snapshot)),
         )
         db.execute(
-            f"UPDATE jobs SET {', '.join(f + ' = ?' for f in JOB_FIELDS)}"
+            f"UPDATE projects SET {', '.join(f + ' = ?' for f in PROJECT_FIELDS)}"
             " WHERE id = ?",
-            [values[f] for f in JOB_FIELDS] + [job_id],
+            [values[f] for f in PROJECT_FIELDS] + [project_id],
         )
         db.commit()
-        flash(f"Job updated — the previous state was kept as version {version}.")
-        return redirect(url_for("job_detail", job_id=job_id))
-    values = {f: job[f] for f in JOB_FIELDS}
+        flash(f"Project updated — the previous state was kept as version {version}.")
+        return redirect(url_for("project_detail", project_id=project_id))
+    values = {f: project[f] for f in PROJECT_FIELDS}
     values["utility_connection"] = next(
-        (job[f] for f in GRID_CONNECTION_FIELDS.values() if job[f]), "")
-    selected = [p.strip() for p in job["products"].split(",") if p.strip()]
-    return render_job_form(values, selected, editing_job_id=job_id)
+        (project[f] for f in GRID_CONNECTION_FIELDS.values() if project[f]), "")
+    selected = [p.strip() for p in project["products"].split(",") if p.strip()]
+    return render_project_form(values, selected, editing_job_id=project_id)
 
 
-@app.route("/jobs/<int:job_id>/versions/<int:version>")
-def job_version(job_id, version):
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/versions/<int:version>")
+def project_version(project_id, version):
+    project = fetch_project(project_id)
     row = get_db().execute(
-        "SELECT * FROM job_versions WHERE job_id = ? AND version = ?",
-        (job_id, version),
+        "SELECT * FROM project_versions WHERE project_id = ? AND version = ?",
+        (project_id, version),
     ).fetchone()
     if row is None:
         abort(404)
@@ -4434,45 +4499,45 @@ def job_version(job_id, version):
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
     groups = group_rules(match_rules(data, rules))
     return render_template(
-        "job_version.html", job=job, version=row, data=data,
-        groups=groups, field_labels=JOB_FIELD_LABELS, job_fields=JOB_FIELDS,
+        "project_version.html", project=project, version=row, data=data,
+        groups=groups, field_labels=PROJECT_FIELD_LABELS, job_fields=PROJECT_FIELDS,
     )
 
 
-def fetch_job(job_id):
-    job = get_db().execute(
-        "SELECT * FROM jobs WHERE id = ?",
-        (job_id,),
+def fetch_project(project_id):
+    project = get_db().execute(
+        "SELECT * FROM projects WHERE id = ?",
+        (project_id,),
     ).fetchone()
-    if job is None:
+    if project is None:
         abort(404)
-    return job
+    return project
 
 
-@app.route("/jobs/<int:job_id>")
-def job_detail(job_id):
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>")
+def project_detail(project_id):
+    project = fetch_project(project_id)
     db = get_db()
-    # Piece 29.4: reaching the job clears this user's stage-turnover alerts for
+    # Piece 29.4: reaching the project clears this user's stage-turnover alerts for
     # it — the notification has served its purpose once they're looking at it.
     me = current_user()
     if me is not None:
         cleared = db.execute(
             "DELETE FROM notifications WHERE recipient_id = ? AND kind = 'stage'"
-            " AND link = ?", (me["id"], url_for("job_detail", job_id=job_id)))
+            " AND link = ?", (me["id"], url_for("project_detail", project_id=project_id)))
         if cleared.rowcount:
             db.commit()
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
-    groups = group_rules(match_rules(job, rules))
+    groups = group_rules(match_rules(project, rules))
     versions = db.execute(
-        "SELECT version, saved_at FROM job_versions WHERE job_id = ?"
-        " ORDER BY version DESC", (job_id,)
+        "SELECT version, saved_at FROM project_versions WHERE project_id = ?"
+        " ORDER BY version DESC", (project_id,)
     ).fetchall()
     materials = db.execute(
-        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_materials WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     files = db.execute(
-        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_files WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     filed_labels = {f["rule_label"] for f in files if f["rule_label"]}
     # Filing coverage per category: how many requirements have a document.
@@ -4480,38 +4545,38 @@ def job_detail(job_id):
         heading: sum(1 for r in items if r["label"] in filed_labels)
         for heading, items in groups
     }
-    # Filing dropdown, sectioned: generic types first, then the job's
+    # Filing dropdown, sectioned: generic types first, then the project's
     # requirements grouped by their category headings.
     requirement_groups = [
         (heading, sorted({r["label"] for r in items}))
         for heading, items in groups
     ]
 
-    # Piece 15.1: Loads & Sizing moved to its own page (job_loads); its data
+    # Piece 15.1: Loads & Sizing moved to its own page (project_loads); its data
     # is no longer computed here.
 
-    # Piece 10: tasks for this job, plus the crew list for the assignee
+    # Piece 10: tasks for this project, plus the crew list for the assignee
     # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
     # (employee_id NULL) still show.
     tasks = db.execute(
-        "SELECT t.*, e.name AS assignee_name FROM job_tasks t"
+        "SELECT t.*, e.name AS assignee_name FROM project_tasks t"
         " LEFT JOIN employees e ON e.id = t.employee_id"
-        " WHERE t.job_id = ? ORDER BY t.sort_order, t.id", (job_id,)
+        " WHERE t.project_id = ? ORDER BY t.sort_order, t.id", (project_id,)
     ).fetchall()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
-    stage = stage_info(db, job, groups, filed_labels)
-    progress = build_job_progress(db, job)
+    stage = stage_info(db, project, groups, filed_labels)
+    progress = build_project_progress(db, project)
 
     # Saved load-survey results (from the Loads & Sizing page) surfaced here so
-    # the numbers Sales captured on the walkthrough are visible in the job
+    # the numbers Sales captured on the walkthrough are visible in the project
     # details and ready for the Designer — no need to re-open the loads page.
-    lrooms = db.execute("SELECT * FROM job_load_rooms WHERE job_id = ?", (job_id,)).fetchall()
-    litems = db.execute("SELECT * FROM job_load_items WHERE job_id = ?", (job_id,)).fetchall()
+    lrooms = db.execute("SELECT * FROM project_load_rooms WHERE project_id = ?", (project_id,)).fetchall()
+    litems = db.execute("SELECT * FROM project_load_items WHERE project_id = ?", (project_id,)).fetchall()
     load_daily_kwh, load_peak_w = compute_load_totals(lrooms, litems)
     load_has_survey = bool(litems)
 
-    # Documents tab: one upload slot per file the job needs — the standard docs
-    # plus the job's document-worthy requirements (permits / compliance / doc
+    # Documents tab: one upload slot per file the project needs — the standard docs
+    # plus the project's document-worthy requirements (permits / compliance / doc
     # items; licenses, portals and phone numbers aren't files, so they're
     # excluded). files_by_label maps a slot to the files filed under it;
     # other_files are anything filed outside those slots.
@@ -4540,24 +4605,24 @@ def job_detail(job_id):
         fmts = allowed_formats_for_label(db, lbl)
         formats_by_label[lbl] = sorted(fmts) if fmts else None
 
-    billing = job_billing(
-        db, job_id, job["contract_amount"] if "contract_amount" in job.keys() else 0.0)
+    billing = project_billing(
+        db, project_id, project["contract_amount"] if "contract_amount" in project.keys() else 0.0)
 
     # Piece 21.9: field notes the crew left from the Work Bag, newest first.
-    job_notes = db.execute(
-        "SELECT * FROM job_notes WHERE job_id = ? ORDER BY id DESC",
-        (job_id,)).fetchall()
+    project_notes = db.execute(
+        "SELECT * FROM project_notes WHERE project_id = ? ORDER BY id DESC",
+        (project_id,)).fetchall()
 
-    pricing = job_pricing(db, job)
+    pricing = project_pricing(db, project)
 
     return render_template(
-        "job_detail.html", job=job, groups=groups, versions=versions,
-        job_notes=job_notes,
+        "project_detail.html", project=project, groups=groups, versions=versions,
+        project_notes=project_notes,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
-        job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
+        job_statuses=PROJECT_STATUSES, job_status_class=PROJECT_STATUS_CLASS,
         stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
         load_daily_kwh=load_daily_kwh, load_peak_w=load_peak_w,
         load_has_survey=load_has_survey, doc_sections=doc_sections,
@@ -4572,43 +4637,43 @@ def job_detail(job_id):
     )
 
 
-@app.route("/jobs/<int:job_id>/contract", methods=["POST"])
-def set_contract(job_id):
-    fetch_job(job_id)
+@app.route("/projects/<int:project_id>/contract", methods=["POST"])
+def set_contract(project_id):
+    fetch_project(project_id)
     db = get_db()
     # Piece 27.4: GRT rate is set alongside the contract (both drive invoicing).
     grt = max(_to_float(request.form.get("grt_rate")) or 0.0, 0.0)
-    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ? WHERE id = ?",
+    db.execute("UPDATE projects SET contract_amount = ?, grt_rate = ? WHERE id = ?",
                (_to_float(request.form.get("contract_amount")) or 0.0,
-                str(grt), job_id))
+                str(grt), project_id))
     db.commit()
     flash("Billing details updated.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
-# ---------------------------------------------------------- per-job estimate
-def _estimate_guard(job_id):
+# ---------------------------------------------------------- per-project estimate
+def _estimate_guard(project_id):
     """Estimate editing is limited to who can see pricing (Finance/Sales/Design)."""
-    fetch_job(job_id)
+    fetch_project(project_id)
     if not _can_see_pricing():
         flash("Pricing is limited to Finance, Sales and Design.", "error")
         return False
     return True
 
 
-@app.route("/jobs/<int:job_id>/estimate/prefill", methods=["POST"])
-def estimate_prefill(job_id):
+@app.route("/projects/<int:project_id>/estimate/prefill", methods=["POST"])
+def estimate_prefill(project_id):
     """Copy the cost-model default lines (non-equipment sections) into this
-    job's estimate, so the estimator starts from Vixinman's template. Skips sections
+    project's estimate, so the estimator starts from Vixinman's template. Skips sections
     already present, so it won't duplicate."""
-    if not _estimate_guard(job_id):
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    if not _estimate_guard(project_id):
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     db = get_db()
     have = {r["section"] for r in db.execute(
-        "SELECT DISTINCT section FROM job_estimate_lines WHERE job_id = ?",
-        (job_id,)).fetchall()}
+        "SELECT DISTINCT section FROM project_estimate_lines WHERE project_id = ?",
+        (project_id,)).fetchall()}
     nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
-                     " FROM job_estimate_lines WHERE job_id = ?", (job_id,)).fetchone()[0]
+                     " FROM project_estimate_lines WHERE project_id = ?", (project_id,)).fetchone()[0]
     added = 0
     for r in db.execute(
             "SELECT * FROM cost_model_lines WHERE active = '1'"
@@ -4616,88 +4681,88 @@ def estimate_prefill(job_id):
         if r["section"] not in ESTIMATE_SECTIONS or r["section"] in have:
             continue
         db.execute(
-            "INSERT INTO job_estimate_lines (job_id, section, item, unit, qty,"
+            "INSERT INTO project_estimate_lines (project_id, section, item, unit, qty,"
             " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (job_id, r["section"], r["item"], r["unit"] or "",
+            (project_id, r["section"], r["item"], r["unit"] or "",
              r["default_qty"] or 0, r["unit_cost"] or 0, r["markup_pct"] or 0, nxt))
         nxt += 1
         added += 1
     db.commit()
     flash(f"Added {added} line(s) from the cost model." if added
           else "Those sections are already on the estimate.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
 
 
-@app.route("/jobs/<int:job_id>/estimate/add", methods=["POST"])
-def estimate_add_line(job_id):
-    if not _estimate_guard(job_id):
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+@app.route("/projects/<int:project_id>/estimate/add", methods=["POST"])
+def estimate_add_line(project_id):
+    if not _estimate_guard(project_id):
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     section = request.form.get("section", "")
     item = request.form.get("item", "").strip()
     if section not in ESTIMATE_SECTIONS or not item:
         flash("Pick a section and name the line.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     db = get_db()
     nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
-                     " FROM job_estimate_lines WHERE job_id = ?", (job_id,)).fetchone()[0]
+                     " FROM project_estimate_lines WHERE project_id = ?", (project_id,)).fetchone()[0]
     db.execute(
-        "INSERT INTO job_estimate_lines (job_id, section, item, unit, qty,"
+        "INSERT INTO project_estimate_lines (project_id, section, item, unit, qty,"
         " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (job_id, section, item, request.form.get("unit", "").strip(),
+        (project_id, section, item, request.form.get("unit", "").strip(),
          max(_to_float(request.form.get("qty")) or 0.0, 0.0),
          max(_to_float(request.form.get("cost")) or 0.0, 0.0),
          max(_to_float(request.form.get("markup")) or 0.0, 0.0), nxt))
     db.commit()
     flash(f"Added “{item}”.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
 
 
-@app.route("/jobs/<int:job_id>/estimate/save", methods=["POST"])
-def estimate_save(job_id):
-    if not _estimate_guard(job_id):
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+@app.route("/projects/<int:project_id>/estimate/save", methods=["POST"])
+def estimate_save(project_id):
+    if not _estimate_guard(project_id):
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     db = get_db()
-    for r in db.execute("SELECT id FROM job_estimate_lines WHERE job_id = ?",
-                        (job_id,)).fetchall():
+    for r in db.execute("SELECT id FROM project_estimate_lines WHERE project_id = ?",
+                        (project_id,)).fetchall():
         i = r["id"]
         if f"qty_{i}" not in request.form:
             continue
         db.execute(
-            "UPDATE job_estimate_lines SET qty = ?, unit_cost = ?, markup_pct = ?"
-            " WHERE id = ? AND job_id = ?",
+            "UPDATE project_estimate_lines SET qty = ?, unit_cost = ?, markup_pct = ?"
+            " WHERE id = ? AND project_id = ?",
             (max(_to_float(request.form.get(f"qty_{i}")) or 0.0, 0.0),
              max(_to_float(request.form.get(f"cost_{i}")) or 0.0, 0.0),
-             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i, job_id))
+             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i, project_id))
     db.commit()
     flash("Estimate saved.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
 
 
-@app.route("/jobs/<int:job_id>/estimate/<int:line_id>/delete", methods=["POST"])
-def estimate_delete_line(job_id, line_id):
-    if not _estimate_guard(job_id):
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+@app.route("/projects/<int:project_id>/estimate/<int:line_id>/delete", methods=["POST"])
+def estimate_delete_line(project_id, line_id):
+    if not _estimate_guard(project_id):
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     db = get_db()
-    db.execute("DELETE FROM job_estimate_lines WHERE id = ? AND job_id = ?",
-               (line_id, job_id))
+    db.execute("DELETE FROM project_estimate_lines WHERE id = ? AND project_id = ?",
+               (line_id, project_id))
     db.commit()
     flash("Line removed.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
 
 
-@app.route("/jobs/<int:job_id>/estimate/to-contract", methods=["POST"])
-def estimate_to_contract(job_id):
+@app.route("/projects/<int:project_id>/estimate/to-contract", methods=["POST"])
+def estimate_to_contract(project_id):
     """Set the contract total to the estimate's suggested price."""
-    job = fetch_job(job_id)
-    if not _estimate_guard(job_id):
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    project = fetch_project(project_id)
+    if not _estimate_guard(project_id):
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
     db = get_db()
-    suggested = job_pricing(db, job)["suggested"]
-    db.execute("UPDATE jobs SET contract_amount = ? WHERE id = ?",
-               (suggested, job_id))
+    suggested = project_pricing(db, project)["suggested"]
+    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
+               (suggested, project_id))
     db.commit()
     flash(f"Contract total set to the suggested price — ${suggested:,.2f}.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
 @app.route("/finance/settings")
@@ -4792,9 +4857,9 @@ def finance_delete_cost_line(line_id):
     return redirect(url_for("finance_settings"))
 
 
-@app.route("/jobs/<int:job_id>/transactions/add", methods=["POST"])
-def add_transaction(job_id):
-    fetch_job(job_id)
+@app.route("/projects/<int:project_id>/transactions/add", methods=["POST"])
+def add_transaction(project_id):
+    fetch_project(project_id)
     kind = request.form.get("kind", "Expense")
     kind = kind if kind in TXN_KINDS else "Expense"
     status = request.form.get("status", "Outstanding")
@@ -4804,11 +4869,11 @@ def add_transaction(job_id):
     who = current_user()
     db = get_db()
     cur = db.execute(
-        "INSERT INTO job_transactions"
-        " (job_id, kind, category, description, amount, txn_date, status,"
+        "INSERT INTO project_transactions"
+        " (project_id, kind, category, description, amount, txn_date, status,"
         "  party, reference, method, doc_type, created_by)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (job_id, kind, request.form.get("category", "").strip(),
+        (project_id, kind, request.form.get("category", "").strip(),
          request.form.get("description", "").strip(),
          _to_float(request.form.get("amount")) or 0.0,
          request.form.get("txn_date", "").strip(), status,
@@ -4819,50 +4884,50 @@ def add_transaction(job_id):
     txn_id = cur.lastrowid
     # Piece 28.2: optionally attach a source document (receipt / invoice / bill)
     # uploaded from the device — filed against this transaction (txn_id) so it
-    # shows the 📎 link in the ledger and lands on the job's document record.
+    # shows the 📎 link in the ledger and lands on the project's document record.
     upload = request.files.get("document")
     if upload is not None and upload.filename:
         ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
         if ext in (PHOTO_EXTENSIONS | {"pdf"}):
             info = db.execute(
-                "SELECT job_name FROM jobs WHERE id = ?", (job_id,)).fetchone()
+                "SELECT job_name FROM projects WHERE id = ?", (project_id,)).fetchone()
             label = doc_type or "Billing"
             friendly = friendly_filename(
                 [info["job_name"], label], ext,
-                taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+                taken=_taken_names(db, "project_files", "original_name", "project_id", project_id))
             stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-            upload.save(job_upload_dir(job_id) / stored)
+            upload.save(project_upload_dir(project_id) / stored)
             db.execute(
-                "INSERT INTO job_files"
-                " (job_id, rule_label, stored_name, original_name, txn_id)"
-                " VALUES (?, ?, ?, ?, ?)", (job_id, label, stored, friendly, txn_id))
+                "INSERT INTO project_files"
+                " (project_id, rule_label, stored_name, original_name, txn_id)"
+                " VALUES (?, ?, ?, ?, ?)", (project_id, label, stored, friendly, txn_id))
         else:
             flash("Attachment skipped — it must be a photo (JPG/PNG/HEIC) or a PDF.", "error")
     db.commit()
     flash(f"{doc_type or kind} recorded.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
-@app.route("/jobs/<int:job_id>/transactions/<int:txn_id>/paid", methods=["POST"])
-def toggle_transaction_paid(job_id, txn_id):
+@app.route("/projects/<int:project_id>/transactions/<int:txn_id>/paid", methods=["POST"])
+def toggle_transaction_paid(project_id, txn_id):
     db = get_db()
-    row = db.execute("SELECT status FROM job_transactions WHERE id = ? AND job_id = ?",
-                     (txn_id, job_id)).fetchone()
+    row = db.execute("SELECT status FROM project_transactions WHERE id = ? AND project_id = ?",
+                     (txn_id, project_id)).fetchone()
     if row:
-        db.execute("UPDATE job_transactions SET status = ? WHERE id = ? AND job_id = ?",
-                   ("Outstanding" if row["status"] == "Paid" else "Paid", txn_id, job_id))
+        db.execute("UPDATE project_transactions SET status = ? WHERE id = ? AND project_id = ?",
+                   ("Outstanding" if row["status"] == "Paid" else "Paid", txn_id, project_id))
         db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
-@app.route("/jobs/<int:job_id>/transactions/<int:txn_id>/delete", methods=["POST"])
-def delete_transaction(job_id, txn_id):
+@app.route("/projects/<int:project_id>/transactions/<int:txn_id>/delete", methods=["POST"])
+def delete_transaction(project_id, txn_id):
     db = get_db()
-    db.execute("DELETE FROM job_transactions WHERE id = ? AND job_id = ?",
-               (txn_id, job_id))
+    db.execute("DELETE FROM project_transactions WHERE id = ? AND project_id = ?",
+               (txn_id, project_id))
     db.commit()
     flash("Transaction deleted.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
 # --- Piece 27.3: 50/40/10 invoice generation -------------------------------
@@ -4884,7 +4949,7 @@ def markup_map(db):
 
 
 def travel_rate(db):
-    """Per-job travel $/mile — the Cost Model's Travel → Vehicle Trips line is
+    """Per-project travel $/mile — the Cost Model's Travel → Vehicle Trips line is
     the single source of truth (falls back to the stored meta rate)."""
     r = db.execute(
         "SELECT unit_cost FROM cost_model_lines WHERE section = 'Travel'"
@@ -4905,17 +4970,17 @@ def cost_model_by_section(db):
 
 
 def overhead_pct(db):
-    """Total overhead (G&A) percent applied to the whole job subtotal."""
+    """Total overhead (G&A) percent applied to the whole project subtotal."""
     return sum(float(r["markup_pct"] or 0) for r in db.execute(
         "SELECT markup_pct FROM cost_model_lines"
         " WHERE section = 'Overhead' AND active = '1'").fetchall())
 
 
 def cost_model_rollup(db):
-    """A default 'standard job' estimate straight from the model: each line is
+    """A default 'standard project' estimate straight from the model: each line is
     qty × cost × (1 + markup) for Non-Inventory / Labor / Travel / Adders, then
     G&A overhead on the subtotal (Piece 29.8). Equipment Inventory is excluded —
-    it prices the actual per-job BOM, not a default quantity."""
+    it prices the actual per-project BOM, not a default quantity."""
     sections = cost_model_by_section(db)
     section_totals, subtotal = {}, 0.0
     for s in ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]:
@@ -4942,14 +5007,14 @@ def _effective_markup(category, line_markup, mmap):
     return mmap.get((category or "").strip().lower(), 0.0)
 
 
-def bom_pricing(db, job_id, mmap, after_id=None):
-    """Cost and marked-up customer price for a job's BOM (optionally only rows
+def bom_pricing(db, project_id, mmap, after_id=None):
+    """Cost and marked-up customer price for a project's BOM (optionally only rows
     added after `after_id`, for change-order extras). Per-line markup override
     wins over the category default."""
     sql = ("SELECT id, component_name, category, COALESCE(qty,0) AS qty,"
-           " COALESCE(unit_cost,0) AS cost, markup_pct FROM job_bom"
-           " WHERE job_id = ?")
-    args = [job_id]
+           " COALESCE(unit_cost,0) AS cost, markup_pct FROM project_bom"
+           " WHERE project_id = ?")
+    args = [project_id]
     if after_id is not None:
         sql += " AND id > ?"
         args.append(int(after_id or 0))
@@ -4972,22 +5037,22 @@ def bom_pricing(db, job_id, mmap, after_id=None):
             "price_total": round(price_total, 2)}
 
 
-def job_travel_charge(db, job):
-    miles = _to_float(job["travel_miles"] if "travel_miles" in job.keys() else 0) or 0.0
+def project_travel_charge(db, project):
+    miles = _to_float(project["travel_miles"] if "travel_miles" in project.keys() else 0) or 0.0
     return round(max(miles, 0.0) * travel_rate(db), 2), max(miles, 0.0)
 
 
-def job_pricing(db, job):
-    """Internal Finance breakdown for a job: equipment cost vs marked-up price,
+def project_pricing(db, project):
+    """Internal Finance breakdown for a project: equipment cost vs marked-up price,
     travel, a suggested contract price, and the contract Finance actually set."""
     mmap = markup_map(db)
-    bom = bom_pricing(db, job["id"], mmap)
-    est = estimate_pricing(db, job["id"])             # Piece 29.9: the job estimate
+    bom = bom_pricing(db, project["id"], mmap)
+    est = estimate_pricing(db, project["id"])             # Piece 29.9: the project estimate
     subtotal = round(bom["price_total"] + est["total"], 2)
     ov = overhead_pct(db)                              # G&A on the whole subtotal
     overhead_amt = round(subtotal * ov / 100.0, 2)
     suggested = round(subtotal + overhead_amt, 2)
-    contract = _to_float(job["contract_amount"] if "contract_amount" in job.keys()
+    contract = _to_float(project["contract_amount"] if "contract_amount" in project.keys()
                          else 0) or 0.0
     return {"equipment_cost": bom["cost_total"],
             "equipment_price": bom["price_total"],
@@ -4998,22 +5063,22 @@ def job_pricing(db, job):
             "suggested": suggested, "contract": contract, "lines": bom["lines"]}
 
 
-# Piece 29.9: the cost-model sections that make up a per-job estimate (Equipment
+# Piece 29.9: the cost-model sections that make up a per-project estimate (Equipment
 # Inventory is priced from the BOM; Overhead is applied on top, not entered).
 ESTIMATE_SECTIONS = ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]
 
 
-def estimate_lines(db, job_id):
+def estimate_lines(db, project_id):
     return db.execute(
-        "SELECT * FROM job_estimate_lines WHERE job_id = ?"
-        " ORDER BY sort_order, id", (job_id,)).fetchall()
+        "SELECT * FROM project_estimate_lines WHERE project_id = ?"
+        " ORDER BY sort_order, id", (project_id,)).fetchall()
 
 
-def estimate_pricing(db, job_id):
-    """Per-section and total for a job's estimate lines: qty × cost × (1+markup)."""
+def estimate_pricing(db, project_id):
+    """Per-section and total for a project's estimate lines: qty × cost × (1+markup)."""
     by_section = {s: 0.0 for s in ESTIMATE_SECTIONS}
     lines = []
-    for r in estimate_lines(db, job_id):
+    for r in estimate_lines(db, project_id):
         lt = (r["qty"] or 0) * (r["unit_cost"] or 0) * (1 + (r["markup_pct"] or 0) / 100.0)
         by_section[r["section"]] = by_section.get(r["section"], 0.0) + lt
         d = dict(r)
@@ -5084,7 +5149,7 @@ def payroll():
         " FROM time_entries te"
         " JOIN employees e ON e.id = te.employee_id"
         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-        " LEFT JOIN jobs j ON j.id = te.job_id"
+        " LEFT JOIN projects j ON j.id = te.project_id"
         " WHERE te.work_date >= ? AND te.work_date <= ? AND te.status = 'Approved'"
         " ORDER BY te.work_date DESC, te.id DESC", (start, end)).fetchall()
     # Supervisor approval queue: hours employees logged that await review.
@@ -5094,7 +5159,7 @@ def payroll():
         " FROM time_entries te"
         " JOIN employees e ON e.id = te.employee_id"
         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-        " LEFT JOIN jobs j ON j.id = te.job_id"
+        " LEFT JOIN projects j ON j.id = te.project_id"
         " WHERE te.status = 'Pending' ORDER BY te.work_date, e.name").fetchall()
     ot_threshold, ot_mult = ot_rules(db)
     return render_template(
@@ -5116,10 +5181,10 @@ def add_time_entry():
     who = current_user()
     db.execute(
         "INSERT INTO time_entries"
-        " (employee_id, work_date, job_id, pay_type_id, hours, note, created_by)"
+        " (employee_id, work_date, project_id, pay_type_id, hours, note, created_by)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (int(emp_id), request.form.get("work_date", "").strip(),
-         int(request.form["job_id"]) if request.form.get("job_id", "").isdigit() else None,
+         int(request.form["project_id"]) if request.form.get("project_id", "").isdigit() else None,
          int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
          _to_float(request.form.get("hours")) or 0.0,
          request.form.get("note", "").strip(), who["name"] if who else ""))
@@ -5215,12 +5280,12 @@ def save_ot_rules():
 
 
 def _workbag_redirect(anchor=None):
-    """Piece 27.7: Work-Bag POSTs now come from a job's own page, so return
-    there (using the form's job_id) instead of the landing. Falls back to the
-    landing when no job is on the form."""
-    jid = request.form.get("job_id", "")
+    """Piece 27.7: Work-Bag POSTs now come from a project's own page, so return
+    there (using the form's project_id) instead of the landing. Falls back to the
+    landing when no project is on the form."""
+    jid = request.form.get("project_id", "")
     if jid.isdigit():
-        return redirect(url_for("work_bag_job", job_id=int(jid), _anchor=anchor))
+        return redirect(url_for("work_bag_job", project_id=int(jid), _anchor=anchor))
     return redirect(url_for("work_bag"))
 
 
@@ -5233,10 +5298,10 @@ def log_my_hours():
         abort(403)
     db = get_db()
     db.execute(
-        "INSERT INTO time_entries (employee_id, work_date, job_id, pay_type_id,"
+        "INSERT INTO time_entries (employee_id, work_date, project_id, pay_type_id,"
         " hours, note, status, created_by) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
         (user["id"], request.form.get("work_date", "").strip(),
-         int(request.form["job_id"]) if request.form.get("job_id", "").isdigit() else None,
+         int(request.form["project_id"]) if request.form.get("project_id", "").isdigit() else None,
          int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
          _to_float(request.form.get("hours")) or 0.0,
          request.form.get("note", "").strip(), user["name"]))
@@ -5266,7 +5331,7 @@ def build_timesheet(db, start, end, employee_ids=None):
     q = ("SELECT te.*, pt.name AS type_name, j.job_name, e.name AS emp_name"
          " FROM time_entries te JOIN employees e ON e.id = te.employee_id"
          " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-         " LEFT JOIN jobs j ON j.id = te.job_id"
+         " LEFT JOIN projects j ON j.id = te.project_id"
          " WHERE te.work_date >= ? AND te.work_date <= ?")
     params = [start, end]
     if employee_ids is not None:
@@ -5347,7 +5412,7 @@ def timesheet_csv():
     import io
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Employee", "Date", "Weekday", "Job", "Pay type", "Hours",
+    w.writerow(["Employee", "Date", "Weekday", "Project", "Pay type", "Hours",
                 "Status", "Note"])
     for sh in sheets:
         for day in sh["days"]:
@@ -5361,21 +5426,21 @@ def timesheet_csv():
 
 
 @app.route("/work-bag/notes", methods=["POST"])
-def add_job_note():
-    """Piece 21.9: jot a free-form note about a job from the Work Bag. Each note
+def add_project_note():
+    """Piece 21.9: jot a free-form note about a project from the Work Bag. Each note
     keeps its own timestamp (datetime('now'), the same clock the audit log uses)
     and author, so the office can read the field's notes later."""
     user = current_user()
     if user is None:
         abort(403)
     db = get_db()
-    job_id = request.form.get("job_id", "")
+    project_id = request.form.get("project_id", "")
     note = request.form.get("note", "").strip()
-    if not job_id.isdigit() or not note:
-        flash("Pick a job and type a note.", "error")
+    if not project_id.isdigit() or not note:
+        flash("Pick a project and type a note.", "error")
         return _workbag_redirect(anchor="notes")
-    db.execute("INSERT INTO job_notes (job_id, note, author) VALUES (?, ?, ?)",
-               (int(job_id), note, user["name"]))
+    db.execute("INSERT INTO project_notes (project_id, note, author) VALUES (?, ?, ?)",
+               (int(project_id), note, user["name"]))
     db.commit()
     flash("Note saved for the office.")
     return _workbag_redirect(anchor="notes")
@@ -5385,21 +5450,21 @@ def add_job_note():
 def add_receipt():
     """Piece 26.2: capture a receipt from the field — a photo plus date, total,
     vendor, reference, and expense category. Records a paid Expense/Receipt on the
-    job's ledger (so it flows into bookkeeping) and files the photo against that
+    project's ledger (so it flows into bookkeeping) and files the photo against that
     transaction."""
     user = current_user()
     if user is None:
         abort(403)
     db = get_db()
-    job_raw = request.form.get("job_id", "")
+    job_raw = request.form.get("project_id", "")
     if not job_raw.isdigit():
-        flash("Pick a job for the receipt.", "error")
+        flash("Pick a project for the receipt.", "error")
         return _workbag_redirect(anchor="receipts")
-    job = db.execute(
-        "SELECT id, job_name FROM jobs WHERE id = ?",
+    project = db.execute(
+        "SELECT id, job_name FROM projects WHERE id = ?",
         (int(job_raw),)).fetchone()
-    if job is None:
-        flash("That job wasn't found.", "error")
+    if project is None:
+        flash("That project wasn't found.", "error")
         return _workbag_redirect(anchor="receipts")
     upload = request.files.get("photo")
     if upload is None or not upload.filename:
@@ -5417,37 +5482,37 @@ def add_receipt():
     reference = request.form.get("reference", "").strip()
     category = request.form.get("category", "").strip()
     date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
-    job_id = job["id"]
+    project_id = project["id"]
     # 1) Ledger entry: a paid expense, tagged as a Receipt.
     cur = db.execute(
-        "INSERT INTO job_transactions (job_id, kind, category, description, amount,"
+        "INSERT INTO project_transactions (project_id, kind, category, description, amount,"
         " txn_date, status, party, reference, method, doc_type, created_by)"
         " VALUES (?, 'Expense', ?, ?, ?, ?, 'Paid', ?, ?, '', 'Receipt', ?)",
-        (job_id, category, (f"Receipt — {vendor}" if vendor else "Receipt"),
+        (project_id, category, (f"Receipt — {vendor}" if vendor else "Receipt"),
          total, date, vendor, reference, user["name"]))
     txn_id = cur.lastrowid
-    # 2) File the photo against the job + that transaction (auto-renamed).
+    # 2) File the photo against the project + that transaction (auto-renamed).
     friendly = friendly_filename(
-        [job["job_name"], "Receipt", vendor], ext,
-        taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+        [project["job_name"], "Receipt", vendor], ext,
+        taken=_taken_names(db, "project_files", "original_name", "project_id", project_id))
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-    upload.save(job_upload_dir(job_id) / stored)
+    upload.save(project_upload_dir(project_id) / stored)
     db.execute(
-        "INSERT INTO job_files (job_id, rule_label, stored_name, original_name, txn_id)"
-        " VALUES (?, 'Receipt', ?, ?, ?)", (job_id, stored, friendly, txn_id))
+        "INSERT INTO project_files (project_id, rule_label, stored_name, original_name, txn_id)"
+        " VALUES (?, 'Receipt', ?, ?, ?)", (project_id, stored, friendly, txn_id))
     db.commit()
     flash(f"Receipt saved: ${total:,.2f}{(' · ' + vendor) if vendor else ''}.")
     return _workbag_redirect(anchor="receipts")
 
 
 @app.route("/work-bag/notes/<int:note_id>/delete", methods=["POST"])
-def delete_job_note(note_id):
+def delete_project_note(note_id):
     """Remove a note — scoped to the author who wrote it."""
     user = current_user()
     if user is None:
         abort(403)
     db = get_db()
-    db.execute("DELETE FROM job_notes WHERE id = ? AND author = ?",
+    db.execute("DELETE FROM project_notes WHERE id = ? AND author = ?",
                (note_id, user["name"]))
     db.commit()
     flash("Note removed.")
@@ -5558,25 +5623,25 @@ def payroll_quickbooks_export():
         "Content-Disposition": "attachment; filename=compendium_payroll.csv"})
 
 
-@app.route("/jobs/<int:job_id>/loads")
-def job_loads(job_id):
+@app.route("/projects/<int:project_id>/loads")
+def project_loads(project_id):
     """Piece 15.1: Electric loads & system sizing — its own page (was a tab
-    on the job detail page)."""
-    job = fetch_job(job_id)
+    on the project detail page)."""
+    project = fetch_project(project_id)
     db = get_db()
     rooms = db.execute(
-        "SELECT * FROM job_load_rooms WHERE job_id = ? ORDER BY sort_order, id",
-        (job_id,),
+        "SELECT * FROM project_load_rooms WHERE project_id = ? ORDER BY sort_order, id",
+        (project_id,),
     ).fetchall()
     load_items = db.execute(
-        "SELECT * FROM job_load_items WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_load_items WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     items_by_room = {}
     for it in load_items:
         items_by_room.setdefault(it["room_id"], []).append(it)
-    sizing = fetch_job_sizing(db, job_id)
+    sizing = fetch_job_sizing(db, project_id)
     bom = db.execute(
-        "SELECT * FROM job_bom WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_bom WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     appliances = db.execute(
         "SELECT * FROM appliance_catalog ORDER BY category, name"
@@ -5640,7 +5705,7 @@ def job_loads(job_id):
         suggestions = suggest_components(db, array_kw, peak_w, battery_kwh_needed)
 
     return render_template(
-        "job_loads.html", job=job, locked=_loads_locked(job),
+        "project_loads.html", project=project, locked=_loads_locked(project),
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
         bom_total=bom_total, appliances_by_category=appliances_by_category,
         components_by_category=components_by_category,
@@ -5668,13 +5733,13 @@ def _float(val, default=0.0):
 
 
 # ------------------------------------------------------------ loads & sizing
-def _loads_locked(job):
-    """Piece 22.2: Loads & Sizing is a Proposal-phase tool. Once the job
+def _loads_locked(project):
+    """Piece 22.2: Loads & Sizing is a Proposal-phase tool. Once the project
     advances past Proposal (the contract is signed), the editor locks — the
-    recorded figures stay visible on the job and in Design, but no one re-opens
-    the tool to change them. Lost jobs (outside the normal stage order) are left
+    recorded figures stay visible on the project and in Design, but no one re-opens
+    the tool to change them. Lost projects (outside the normal stage order) are left
     editable in case one is revived."""
-    status = job["status"] if "status" in job.keys() else ""
+    status = project["status"] if "status" in project.keys() else ""
     return status in STAGE_ORDER and STAGE_ORDER.index(status) > 0
 
 
@@ -5683,97 +5748,97 @@ LOADS_LOCK_MSG = ("Loads & Sizing locks once the contract is signed — the "
 
 
 def loads_unlocked(view):
-    """Guard a loads-editing POST: refuse the write once the job is past
+    """Guard a loads-editing POST: refuse the write once the project is past
     Proposal, so the locked figures can't be changed from anywhere."""
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if _loads_locked(fetch_job(kwargs["job_id"])):
+        if _loads_locked(fetch_project(kwargs["project_id"])):
             flash(LOADS_LOCK_MSG, "error")
-            return redirect(url_for("job_loads", job_id=kwargs["job_id"]))
+            return redirect(url_for("project_loads", project_id=kwargs["project_id"]))
         return view(*args, **kwargs)
     return wrapped
 
 
-@app.route("/jobs/<int:job_id>/loads/rooms/add", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/rooms/add", methods=["POST"])
 @loads_unlocked
-def add_load_room(job_id):
-    fetch_job(job_id)
+def add_load_room(project_id):
+    fetch_project(project_id)
     name = request.form.get("name", "").strip()
     room_type = request.form.get("room_type", "standard")
     if room_type not in ROOM_TYPES:
         room_type = "standard"
     if not name:
         flash("Room name is required.", "error")
-        return redirect(url_for("job_loads", job_id=job_id))
+        return redirect(url_for("project_loads", project_id=project_id))
     category = request.form.get("category", "").strip()
     db = get_db()
     next_order = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_load_rooms WHERE job_id = ?",
-        (job_id,),
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_load_rooms WHERE project_id = ?",
+        (project_id,),
     ).fetchone()[0]
     db.execute(
-        "INSERT INTO job_load_rooms (job_id, name, room_type, category, sort_order)"
+        "INSERT INTO project_load_rooms (project_id, name, room_type, category, sort_order)"
         " VALUES (?, ?, ?, ?, ?)",
-        (job_id, name, room_type, category, next_order),
+        (project_id, name, room_type, category, next_order),
     )
     db.commit()
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
 @loads_unlocked
-def toggle_load_room(job_id, room_id):
+def toggle_load_room(project_id, room_id):
     db = get_db()
     db.execute(
-        "UPDATE job_load_rooms SET enabled = 1 - enabled WHERE id = ? AND job_id = ?",
-        (room_id, job_id),
+        "UPDATE project_load_rooms SET enabled = 1 - enabled WHERE id = ? AND project_id = ?",
+        (room_id, project_id),
     )
     db.commit()
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/edit", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/edit", methods=["POST"])
 @loads_unlocked
-def update_load_room(job_id, room_id):
-    fetch_job(job_id)
+def update_load_room(project_id, room_id):
+    fetch_project(project_id)
     db = get_db()
-    if db.execute("SELECT 1 FROM job_load_rooms WHERE id = ? AND job_id = ?",
-                  (room_id, job_id)).fetchone() is None:
+    if db.execute("SELECT 1 FROM project_load_rooms WHERE id = ? AND project_id = ?",
+                  (room_id, project_id)).fetchone() is None:
         abort(404)
     name = request.form.get("name", "").strip()
     if not name:
         flash("The room needs a name.", "error")
-        return redirect(url_for("job_loads", job_id=job_id, edit_room=room_id))
+        return redirect(url_for("project_loads", project_id=project_id, edit_room=room_id))
     room_type = request.form.get("room_type", "standard").strip() or "standard"
     category = request.form.get("category", "").strip()
-    db.execute("UPDATE job_load_rooms SET name = ?, room_type = ?, category = ?"
+    db.execute("UPDATE project_load_rooms SET name = ?, room_type = ?, category = ?"
                " WHERE id = ?", (name, room_type, category, room_id))
     db.commit()
     flash("Room updated.")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
 @delete_required
 @loads_unlocked
-def delete_load_room(job_id, room_id):
+def delete_load_room(project_id, room_id):
     ok, msg = trash_item("load_room", room_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/items/add", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/items/add", methods=["POST"])
 @loads_unlocked
-def add_load_item(job_id):
-    fetch_job(job_id)
+def add_load_item(project_id):
+    fetch_project(project_id)
     db = get_db()
     room_id = request.form.get("room_id", type=int)
     room = db.execute(
-        "SELECT * FROM job_load_rooms WHERE id = ? AND job_id = ?", (room_id, job_id)
+        "SELECT * FROM project_load_rooms WHERE id = ? AND project_id = ?", (room_id, project_id)
     ).fetchone()
     if not room:
         flash("Pick a room before adding an appliance.", "error")
-        return redirect(url_for("job_loads", job_id=job_id))
+        return redirect(url_for("project_loads", project_id=project_id))
 
     catalog_id = request.form.get("catalog_id", type=int)
     if catalog_id:
@@ -5782,7 +5847,7 @@ def add_load_item(job_id):
         ).fetchone()
         if not appliance:
             flash("Appliance not found in the catalog.", "error")
-            return redirect(url_for("job_loads", job_id=job_id))
+            return redirect(url_for("project_loads", project_id=project_id))
         name = appliance["name"]
         watts = appliance["avg_w"]
         hrs = appliance["hrs_per_day"]
@@ -5794,7 +5859,7 @@ def add_load_item(job_id):
         usage_type = request.form.get("custom_usage_type", "").strip()
         if not name:
             flash("Give the custom appliance a name.", "error")
-            return redirect(url_for("job_loads", job_id=job_id))
+            return redirect(url_for("project_loads", project_id=project_id))
 
     qty = _float(request.form.get("qty"), 1) or 1
     # Allow overriding hrs/day from the form even for a catalog pick.
@@ -5803,51 +5868,51 @@ def add_load_item(job_id):
         hrs = _float(hrs_override, hrs)
 
     db.execute(
-        "INSERT INTO job_load_items"
-        " (job_id, room_id, appliance, watts, qty, hrs, usage_type)"
+        "INSERT INTO project_load_items"
+        " (project_id, room_id, appliance, watts, qty, hrs, usage_type)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (job_id, room_id, name, watts, qty, hrs, usage_type),
+        (project_id, room_id, name, watts, qty, hrs, usage_type),
     )
     db.commit()
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/edit", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/items/<int:item_id>/edit", methods=["POST"])
 @loads_unlocked
-def update_load_item(job_id, item_id):
-    fetch_job(job_id)
+def update_load_item(project_id, item_id):
+    fetch_project(project_id)
     db = get_db()
-    if db.execute("SELECT 1 FROM job_load_items WHERE id = ? AND job_id = ?",
-                  (item_id, job_id)).fetchone() is None:
+    if db.execute("SELECT 1 FROM project_load_items WHERE id = ? AND project_id = ?",
+                  (item_id, project_id)).fetchone() is None:
         abort(404)
     name = request.form.get("appliance", "").strip()
     if not name:
         flash("The appliance needs a name.", "error")
-        return redirect(url_for("job_loads", job_id=job_id, edit_item=item_id))
+        return redirect(url_for("project_loads", project_id=project_id, edit_item=item_id))
     db.execute(
-        "UPDATE job_load_items SET appliance = ?, watts = ?, qty = ?, hrs = ?,"
+        "UPDATE project_load_items SET appliance = ?, watts = ?, qty = ?, hrs = ?,"
         " usage_type = ? WHERE id = ?",
         (name, _float(request.form.get("watts")),
          _float(request.form.get("qty"), 1) or 1, _float(request.form.get("hrs")),
          request.form.get("usage_type", "").strip(), item_id))
     db.commit()
     flash("Appliance updated.")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/items/<int:item_id>/delete", methods=["POST"])
 @delete_required
 @loads_unlocked
-def delete_load_item(job_id, item_id):
+def delete_load_item(project_id, item_id):
     ok, msg = trash_item("load_item", item_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/bom/add", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/bom/add", methods=["POST"])
 @loads_unlocked
-def add_bom_item(job_id):
-    fetch_job(job_id)
+def add_bom_item(project_id):
+    fetch_project(project_id)
     db = get_db()
     component_id = request.form.get("component_id", type=int)
     qty = _float(request.form.get("qty"), 1) or 1
@@ -5858,23 +5923,23 @@ def add_bom_item(job_id):
         ).fetchone()
         if not comp:
             flash("Component not found in the catalog.", "error")
-            return redirect(url_for("job_loads", job_id=job_id))
+            return redirect(url_for("project_loads", project_id=project_id))
         # Adding the same component again increments quantity instead of
         # creating a duplicate row.
         existing = db.execute(
-            "SELECT * FROM job_bom WHERE job_id = ? AND component_id = ?",
-            (job_id, component_id),
+            "SELECT * FROM project_bom WHERE project_id = ? AND component_id = ?",
+            (project_id, component_id),
         ).fetchone()
         if existing:
-            db.execute("UPDATE job_bom SET qty = qty + ? WHERE id = ?",
+            db.execute("UPDATE project_bom SET qty = qty + ? WHERE id = ?",
                        (qty, existing["id"]))
         else:
             db.execute(
-                "INSERT INTO job_bom"
-                " (job_id, component_id, component_name, category, qty,"
+                "INSERT INTO project_bom"
+                " (project_id, component_id, component_name, category, qty,"
                 "  unit_cost, notes)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (job_id, component_id, comp["name"], comp["category"], qty,
+                (project_id, component_id, comp["name"], comp["category"], qty,
                  comp["cost"], notes),
             )
     else:
@@ -5883,26 +5948,26 @@ def add_bom_item(job_id):
         cost = request.form.get("custom_cost")
         if not name:
             flash("Give the custom component a name.", "error")
-            return redirect(url_for("job_loads", job_id=job_id))
+            return redirect(url_for("project_loads", project_id=project_id))
         db.execute(
-            "INSERT INTO job_bom"
-            " (job_id, component_id, component_name, category, qty,"
+            "INSERT INTO project_bom"
+            " (project_id, component_id, component_name, category, qty,"
             "  unit_cost, notes)"
             " VALUES (?, NULL, ?, ?, ?, ?, ?)",
-            (job_id, name, category, qty, _float(cost, None) if cost else None, notes),
+            (project_id, name, category, qty, _float(cost, None) if cost else None, notes),
         )
     db.commit()
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/bom/suggest", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/bom/suggest", methods=["POST"])
 @loads_unlocked
-def accept_suggested_component(job_id):
+def accept_suggested_component(project_id):
     """Piece 26.5: one-click accept of an auto-suggested inventory component.
     Drops the picked item into the BOM at the sized quantity, at its inventory
     cost. Inventory items aren't catalog components, so component_id stays NULL;
     accepting the same item again tops up its quantity instead of duplicating."""
-    fetch_job(job_id)
+    fetch_project(project_id)
     db = get_db()
     name = request.form.get("name", "").strip()
     category = request.form.get("category", "").strip()
@@ -5911,42 +5976,42 @@ def accept_suggested_component(job_id):
     unit_cost = _float(cost, None) if cost not in (None, "") else None
     if not name:
         flash("Nothing to add.", "error")
-        return redirect(url_for("job_loads", job_id=job_id))
+        return redirect(url_for("project_loads", project_id=project_id))
     existing = db.execute(
-        "SELECT id FROM job_bom WHERE job_id = ? AND component_id IS NULL"
+        "SELECT id FROM project_bom WHERE project_id = ? AND component_id IS NULL"
         "   AND component_name = ? AND category = ?",
-        (job_id, name, category)).fetchone()
+        (project_id, name, category)).fetchone()
     if existing:
-        db.execute("UPDATE job_bom SET qty = ? WHERE id = ?", (qty, existing["id"]))
+        db.execute("UPDATE project_bom SET qty = ? WHERE id = ?", (qty, existing["id"]))
     else:
         db.execute(
-            "INSERT INTO job_bom"
-            " (job_id, component_id, component_name, category, qty, unit_cost, notes)"
+            "INSERT INTO project_bom"
+            " (project_id, component_id, component_name, category, qty, unit_cost, notes)"
             " VALUES (?, NULL, ?, ?, ?, ?, ?)",
-            (job_id, name, category, qty, unit_cost, "Suggested from inventory"))
+            (project_id, name, category, qty, unit_cost, "Suggested from inventory"))
     db.commit()
     flash(f"Added {name} to the BOM.")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/edit", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/bom/<int:bom_id>/edit", methods=["POST"])
 @loads_unlocked
-def update_bom_item(job_id, bom_id):
-    fetch_job(job_id)
+def update_bom_item(project_id, bom_id):
+    fetch_project(project_id)
     db = get_db()
-    if db.execute("SELECT 1 FROM job_bom WHERE id = ? AND job_id = ?",
-                  (bom_id, job_id)).fetchone() is None:
+    if db.execute("SELECT 1 FROM project_bom WHERE id = ? AND project_id = ?",
+                  (bom_id, project_id)).fetchone() is None:
         abort(404)
     name = request.form.get("component_name", "").strip()
     if not name:
         flash("The component needs a name.", "error")
-        return redirect(url_for("job_loads", job_id=job_id, edit_bom=bom_id))
+        return redirect(url_for("project_loads", project_id=project_id, edit_bom=bom_id))
     cost = request.form.get("unit_cost")
     # Piece 29.6: optional per-line markup override (blank = use category default).
     mk_raw = request.form.get("markup_pct", "")
     markup = "" if mk_raw.strip() == "" else str(max(_to_float(mk_raw) or 0.0, 0.0))
     db.execute(
-        "UPDATE job_bom SET component_name = ?, category = ?, qty = ?,"
+        "UPDATE project_bom SET component_name = ?, category = ?, qty = ?,"
         " unit_cost = ?, notes = ?, markup_pct = ? WHERE id = ?",
         (name, request.form.get("category", "").strip(),
          _float(request.form.get("qty"), 1) or 1,
@@ -5954,24 +6019,24 @@ def update_bom_item(job_id, bom_id):
          request.form.get("notes", "").strip(), markup, bom_id))
     db.commit()
     flash("Component updated.")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
 @delete_required
 @loads_unlocked
-def delete_bom_item(job_id, bom_id):
+def delete_bom_item(project_id, bom_id):
     ok, msg = trash_item("bom", bom_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/sizing", methods=["POST"])
+@app.route("/projects/<int:project_id>/loads/sizing", methods=["POST"])
 @loads_unlocked
-def update_sizing(job_id):
-    fetch_job(job_id)
+def update_sizing(project_id):
+    fetch_project(project_id)
     db = get_db()
-    fetch_job_sizing(db, job_id)  # ensure the row exists
+    fetch_job_sizing(db, project_id)  # ensure the row exists
 
     ui_mode = request.form.get("ui_mode", "designer")
     if ui_mode not in UI_MODES:
@@ -5993,13 +6058,13 @@ def update_sizing(job_id):
     selected_pv_module_id = request.form.get("selected_pv_module_id", type=int) or None
 
     db.execute(
-        "UPDATE job_sizing SET ui_mode = ?, system_type = ?, sun_hours = ?,"
+        "UPDATE project_sizing SET ui_mode = ?, system_type = ?, sun_hours = ?,"
         " derate_pct = ?, autonomy_days = ?, solar_fraction_pct = ?,"
         " panel_watts = ?, dod_pct = ?, round_trip_eff_pct = ?,"
         " inverter_eff_pct = ?, max_input_v = ?, record_low_temp_f = ?,"
         " backup_daily_kwh = ?, selected_battery_id = ?, selected_pv_module_id = ?,"
         " updated_at = datetime('now')"
-        " WHERE job_id = ?",
+        " WHERE project_id = ?",
         (
             ui_mode, system_type,
             _float(request.form.get("sun_hours"), 5.5),
@@ -6012,20 +6077,20 @@ def update_sizing(job_id):
             _float(request.form.get("max_input_v"), 600),
             _float(request.form.get("record_low_temp_f"), 5),
             _float(request.form.get("backup_daily_kwh"), 0),
-            selected_battery_id, selected_pv_module_id, job_id,
+            selected_battery_id, selected_pv_module_id, project_id,
         ),
     )
     db.commit()
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/loads/mode", methods=["POST"])
-def set_ui_mode(job_id):
+@app.route("/projects/<int:project_id>/loads/mode", methods=["POST"])
+def set_ui_mode(project_id):
     # Piece 26.4: the view mode is now a per-viewer session preference (the
-    # default comes from their department), not a per-job stored value.
+    # default comes from their department), not a per-project stored value.
     ui_mode = request.form.get("ui_mode", "designer")
     session["loads_ui_mode"] = ui_mode if ui_mode in UI_MODES else "designer"
-    return redirect(url_for("job_loads", job_id=job_id))
+    return redirect(url_for("project_loads", project_id=project_id))
 
 
 # ------------------------------------------------------------------ catalog
@@ -6090,16 +6155,16 @@ def inventory_category_specs():
 STALE_MONTHS = 6
 
 
-def apply_stock_txn(db, item_id, kind, delta, job_id=None, note="", user_name=""):
+def apply_stock_txn(db, item_id, kind, delta, project_id=None, note="", user_name=""):
     """Write one stock-ledger row and update the item's cached balance. `delta`
     is the signed change to `available` (received > 0, used < 0, count = target −
     current). A 'used' movement stamps last_used = today, which the stale-stock
     notice keys off. This is the single choke-point every stock change flows
     through — the later BOM auto-deduct will call it too."""
     db.execute(
-        "INSERT INTO inventory_txns (item_id, kind, qty, job_id, note, created_by)"
+        "INSERT INTO inventory_txns (item_id, kind, qty, project_id, note, created_by)"
         " VALUES (?, ?, ?, ?, ?, ?)",
-        (item_id, kind, delta, job_id, note, user_name))
+        (item_id, kind, delta, project_id, note, user_name))
     db.execute("UPDATE inventory_items SET available = MAX(0, COALESCE(available, 0) + ?)"
                " WHERE id = ?", (delta, item_id))
     if kind == "used":
@@ -6274,15 +6339,15 @@ def inventory_item_edit(item_id):
         item["specs"] = {}
     txns = db.execute(
         "SELECT t.kind, t.qty, t.note, t.created_by, t.created_at, j.job_name"
-        " FROM inventory_txns t LEFT JOIN jobs j ON j.id = t.job_id"
+        " FROM inventory_txns t LEFT JOIN projects j ON j.id = t.project_id"
         " WHERE t.item_id = ? ORDER BY t.id DESC LIMIT 10", (item_id,)).fetchall()
-    jobs = db.execute(
-        "SELECT id, job_name FROM jobs WHERE status != 'Lost'"
+    projects = db.execute(
+        "SELECT id, job_name FROM projects WHERE status != 'Abandoned'"
         " ORDER BY id DESC").fetchall()
     return render_template(
         "inventory_item_form.html", item=item, category=item["category"],
         spec_fields=inventory_category_specs().get(item["category"], []),
-        categories=INVENTORY_CAT_ORDER, txns=txns, jobs=jobs,
+        categories=INVENTORY_CAT_ORDER, txns=txns, projects=projects,
         vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
                                " ORDER BY name").fetchall())
 
@@ -6300,7 +6365,7 @@ def inventory_item_delete(item_id):
 @admin_required
 def inventory_item_adjust(item_id):
     """Piece 24.4: record a stock movement (received / used / count correction)
-    through the ledger. 'Used' can be tied to a job and stamps last_used."""
+    through the ledger. 'Used' can be tied to a project and stamps last_used."""
     db = get_db()
     row = db.execute("SELECT available FROM inventory_items WHERE id = ?",
                      (item_id,)).fetchone()
@@ -6308,8 +6373,8 @@ def inventory_item_adjust(item_id):
         abort(404)
     kind = request.form.get("kind", "used")
     qty = int(_to_float(request.form.get("qty")) or 0)
-    job_raw = request.form.get("job_id", "")
-    job_id = int(job_raw) if job_raw.isdigit() else None
+    job_raw = request.form.get("project_id", "")
+    project_id = int(job_raw) if job_raw.isdigit() else None
     note = request.form.get("note", "").strip()
     cur = row["available"] or 0
     if kind == "received":
@@ -6324,7 +6389,7 @@ def inventory_item_adjust(item_id):
         flash("Enter a quantity to record.", "error")
         return redirect(url_for("inventory_item_edit", item_id=item_id))
     user = current_user()
-    apply_stock_txn(db, item_id, kind, delta, job_id, note,
+    apply_stock_txn(db, item_id, kind, delta, project_id, note,
                     user["name"] if user else "")
     flash({"received": "Stock received.", "used": "Usage recorded.",
            "count": "Count updated."}.get(kind, "Stock adjusted."))
@@ -6635,7 +6700,7 @@ def inventory_assets():
     q = (request.args.get("q") or "").strip()
     status = request.args.get("status") or ""
     sql = ("SELECT a.*, j.job_name FROM inventory_assets a"
-           " LEFT JOIN jobs j ON j.id = a.job_id WHERE 1=1")
+           " LEFT JOIN projects j ON j.id = a.project_id WHERE 1=1")
     params = []
     if q:
         sql += " AND (a.serial LIKE ? OR a.label LIKE ?)"
@@ -6712,7 +6777,7 @@ def _resolve_serial(db, serial):
         return None
     return db.execute(
         "SELECT a.*, j.job_name FROM inventory_assets a"
-        " LEFT JOIN jobs j ON j.id = a.job_id WHERE UPPER(a.serial) = ?",
+        " LEFT JOIN projects j ON j.id = a.project_id WHERE UPPER(a.serial) = ?",
         (serial,)).fetchone()
 
 
@@ -6723,11 +6788,11 @@ def inventory_scan():
     code = request.args.get("code", "")
     asset = _resolve_serial(db, code) if code else None
     not_found = bool(code) and asset is None
-    jobs = db.execute(
-        "SELECT id, job_name FROM jobs"
-        " WHERE status NOT IN ('Complete', 'Lost') ORDER BY id DESC").fetchall()
+    projects = db.execute(
+        "SELECT id, job_name FROM projects"
+        " WHERE status NOT IN ('Done', 'Abandoned') ORDER BY id DESC").fetchall()
     return render_template("inventory_scan.html", code=code, asset=asset,
-                           not_found=not_found, jobs=jobs)
+                           not_found=not_found, projects=projects)
 
 
 @app.route("/inventory/assets/<int:asset_id>/checkout", methods=["POST"])
@@ -6737,28 +6802,28 @@ def inventory_asset_checkout(asset_id):
                    (asset_id,)).fetchone()
     if a is None:
         abort(404)
-    job_raw = request.form.get("job_id", "")
-    job_id = int(job_raw) if job_raw.isdigit() else None
+    job_raw = request.form.get("project_id", "")
+    project_id = int(job_raw) if job_raw.isdigit() else None
     user = current_user()
     who = user["name"] if user else ""
     if a["kind"] == "consumable":
         # Scanning a consumable out records a 'used' stock movement on its item.
         qty = int(_to_float(request.form.get("qty")) or 1)
-        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), job_id,
+        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), project_id,
                         f"Scanned out ({a['serial']})", who)
         db.execute("UPDATE inventory_assets SET last_action = ?,"
                    " last_action_by = ?, last_action_at = datetime('now') WHERE id = ?",
-                   (f"Issued {qty} to job", who, asset_id))
+                   (f"Issued {qty} to project", who, asset_id))
         db.commit()
         flash(f"Recorded {qty} × {a['label']} used" +
-              (" on the job." if job_id else "."))
+              (" on the project." if project_id else "."))
     else:
-        db.execute("UPDATE inventory_assets SET status = 'Out', job_id = ?,"
+        db.execute("UPDATE inventory_assets SET status = 'Out', project_id = ?,"
                    " last_action = 'Checked out', last_action_by = ?,"
                    " last_action_at = datetime('now') WHERE id = ?",
-                   (job_id, who, asset_id))
+                   (project_id, who, asset_id))
         db.commit()
-        flash(f"{a['label']} checked out" + (" to the job." if job_id else "."))
+        flash(f"{a['label']} checked out" + (" to the project." if project_id else "."))
     return redirect(url_for("inventory_scan"))
 
 
@@ -6770,7 +6835,7 @@ def inventory_asset_checkin(asset_id):
     if a is None:
         abort(404)
     user = current_user()
-    db.execute("UPDATE inventory_assets SET status = 'In stock', job_id = NULL,"
+    db.execute("UPDATE inventory_assets SET status = 'In stock', project_id = NULL,"
                " last_action = 'Checked in', last_action_by = ?,"
                " last_action_at = datetime('now') WHERE id = ?",
                (user["name"] if user else "", asset_id))
@@ -6788,7 +6853,7 @@ def inventory_asset_retire(asset_id):
     if a is None:
         abort(404)
     user = current_user()
-    db.execute("UPDATE inventory_assets SET status = 'Retired', job_id = NULL,"
+    db.execute("UPDATE inventory_assets SET status = 'Retired', project_id = NULL,"
                " last_action = 'Retired', last_action_by = ?,"
                " last_action_at = datetime('now') WHERE id = ?",
                (user["name"] if user else "", asset_id))
@@ -7035,25 +7100,25 @@ def inventory_audit_report_csv(audit_id):
 
 @app.route("/inventory/load")
 def inventory_load():
-    """Piece 26.1: rapid truck-loading. A crew picks the job once, then scans
+    """Piece 26.1: rapid truck-loading. A crew picks the project once, then scans
     tags with the phone camera (or a scanner) to load them out — open to any
-    signed-in worker so two Installers can load the same job in parallel."""
+    signed-in worker so two Installers can load the same project in parallel."""
     db = get_db()
-    job_id = request.args.get("job_id", type=int)
-    jobs = db.execute(
-        "SELECT id, job_name FROM jobs"
-        " WHERE status NOT IN ('Complete', 'Lost') ORDER BY id DESC").fetchall()
-    job = None
-    if job_id:
-        job = db.execute("SELECT id, job_name FROM jobs WHERE id = ?",
-                         (job_id,)).fetchone()
-    return render_template("inventory_load.html", jobs=jobs, job=job)
+    project_id = request.args.get("project_id", type=int)
+    projects = db.execute(
+        "SELECT id, job_name FROM projects"
+        " WHERE status NOT IN ('Done', 'Abandoned') ORDER BY id DESC").fetchall()
+    project = None
+    if project_id:
+        project = db.execute("SELECT id, job_name FROM projects WHERE id = ?",
+                         (project_id,)).fetchone()
+    return render_template("inventory_load.html", projects=projects, project=project)
 
 
 @app.route("/api/inventory/scan-out", methods=["POST"])
 def api_scan_out():
     """JSON check-out for the continuous-scan loading flow. Non-consumables go
-    Out (to the job); consumables record a 'used' stock movement. Open to any
+    Out (to the project); consumables record a 'used' stock movement. Open to any
     signed-in worker (crews load their own trucks)."""
     user = current_user()
     if user is None:
@@ -7061,8 +7126,8 @@ def api_scan_out():
     db = get_db()
     data = request.get_json(silent=True) or request.form
     serial = (data.get("serial") or "").strip()
-    job_raw = str(data.get("job_id") or "")
-    job_id = int(job_raw) if job_raw.isdigit() else None
+    job_raw = str(data.get("project_id") or "")
+    project_id = int(job_raw) if job_raw.isdigit() else None
     qty = int(_to_float(data.get("qty")) or 1) or 1
     a = _resolve_serial(db, serial)
     if a is None:
@@ -7072,21 +7137,21 @@ def api_scan_out():
                         "error": f"{a['label']} is retired"})
     who = user["name"]
     if a["kind"] == "consumable":
-        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), job_id,
+        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), project_id,
                         f"Loaded ({a['serial']})", who)
         db.execute("UPDATE inventory_assets SET last_action = ?,"
                    " last_action_by = ?, last_action_at = datetime('now') WHERE id = ?",
-                   (f"Loaded {qty} to job", who, a["id"]))
+                   (f"Loaded {qty} to project", who, a["id"]))
         db.commit()
         return jsonify({"ok": True, "label": a["label"], "serial": a["serial"],
                         "action": f"loaded ×{qty}"})
     if a["status"] == "Out":
         return jsonify({"ok": True, "warn": True, "label": a["label"],
                         "serial": a["serial"], "action": "already out"})
-    db.execute("UPDATE inventory_assets SET status = 'Out', job_id = ?,"
+    db.execute("UPDATE inventory_assets SET status = 'Out', project_id = ?,"
                " last_action = 'Loaded', last_action_by = ?,"
                " last_action_at = datetime('now') WHERE id = ?",
-               (job_id, who, a["id"]))
+               (project_id, who, a["id"]))
     db.commit()
     return jsonify({"ok": True, "label": a["label"], "serial": a["serial"],
                     "action": "loaded"})
@@ -7232,37 +7297,37 @@ def update_component_catalog(component_id):
 @delete_required
 def delete_component_catalog(component_id):
     # Piece 17.1: blocked (with an error) if the component is still used by any
-    # job BOM line or sizing selection; otherwise it goes to the trash.
+    # project BOM line or sizing selection; otherwise it goes to the trash.
     ok, msg = trash_item("component", component_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("catalog_page"))
 
 
-@app.route("/jobs/<int:job_id>/status", methods=["POST"])
-def set_job_status(job_id):
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/status", methods=["POST"])
+def set_project_status(project_id):
+    project = fetch_project(project_id)
     status = request.form.get("status", "")
-    if status == "Lost":
+    if status == "Abandoned":
         # Piece 30.2: cancelling goes through the reason flow, never the plain
         # stage dropdown.
-        flash("Use “Cancel job” to mark a job Lost (a reason is required).", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
-    if status in JOB_STATUSES:
+        flash("Use “Cancel project” to mark a project Abandoned (a reason is required).", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    if status in PROJECT_STATUSES:
         db = get_db()
         # Flexible guardrail: if advancing to the next stage before the current
         # one is complete, allow it but note what was still pending.
-        cur = job["status"] or DEFAULT_JOB_STATUS
+        cur = project["status"] or DEFAULT_PROJECT_STATUS
         warn = ""
         if status == next_stage(cur):
             rules = db.execute("SELECT * FROM resource_rules").fetchall()
-            groups = group_rules(match_rules(job, rules))
+            groups = group_rules(match_rules(project, rules))
             filed = {f["rule_label"] for f in db.execute(
-                "SELECT rule_label FROM job_files WHERE job_id = ?", (job_id,))
+                "SELECT rule_label FROM project_files WHERE project_id = ?", (project_id,))
                 if f["rule_label"]}
-            info = stage_info(db, job, groups, filed)
+            info = stage_info(db, project, groups, filed)
             if not info["ready"]:
                 warn = " · ".join(info["pending"])
-        db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+        db.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
         # Piece 29.4: on a forward turnover, alert the stage's department(s).
         moved_forward = (status != cur and status in STAGE_ORDER
                          and (cur not in STAGE_ORDER
@@ -7270,18 +7335,18 @@ def set_job_status(job_id):
         gen_added = 0
         if moved_forward:
             actor = current_user()
-            notify_stage_turnover(db, job, status,
+            notify_stage_turnover(db, project, status,
                                   exclude_id=actor["id"] if actor else None)
-            # Piece 31.5: auto-fill and assign the tasks the job just moved into,
+            # Piece 31.5: auto-fill and assign the tasks the project just moved into,
             # so the receiving department lands with its to-dos already populated.
             # Only the entered stage's steps are generated (role-assigned, dated);
             # existing tasks are skipped, so this never duplicates the manual
-            # "Generate tasks" button. Complete has no work of its own.
-            if status != "Complete":
-                job_row = fetch_job(job_id)  # re-read so scheduling sees new status
+            # "Generate tasks" button. Done has no work of its own.
+            if status != "Done":
+                job_row = fetch_project(project_id)  # re-read so scheduling sees new status
                 install_raw = (job_row["install_date"]
                                if "install_date" in job_row.keys() else "") or ""
-                gen_added, _a, _s = _generate_job_tasks(
+                gen_added, _a, _s = _generate_project_tasks(
                     db, job_row, install_raw, only_status=status)
         db.commit()
         if warn:
@@ -7289,176 +7354,189 @@ def set_job_status(job_id):
         if gen_added:
             flash(f"Auto-added {gen_added} {status} task"
                   f"{'s' if gen_added != 1 else ''}, assigned by role where possible.")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/cancel", methods=["POST"])
-def cancel_job(job_id):
-    """Piece 30.2: cancel a job — mark it Lost with a required reason (captured
-    in the audit log), remembering the current stage so it can be reopened.
-    The job's open tasks stop showing in My Tasks / the board / Work Bag while
-    it's Lost, but nothing is deleted."""
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/cancel", methods=["POST"])
+def cancel_project(project_id):
+    """Piece 30.2: cancel a project — mark it Abandoned with a required reason
+    (captured in the audit log), remembering the current stage so it can be
+    reopened. The project's open tasks stop showing in My Tasks / the board /
+    Work Bag while it's Abandoned, but nothing is deleted."""
+    project = fetch_project(project_id)
     reason = request.form.get("reason", "").strip()
     if not reason:
-        flash("A reason is required to cancel a job.", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
-    if (job["status"] or "") == "Lost":
-        flash("This job is already cancelled.")
-        return redirect(url_for("job_detail", job_id=job_id))
+        flash("A reason is required to cancel a project.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    if (project["status"] or "") == "Abandoned":
+        flash("This project is already cancelled.")
+        return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
     who = current_user()
     db.execute(
-        "UPDATE jobs SET pre_lost_status = ?, status = 'Lost', cancel_reason = ?,"
+        "UPDATE projects SET pre_lost_status = ?, status = 'Abandoned', cancel_reason = ?,"
         " cancelled_at = ?, cancelled_by = ? WHERE id = ?",
-        (job["status"] or DEFAULT_JOB_STATUS, reason,
+        (project["status"] or DEFAULT_PROJECT_STATUS, reason,
          datetime.now().isoformat(timespec="seconds"),
-         who["name"] if who else "", job_id))
-    # Piece 30.3: tell everyone who was involved in the job up to this point.
-    recipients = job_involved_ids(db, job, exclude_id=who["id"] if who else None)
+         who["name"] if who else "", project_id))
+    # Piece 30.3: tell everyone who was involved in the project up to this point.
+    recipients = project_involved_ids(db, project, exclude_id=who["id"] if who else None)
     if recipients:
-        jobname = job["job_name"] or f"Job #{job['id']}"
+        jobname = project["job_name"] or f"Project #{project['id']}"
         notify_employees(
             db, recipients,
-            f"🚫 {jobname} was cancelled (Lost). Reason: “{reason}”.",
-            link=url_for("job_detail", job_id=job["id"]), kind="job_cancelled")
+            f"🚫 {jobname} was cancelled (Abandoned). Reason: “{reason}”.",
+            link=url_for("project_detail", project_id=project["id"]), kind="job_cancelled")
     db.commit()
-    flash(f"Job cancelled (Lost). Reason recorded: “{reason}”."
+    flash(f"Project cancelled (Abandoned). Reason recorded: “{reason}”."
           + (f" {len(recipients)} team member(s) notified." if recipients else ""))
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
-@app.route("/jobs/<int:job_id>/reopen", methods=["POST"])
-def reopen_job(job_id):
-    """Piece 30.2: reopen a cancelled job — restore the stage it was at before
-    it was marked Lost (its tasks reappear) and clear the cancellation info."""
-    job = fetch_job(job_id)
-    if (job["status"] or "") != "Lost":
-        flash("Only a cancelled (Lost) job can be reopened.", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
-    prev = (job["pre_lost_status"] if "pre_lost_status" in job.keys() else "") or ""
-    restore = prev if prev in STAGE_ORDER else DEFAULT_JOB_STATUS
+@app.route("/projects/<int:project_id>/reopen", methods=["POST"])
+def reopen_project(project_id):
+    """Piece 30.2: reopen a cancelled project — restore the stage it was at before
+    it was marked Abandoned (its tasks reappear) and clear the cancellation
+    info."""
+    project = fetch_project(project_id)
+    if (project["status"] or "") != "Abandoned":
+        flash("Only a cancelled (Abandoned) project can be reopened.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    prev = (project["pre_lost_status"] if "pre_lost_status" in project.keys() else "") or ""
+    restore = prev if prev in STAGE_ORDER else DEFAULT_PROJECT_STATUS
     db = get_db()
     db.execute(
-        "UPDATE jobs SET status = ?, cancel_reason = '', cancelled_at = '',"
-        " cancelled_by = '', pre_lost_status = '' WHERE id = ?", (restore, job_id))
+        "UPDATE projects SET status = ?, cancel_reason = '', cancelled_at = '',"
+        " cancelled_by = '', pre_lost_status = '' WHERE id = ?", (restore, project_id))
     db.commit()
-    flash(f"Job reopened at {restore}.")
-    return redirect(url_for("job_detail", job_id=job_id))
+    flash(f"Project reopened at {restore}.")
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/closed-jobs")
 @admin_required
 def closed_jobs_page():
-    """Piece 30.3: management review of closed jobs — cancelled (Lost) jobs with
-    their reason and a reopen action, plus completed jobs — the way cold leads
-    are reviewed. Gated to Admin / GM."""
+    """Piece 30.3: management review of closed projects — cancelled (Abandoned)
+    projects with their reason and a reopen action, plus completed projects — the way
+    cold leads are reviewed. Gated to Admin / GM."""
     db = get_db()
     cancelled = db.execute(
-        "SELECT * FROM jobs WHERE status = 'Lost'"
+        "SELECT * FROM projects WHERE status = 'Abandoned'"
         " ORDER BY (cancelled_at = ''), cancelled_at DESC, id DESC").fetchall()
     completed = db.execute(
-        "SELECT * FROM jobs WHERE status = 'Complete'"
+        "SELECT * FROM projects WHERE status = 'Done'"
         " ORDER BY id DESC").fetchall()
     return render_template("closed_jobs.html", cancelled=cancelled,
                            completed=completed)
 
 
-@app.route("/jobs/<int:job_id>/install-date", methods=["POST"])
-def set_install_date(job_id):
-    """Set the job's install date; in Job Prep, advancing it to Installation
-    once all permits are filed (Piece 18 — the install-date setter triggers
-    the hand-off)."""
-    job = fetch_job(job_id)
+@app.route("/projects")
+def projects_list():
+    """Piece 34: browse every active project — there's been no way to see them
+    all in one place since the client→project-list path went away with the
+    clients table (Piece 33)."""
+    db = get_db()
+    projects = db.execute(
+        "SELECT id, job_name, status, install_date FROM projects"
+        " ORDER BY (status = 'Done'), (status = 'Abandoned'), id DESC").fetchall()
+    return render_template("projects_list.html", projects=projects)
+
+
+@app.route("/projects/<int:project_id>/install-date", methods=["POST"])
+def set_install_date(project_id):
+    """Set the project's install date; in Prep, advancing it to In Progress once
+    all permits are filed (Piece 18 — the install-date setter triggers the
+    hand-off)."""
+    project = fetch_project(project_id)
     db = get_db()
     date = request.form.get("install_date", "").strip()
-    db.execute("UPDATE jobs SET install_date = ? WHERE id = ?", (date, job_id))
+    db.execute("UPDATE projects SET install_date = ? WHERE id = ?", (date, project_id))
     advanced = False
-    if date and (job["status"] or DEFAULT_JOB_STATUS) == "Job Prep":
+    if date and (project["status"] or DEFAULT_PROJECT_STATUS) == "Prep":
         rules = db.execute("SELECT * FROM resource_rules").fetchall()
-        groups = group_rules(match_rules(job, rules))
+        groups = group_rules(match_rules(project, rules))
         filed = {f["rule_label"] for f in db.execute(
-            "SELECT rule_label FROM job_files WHERE job_id = ?", (job_id,))
+            "SELECT rule_label FROM project_files WHERE project_id = ?", (project_id,))
             if f["rule_label"]}
-        if stage_info(db, job, groups, filed)["permits_ok"]:
-            db.execute("UPDATE jobs SET status = 'Installation' WHERE id = ?", (job_id,))
+        if stage_info(db, project, groups, filed)["permits_ok"]:
+            db.execute("UPDATE projects SET status = 'In Progress' WHERE id = ?", (project_id,))
             advanced = True
             actor = current_user()  # Piece 29.4: alert the Installation team
-            notify_stage_turnover(db, job, "Installation",
+            notify_stage_turnover(db, project, "In Progress",
                                   exclude_id=actor["id"] if actor else None)
     db.commit()
     if advanced:
-        flash("Install date set and all permits filed — advanced to Installation.")
+        flash("Install date set and all permits filed — advanced to In Progress.")
     elif date:
-        flash("Install date saved. Job Prep stays open until all permits are filed.")
+        flash("Install date saved. Prep stays open until all permits are filed.")
     else:
         flash("Install date cleared.")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 # ---------------------------------------------------------------- materials
-@app.route("/jobs/<int:job_id>/materials/add", methods=["POST"])
-def add_material(job_id):
-    fetch_job(job_id)
+@app.route("/projects/<int:project_id>/materials/add", methods=["POST"])
+def add_material(project_id):
+    fetch_project(project_id)
     item = request.form.get("item", "").strip()
     if not item:
         flash("Material item name is required.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
     db = get_db()
     db.execute(
-        "INSERT INTO job_materials (job_id, item, quantity, unit, supplier, notes)"
+        "INSERT INTO project_materials (project_id, item, quantity, unit, supplier, notes)"
         " VALUES (?, ?, ?, ?, ?, ?)",
-        (job_id, item,
+        (project_id, item,
          request.form.get("quantity", "").strip(),
          request.form.get("unit", "").strip(),
          request.form.get("supplier", "").strip(),
          request.form.get("notes", "").strip()),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
 
 
-@app.route("/jobs/<int:job_id>/materials/<int:material_id>/status", methods=["POST"])
-def update_material_status(job_id, material_id):
+@app.route("/projects/<int:project_id>/materials/<int:material_id>/status", methods=["POST"])
+def update_material_status(project_id, material_id):
     status = request.form.get("status", "")
     if status in MATERIAL_STATUSES:
         db = get_db()
         db.execute(
-            "UPDATE job_materials SET status = ? WHERE id = ? AND job_id = ?",
-            (status, material_id, job_id),
+            "UPDATE project_materials SET status = ? WHERE id = ? AND project_id = ?",
+            (status, material_id, project_id),
         )
         db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
 
 
-@app.route("/jobs/<int:job_id>/materials/<int:material_id>/edit", methods=["POST"])
-def edit_material(job_id, material_id):
+@app.route("/projects/<int:project_id>/materials/<int:material_id>/edit", methods=["POST"])
+def edit_material(project_id, material_id):
     item = request.form.get("item", "").strip()
     if not item:
         flash("Material item name is required.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
     db = get_db()
     db.execute(
-        "UPDATE job_materials SET item = ?, quantity = ?, unit = ?, supplier = ?,"
-        " notes = ? WHERE id = ? AND job_id = ?",
+        "UPDATE project_materials SET item = ?, quantity = ?, unit = ?, supplier = ?,"
+        " notes = ? WHERE id = ? AND project_id = ?",
         (item, request.form.get("quantity", "").strip(),
          request.form.get("unit", "").strip(),
          request.form.get("supplier", "").strip(),
-         request.form.get("notes", "").strip(), material_id, job_id))
+         request.form.get("notes", "").strip(), material_id, project_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
 
 
-@app.route("/jobs/<int:job_id>/materials/<int:material_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/materials/<int:material_id>/delete", methods=["POST"])
 @delete_required
-def delete_material(job_id, material_id):
+def delete_material(project_id, material_id):
     ok, msg = trash_item("material", material_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="materials"))
 
 
 # -------------------------------------------------------------------- tasks
-def _task_assignee(job_id):
+def _task_assignee(project_id):
     """Read and validate an employee_id from the form: blank means
     unassigned, a real employee id is kept, anything else is rejected."""
     raw = request.form.get("employee_id", "").strip()
@@ -7469,32 +7547,32 @@ def _task_assignee(job_id):
     return emp["id"] if emp else None
 
 
-@app.route("/jobs/<int:job_id>/tasks/add", methods=["POST"])
-def add_task(job_id):
-    fetch_job(job_id)
+@app.route("/projects/<int:project_id>/tasks/add", methods=["POST"])
+def add_task(project_id):
+    fetch_project(project_id)
     title = request.form.get("title", "").strip()
     if not title:
         flash("A task needs a title.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
     status = request.form.get("status", "To do")
     if status not in TASK_STATUSES:
         status = "To do"
     db = get_db()
     next_order = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
-        (job_id,)).fetchone()[0]
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_tasks WHERE project_id = ?",
+        (project_id,)).fetchone()[0]
     db.execute(
-        "INSERT INTO job_tasks"
-        " (job_id, employee_id, title, status, due_date, notes, sort_order,"
+        "INSERT INTO project_tasks"
+        " (project_id, employee_id, title, status, due_date, notes, sort_order,"
         "  completed_at, updated_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-        (job_id, _task_assignee(job_id), title, status,
+        (project_id, _task_assignee(project_id), title, status,
          request.form.get("due_date", "").strip(),
          request.form.get("notes", "").strip(), next_order,
          datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
 def best_assignee_for_lane(lane, employees):
@@ -7529,7 +7607,7 @@ def _auto_assignee(lane, employees):
 
 
 def _permit_coverage(groups, filed_labels):
-    """(filed, total) for the job's Permit-category requirements."""
+    """(filed, total) for the project's Permit-category requirements."""
     total = filed = 0
     for heading, items in groups:
         if heading.lower().startswith("permit"):
@@ -7538,31 +7616,31 @@ def _permit_coverage(groups, filed_labels):
     return filed, total
 
 
-def job_permit_coverage(db, job, rules):
-    """(filed, total) permits for a job — its resolved permit requirements vs.
+def project_permit_coverage(db, project, rules):
+    """(filed, total) permits for a project — its resolved permit requirements vs.
     the permit documents already filed. For the Permits dashboard column."""
-    groups = group_rules(match_rules(job, rules))
+    groups = group_rules(match_rules(project, rules))
     filed_labels = {f["rule_label"] for f in db.execute(
-        "SELECT rule_label FROM job_files WHERE job_id = ?", (job["id"],)).fetchall()
+        "SELECT rule_label FROM project_files WHERE project_id = ?", (project["id"],)).fetchall()
         if f["rule_label"]}
     return _permit_coverage(groups, filed_labels)
 
 
-def _loads_recorded(db, job):
-    """True once the walkthrough loads have been captured for a job — either
+def _loads_recorded(db, project):
+    """True once the walkthrough loads have been captured for a project — either
     the structured Loads & Sizing worksheet has line items, or the free-text
-    loads summary on the job is filled. Used to gate the Proposal stage."""
-    if (job["electric_loads"] if "electric_loads" in job.keys() else "").strip():
+    loads summary on the project is filled. Used to gate the Planning stage."""
+    if (project["electric_loads"] if "electric_loads" in project.keys() else "").strip():
         return True
-    n = db.execute("SELECT COUNT(*) FROM job_load_items WHERE job_id = ?",
-                   (job["id"],)).fetchone()[0]
+    n = db.execute("SELECT COUNT(*) FROM project_load_items WHERE project_id = ?",
+                   (project["id"],)).fetchone()[0]
     return n > 0
 
 
-def stage_info(db, job, groups, filed_labels):
-    """Piece 18: who governs the job's current stage (department + the head of
-    each staffing function), the exit criteria, and Job-Prep prerequisites."""
-    status = job["status"] or DEFAULT_JOB_STATUS
+def stage_info(db, project, groups, filed_labels):
+    """Piece 18: who governs the project's current stage (department + the head of
+    each staffing function), the exit criteria, and Project-Prep prerequisites."""
+    status = project["status"] or DEFAULT_PROJECT_STATUS
     spec = STATUS_OWNERSHIP.get(status, {"dept": "—", "exit": "", "team": []})
     emps = db.execute("SELECT id, name, roles FROM employees").fetchall()
     name_by_id = {e["id"]: e["name"] for e in emps}
@@ -7570,27 +7648,27 @@ def stage_info(db, job, groups, filed_labels):
             for label, lane in spec["team"]]
     filed, total = _permit_coverage(groups, filed_labels)
     permits_ok = filed >= total
-    install_date = job["install_date"] if "install_date" in job.keys() else ""
-    # Loads are collected during the walkthrough, not at job creation — the
-    # Proposal stage requires them recorded before it can advance. "Recorded"
+    install_date = project["install_date"] if "install_date" in project.keys() else ""
+    # Loads are collected during the walkthrough, not at project creation — the
+    # Planning stage requires them recorded before it can advance. "Recorded"
     # means either the structured Loads & Sizing worksheet has entries or the
     # free-text loads summary is filled.
-    loads_ok = _loads_recorded(db, job)
+    loads_ok = _loads_recorded(db, project)
     # Progress: this stage's own tasks (tagged with pipeline_status = status).
     tdone, ttotal = db.execute(
-        "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM job_tasks"
-        " WHERE job_id = ? AND pipeline_status = ?", (job["id"], status)).fetchone()
-    # Ready to advance? All this stage's tasks done; Proposal also needs the
-    # loads collected; Job Prep also needs permits filed + an install date.
+        "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM project_tasks"
+        " WHERE project_id = ? AND pipeline_status = ?", (project["id"], status)).fetchone()
+    # Ready to advance? All this stage's tasks done; Planning also needs the
+    # loads collected; Prep also needs permits filed + an install date.
     ready = (ttotal == 0 or tdone >= ttotal)
     pending = []
     if ttotal and tdone < ttotal:
         pending.append(f"{ttotal - tdone} task(s) still open")
-    if status == "Proposal":
+    if status == "Planning":
         if not loads_ok:
             pending.append("electric loads not recorded")
         ready = ready and loads_ok
-    if status == "Job Prep":
+    if status == "Prep":
         if not permits_ok:
             pending.append(f"{total - filed} permit(s) not filed")
         if not install_date:
@@ -7605,35 +7683,35 @@ def stage_info(db, job, groups, filed_labels):
     }
 
 
-def build_job_progress(db, job):
-    """Piece 20.2: compact pipeline snapshot for the per-job progress widget.
+def build_project_progress(db, project):
+    """Piece 20.2: compact pipeline snapshot for the per-project progress widget.
     Returns the ordered pipeline stages each tagged done / current / upcoming
-    (or skip when the job is Lost), an overall percent across the pipeline, and
-    the single next actionable step — so a glance at the bar tells anyone where
-    a job stands and what happens next. Safe for any job row; two small
-    queries."""
-    status = job["status"] or DEFAULT_JOB_STATUS
-    lost = (status == "Lost")
-    complete = (status == "Complete")
-    order = STAGE_ORDER  # Proposal .. Complete
+    (or skip when the project is Abandoned), an overall percent across the
+    pipeline, and the single next actionable step — so a glance at the bar
+    tells anyone where a project stands and what happens next. Safe for any project
+    row; two small queries."""
+    status = project["status"] or DEFAULT_PROJECT_STATUS
+    lost = (status == "Abandoned")
+    complete = (status == "Done")
+    order = STAGE_ORDER  # Planning .. Done
     idx = order.index(status) if status in order else 0
 
     # Current-stage task progress drives the fractional fill of the bar.
     cur_done = cur_total = 0
     if not lost and not complete:
         cur_done, cur_total = db.execute(
-            "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM job_tasks"
-            " WHERE job_id = ? AND pipeline_status = ?",
-            (job["id"], status)).fetchone()
+            "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM project_tasks"
+            " WHERE project_id = ? AND pipeline_status = ?",
+            (project["id"], status)).fetchone()
 
     # The next actionable step: lowest-sort_order task that isn't Done.
     nxt = None
     if not lost and not complete:
         nxt = db.execute(
-            "SELECT t.title, e.name AS who FROM job_tasks t"
+            "SELECT t.title, e.name AS who FROM project_tasks t"
             " LEFT JOIN employees e ON e.id = t.employee_id"
-            " WHERE t.job_id = ? AND t.status != 'Done'"
-            " ORDER BY t.sort_order, t.id LIMIT 1", (job["id"],)).fetchone()
+            " WHERE t.project_id = ? AND t.status != 'Done'"
+            " ORDER BY t.sort_order, t.id LIMIT 1", (project["id"],)).fetchone()
 
     stages = []
     for i, s in enumerate(order):
@@ -7647,8 +7725,8 @@ def build_job_progress(db, job):
             state = "upcoming"
         stages.append({"name": s, "short": STAGE_SHORT.get(s, s), "state": state})
 
-    # Overall percent: the working stages are Proposal..Closing (5 transitions
-    # before Complete); Complete is 100%. Task completion within the current
+    # Overall percent: the working stages are Planning..Wrap-up (4 transitions
+    # before Done); Done is 100%. Task completion within the current
     # stage adds a fraction so the bar creeps forward as work gets done.
     working = len(order) - 1
     if lost:
@@ -7660,9 +7738,9 @@ def build_job_progress(db, job):
         pct = int(round(min(idx + frac, working) / working * 100))
 
     if lost:
-        next_label, next_who = "Marked Lost", None
+        next_label, next_who = "Marked Abandoned", None
     elif complete:
-        next_label, next_who = "Job complete", None
+        next_label, next_who = "Project complete", None
     elif nxt:
         next_label, next_who = nxt["title"], nxt["who"]
     else:
@@ -7678,14 +7756,14 @@ def build_job_progress(db, job):
     }
 
 
-def job_billing(db, job_id, contract_amount=0.0):
-    """Piece 21: financial rollup for a job — income collected/outstanding,
+def project_billing(db, project_id, contract_amount=0.0):
+    """Piece 21: financial rollup for a project — income collected/outstanding,
     expenses, and the balance — plus the raw transactions. Drives the Finance
-    Payments table and the per-job Billing tab."""
+    Payments table and the per-project Billing tab."""
     txns = db.execute(
-        "SELECT t.*, (SELECT f.id FROM job_files f WHERE f.txn_id = t.id LIMIT 1)"
-        " AS receipt_file_id FROM job_transactions t WHERE t.job_id = ?"
-        " ORDER BY t.txn_date, t.id", (job_id,)).fetchall()
+        "SELECT t.*, (SELECT f.id FROM project_files f WHERE f.txn_id = t.id LIMIT 1)"
+        " AS receipt_file_id FROM project_transactions t WHERE t.project_id = ?"
+        " ORDER BY t.txn_date, t.id", (project_id,)).fetchall()
     def total(kind, paid=None):
         return sum(t["amount"] or 0 for t in txns if t["kind"] == kind
                    and (paid is None or (t["status"] == "Paid") == paid))
@@ -7820,7 +7898,7 @@ def assign_tasks_by_role(db):
     if employees:
         tasks = db.execute(
             "SELECT t.id, t.title, t.notes, t.employee_id, e.name AS assignee"
-            " FROM job_tasks t LEFT JOIN employees e ON e.id = t.employee_id"
+            " FROM project_tasks t LEFT JOIN employees e ON e.id = t.employee_id"
         ).fetchall()
         for t in tasks:
             if t["employee_id"] and t["assignee"] and "(sample)" not in (t["assignee"] or ""):
@@ -7829,7 +7907,7 @@ def assign_tasks_by_role(db):
             aid = best_assignee_for_lane(lane, employees) if lane else None
             if aid:
                 db.execute(
-                    "UPDATE job_tasks SET employee_id = ?,"
+                    "UPDATE project_tasks SET employee_id = ?,"
                     " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
                     (aid, t["id"]))
     db.execute("INSERT INTO meta (key, value) VALUES ('tasks_role_assigned', '1')"
@@ -7847,31 +7925,31 @@ def _status_from_title(title):
 
 def tag_tasks_by_stage(db):
     """One-time (Piece 18.1): give existing tasks a pipeline_status so current
-    jobs show stage progress. Newly generated tasks are tagged at creation."""
+    projects show stage progress. Newly generated tasks are tagged at creation."""
     if db.execute("SELECT 1 FROM meta WHERE key = 'tasks_stage_tagged'").fetchone():
         return
     db.row_factory = sqlite3.Row
-    for t in db.execute("SELECT id, title FROM job_tasks"
+    for t in db.execute("SELECT id, title FROM project_tasks"
                         " WHERE COALESCE(pipeline_status, '') = ''").fetchall():
         status = _status_from_title(t["title"])
         if status:
-            db.execute("UPDATE job_tasks SET pipeline_status = ? WHERE id = ?",
+            db.execute("UPDATE project_tasks SET pipeline_status = ? WHERE id = ?",
                        (status, t["id"]))
     db.execute("INSERT INTO meta (key, value) VALUES ('tasks_stage_tagged', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
 
 
-def _generate_job_tasks(db, job, install_date_raw="", only_status=None):
-    """Piece 31.5: core of the task auto-generator — materialize a job's process
+def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
+    """Piece 31.5: core of the task auto-generator — materialize a project's process
     steps into To-do tasks, auto-assigned by role/lane and scheduled, skipping
     steps already on the list (safe to re-run). When `only_status` is given,
     only steps tagged for that pipeline stage are inserted (used to auto-fill the
-    stage a job just entered); otherwise every actionable step is generated.
+    stage a project just entered); otherwise every actionable step is generated.
     Returns (added, assigned, scheduled). Does not commit."""
-    job_id = job["id"]
+    project_id = project["id"]
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
-    _xml, details = build_job_bpmn(job, match_rules(job, rules))
+    _xml, details = build_job_bpmn(project, match_rules(project, rules))
     employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
 
     # Actionable workflow steps in order (no start/end events, gateways, or
@@ -7896,10 +7974,10 @@ def _generate_job_tasks(db, job, install_date_raw="", only_status=None):
                        None)
 
     existing = {r["title"].strip().lower() for r in db.execute(
-        "SELECT title FROM job_tasks WHERE job_id = ?", (job_id,)).fetchall()}
+        "SELECT title FROM project_tasks WHERE project_id = ?", (project_id,)).fetchall()}
     base = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
-        (job_id,)).fetchone()[0]
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_tasks WHERE project_id = ?",
+        (project_id,)).fetchone()[0]
     # Default chain anchor: with no completed step yet, the first generated
     # step is due 7 days out, the next 7 days after that, and so on. As steps
     # actually get marked Done, set_task_status re-defaults the next open step
@@ -7926,11 +8004,11 @@ def _generate_job_tasks(db, job, install_date_raw="", only_status=None):
             due = (chain_start + timedelta(
                 days=default_seq * TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
         db.execute(
-            "INSERT INTO job_tasks"
-            " (job_id, employee_id, title, status, due_date, notes, sort_order,"
+            "INSERT INTO project_tasks"
+            " (project_id, employee_id, title, status, due_date, notes, sort_order,"
             "  pipeline_status, updated_at)"
             " VALUES (?, ?, ?, 'To do', ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (job_id, assignee, title, due, note, base + added,
+            (project_id, assignee, title, due, note, base + added,
              step.get("status", "")))
         existing.add(title.lower())
         added += 1
@@ -7941,19 +8019,19 @@ def _generate_job_tasks(db, job, install_date_raw="", only_status=None):
     return added, assigned, scheduled
 
 
-@app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
-def generate_tasks(job_id):
-    """Pre-load a job's task list from its process: run the same per-job
+@app.route("/projects/<int:project_id>/tasks/generate", methods=["POST"])
+def generate_tasks(project_id):
+    """Pre-load a project's task list from its process: run the same per-project
     BPMN the Process chart uses, then turn each workflow step (skipping
     start/end events and gateways) into a To-do task, in order. Each step
     auto-assigns to the employee whose role matches its lane (when
     unambiguous), and — if a target install date is given — gets a due date
     spaced around the Site Installation step. Skips steps already on the
-    list, so it's safe to re-run after the job's fields change."""
-    job = fetch_job(job_id)
+    list, so it's safe to re-run after the project's fields change."""
+    project = fetch_project(project_id)
     db = get_db()
     raw_install = request.form.get("install_date", "").strip()
-    added, assigned, scheduled = _generate_job_tasks(db, job, raw_install)
+    added, assigned, scheduled = _generate_project_tasks(db, project, raw_install)
     db.commit()
     if added:
         extra = []
@@ -7965,16 +8043,16 @@ def generate_tasks(job_id):
             else:
                 extra.append("default deadlines set 7 days apart")
         detail = f" ({'; '.join(extra)})" if extra else ""
-        flash(f"Added {added} task{'s' if added != 1 else ''} from the job's process{detail}.")
+        flash(f"Added {added} task{'s' if added != 1 else ''} from the project's process{detail}.")
     else:
         flash("No new tasks — the process steps are already on the list.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
-def _redefault_next_due(db, job_id, completed_date):
+def _redefault_next_due(db, project_id, completed_date):
     """A step just became Done — default the next still-open step's deadline
     to TASK_DEFAULT_LEAD_DAYS (7) days after that completion. "Next" is the
-    lowest sort_order among the job's not-Done tasks, i.e. the step that just
+    lowest sort_order among the project's not-Done tasks, i.e. the step that just
     became the one to work on. Must be called after the completed task's
     status is written so it's excluded here. Rough default; hand-editable."""
     if not completed_date:
@@ -7984,96 +8062,96 @@ def _redefault_next_due(db, job_id, completed_date):
     except ValueError:
         return
     nxt = db.execute(
-        "SELECT id FROM job_tasks WHERE job_id = ? AND status != 'Done'"
-        " ORDER BY sort_order, id LIMIT 1", (job_id,)).fetchone()
+        "SELECT id FROM project_tasks WHERE project_id = ? AND status != 'Done'"
+        " ORDER BY sort_order, id LIMIT 1", (project_id,)).fetchone()
     if nxt is None:
         return
     due = (base + timedelta(days=TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
     db.execute(
-        "UPDATE job_tasks SET due_date = ?,"
+        "UPDATE project_tasks SET due_date = ?,"
         " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
         (due, nxt["id"]))
 
 
-@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/status", methods=["POST"])
-def set_task_status(job_id, task_id):
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/status", methods=["POST"])
+def set_task_status(project_id, task_id):
     status = request.form.get("status", "")
     if status in TASK_STATUSES:
         db = get_db()
         # Stamp (or clear) the completion date as the task enters/leaves Done.
         completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
         db.execute(
-            "UPDATE job_tasks SET status = ?, completed_at = ?,"
-            " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND job_id = ?",
-            (status, completed, task_id, job_id))
+            "UPDATE project_tasks SET status = ?, completed_at = ?,"
+            " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND project_id = ?",
+            (status, completed, task_id, project_id))
         # Completing a step re-anchors the next open step's default deadline.
         if status == "Done":
-            _redefault_next_due(db, job_id, completed)
+            _redefault_next_due(db, project_id, completed)
         db.commit()
     # A dashboard passes ?next= so the status change returns there; only
     # same-site relative paths are honored.
     nxt = request.form.get("next", "")
     if nxt.startswith("/") and not nxt.startswith("//"):
         return redirect(nxt)
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
-@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/assign", methods=["POST"])
-def set_task_assignee(job_id, task_id):
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/assign", methods=["POST"])
+def set_task_assignee(project_id, task_id):
     db = get_db()
-    db.execute("UPDATE job_tasks SET employee_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
-               " WHERE id = ? AND job_id = ?",
-               (_task_assignee(job_id), task_id, job_id))
+    db.execute("UPDATE project_tasks SET employee_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+               " WHERE id = ? AND project_id = ?",
+               (_task_assignee(project_id), task_id, project_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
-@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/due", methods=["POST"])
-def set_task_due(job_id, task_id):
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/due", methods=["POST"])
+def set_task_due(project_id, task_id):
     db = get_db()
-    db.execute("UPDATE job_tasks SET due_date = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
-               " WHERE id = ? AND job_id = ?",
-               (request.form.get("due_date", "").strip(), task_id, job_id))
+    db.execute("UPDATE project_tasks SET due_date = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+               " WHERE id = ? AND project_id = ?",
+               (request.form.get("due_date", "").strip(), task_id, project_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
-@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/edit", methods=["POST"])
-def edit_task(job_id, task_id):
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/edit", methods=["POST"])
+def edit_task(project_id, task_id):
     title = request.form.get("title", "").strip()
     if not title:
         flash("A task needs a title.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
     db = get_db()
-    db.execute("UPDATE job_tasks SET title = ?, notes = ?,"
-               " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND job_id = ?",
-               (title, request.form.get("notes", "").strip(), task_id, job_id))
+    db.execute("UPDATE project_tasks SET title = ?, notes = ?,"
+               " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND project_id = ?",
+               (title, request.form.get("notes", "").strip(), task_id, project_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
-@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/delete", methods=["POST"])
 @delete_required
-def delete_task(job_id, task_id):
+def delete_task(project_id, task_id):
     ok, msg = trash_item("task", task_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
 @app.route("/tasks")
 def tasks_dashboard():
-    """Cross-job task board: every task in one place, filterable to one
+    """Cross-project task board: every task in one place, filterable to one
     person (or the unassigned pile) and to open vs. all. The home for
-    'what am I supposed to be doing' across every job."""
+    'what am I supposed to be doing' across every project."""
     db = get_db()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
     who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
     show = request.args.get("show", "open")  # open / all
-    sql = ("SELECT t.*, j.job_name, j.id AS job_id,"
-           " e.name AS assignee_name FROM job_tasks t"
-           " JOIN jobs j ON j.id = t.job_id"
+    sql = ("SELECT t.*, j.job_name, j.id AS project_id,"
+           " e.name AS assignee_name FROM project_tasks t"
+           " JOIN projects j ON j.id = t.project_id"
            " LEFT JOIN employees e ON e.id = t.employee_id"
-           " WHERE j.status != 'Lost'")   # Piece 30.2: hide cancelled-job tasks
+           " WHERE j.status != 'Abandoned'")   # Piece 30.2: hide cancelled-project tasks
     params = []
     if who == "unassigned":
         sql += " AND t.employee_id IS NULL"
@@ -8082,7 +8160,7 @@ def tasks_dashboard():
         params.append(int(who))
     if show == "open":
         sql += " AND t.status != 'Done'"
-    # Open first, then soonest due (blank dues last), then by job.
+    # Open first, then soonest due (blank dues last), then by project.
     sql += (" ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date,"
             " j.id, t.sort_order, t.id")
     tasks = db.execute(sql, params).fetchall()
@@ -8092,15 +8170,15 @@ def tasks_dashboard():
     today = datetime.now().strftime("%Y-%m-%d")
     overdue = sum(1 for t in tasks
                   if t["due_date"] and t["due_date"] < today and t["status"] != "Done")
-    # Piece 26.3: group the flat list under each job so the board reads as
-    # "everything this job needs" at a glance. Tasks arrive already sorted
+    # Piece 26.3: group the flat list under each project so the board reads as
+    # "everything this project needs" at a glance. Tasks arrive already sorted
     # (open first, soonest due), so each group keeps that order.
     grouped = {}
     for t in tasks:
-        g = grouped.get(t["job_id"])
+        g = grouped.get(t["project_id"])
         if g is None:
-            g = grouped[t["job_id"]] = {
-                "job_id": t["job_id"], "job_name": t["job_name"],
+            g = grouped[t["project_id"]] = {
+                "project_id": t["project_id"], "job_name": t["job_name"],
                 "tasks": [], "open": 0, "overdue": 0}
         g["tasks"].append(t)
         if t["status"] != "Done":
@@ -8112,7 +8190,7 @@ def tasks_dashboard():
         open_dues = [t["due_date"] for t in g["tasks"]
                      if t["status"] != "Done" and t["due_date"]]
         soonest = min(open_dues) if open_dues else "9999-99-99"
-        # Jobs with overdue work first, then by soonest due date, then name.
+        # Projects with overdue work first, then by soonest due date, then name.
         return (0 if g["overdue"] else 1, soonest, (g["job_name"] or "").lower())
     groups = sorted(grouped.values(), key=_group_key)
     return render_template(
@@ -8124,12 +8202,12 @@ def tasks_dashboard():
 # ------------------------------------------- Piece 14: Work Bag (offline sync)
 def _my_tasks_rows(db, employee_id):
     # Piece 21.6: also surface pipeline_status + install_date so the Work Bag
-    # can group tasks by job (with the install date) and show only field work.
+    # can group tasks by project (with the install date) and show only field work.
     return db.execute(
         "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
-        " t.pipeline_status, j.id AS job_id, j.job_name, j.install_date"
-        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-        " WHERE t.employee_id = ? AND j.status != 'Lost'"   # Piece 30.2
+        " t.pipeline_status, j.id AS project_id, j.job_name, j.install_date"
+        " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+        " WHERE t.employee_id = ? AND j.status != 'Abandoned'"   # Piece 30.2
         " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
         " j.id, (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
@@ -8144,20 +8222,20 @@ def _to_float(v):
 
 @app.route("/work-bag")
 def work_bag():
-    """Piece 27.7: the Work Bag landing — just the jobs in the worker's bag.
-    Tapping a job opens its own page (work_bag_job) with that job's tasks, hours,
-    receipts and notes. The job list is rendered in the browser from the same
+    """Piece 27.7: the Work Bag landing — just the projects in the worker's bag.
+    Tapping a project opens its own page (work_bag_job) with that project's tasks, hours,
+    receipts and notes. The project list is rendered in the browser from the same
     cached /api/my-tasks data, so the landing keeps working offline."""
     return render_template("work_bag.html")
 
 
-@app.route("/work-bag/job/<int:job_id>")
-def work_bag_job(job_id):
-    """A single job's Work Bag page: its field tasks plus hours / receipt / note
-    capture scoped to this job. Task data still flows through the /api endpoints
-    (offline-capable); the capture forms and recent lists are pinned to the job."""
+@app.route("/work-bag/job/<int:project_id>")
+def work_bag_job(project_id):
+    """A single project's Work Bag page: its field tasks plus hours / receipt / note
+    capture scoped to this project. Task data still flows through the /api endpoints
+    (offline-capable); the capture forms and recent lists are pinned to the project."""
     db = get_db()
-    job = fetch_job(job_id)
+    project = fetch_project(project_id)
     user = current_user()
     pay_types = payroll_pay_types(db)
     my_entries = my_notes = my_receipts = []
@@ -8165,19 +8243,19 @@ def work_bag_job(job_id):
         my_entries = db.execute(
             "SELECT te.*, pt.name AS type_name FROM time_entries te"
             " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-            " WHERE te.employee_id = ? AND te.job_id = ?"
+            " WHERE te.employee_id = ? AND te.project_id = ?"
             " ORDER BY te.work_date DESC, te.id DESC LIMIT 12",
-            (user["id"], job_id)).fetchall()
+            (user["id"], project_id)).fetchall()
         my_notes = db.execute(
-            "SELECT n.* FROM job_notes n WHERE n.author = ? AND n.job_id = ?"
-            " ORDER BY n.id DESC LIMIT 12", (user["name"], job_id)).fetchall()
+            "SELECT n.* FROM project_notes n WHERE n.author = ? AND n.project_id = ?"
+            " ORDER BY n.id DESC LIMIT 12", (user["name"], project_id)).fetchall()
         my_receipts = db.execute(
-            "SELECT t.*, f.id AS file_id FROM job_transactions t"
-            " LEFT JOIN job_files f ON f.txn_id = t.id"
-            " WHERE t.doc_type = 'Receipt' AND t.created_by = ? AND t.job_id = ?"
-            " ORDER BY t.id DESC LIMIT 10", (user["name"], job_id)).fetchall()
+            "SELECT t.*, f.id AS file_id FROM project_transactions t"
+            " LEFT JOIN project_files f ON f.txn_id = t.id"
+            " WHERE t.doc_type = 'Receipt' AND t.created_by = ? AND t.project_id = ?"
+            " ORDER BY t.id DESC LIMIT 10", (user["name"], project_id)).fetchall()
     return render_template(
-        "work_bag_job.html", job=job,
+        "work_bag_job.html", project=project,
         task_statuses=TASK_STATUSES, today=datetime.now().strftime("%Y-%m-%d"),
         pay_types=pay_types,
         pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types],
@@ -8210,12 +8288,12 @@ def api_my_tasks():
     if photo_task_ids:
         ph = ", ".join("?" * len(photo_task_ids))
         for f in db.execute(
-                f"SELECT id, job_id, task_id FROM job_files WHERE rule_label = ?"
+                f"SELECT id, project_id, task_id FROM project_files WHERE rule_label = ?"
                 f" AND task_id IN ({ph}) ORDER BY id DESC",
                 (FIELD_PHOTO_LABEL, *[str(t) for t in photo_task_ids])).fetchall():
             photos_by_task.setdefault(str(f["task_id"]), []).append(
                 {"id": f["id"],
-                 "url": url_for("view_file", job_id=f["job_id"], file_id=f["id"])})
+                 "url": url_for("view_file", project_id=f["project_id"], file_id=f["id"])})
     tasks_out = []
     for r in rows:
         d = dict(r)
@@ -8223,17 +8301,17 @@ def api_my_tasks():
         d["photos_url"] = url_for("task_photos", task_id=r["id"])
         d["photos"] = photos_by_task.get(str(r["id"]), [])
         tasks_out.append(d)
-    # Piece 22.0: the materials list for each job on the board, so installers can
-    # load the truck before they leave. Keyed by job so the Work Bag can show it
-    # under each job's banner.
+    # Piece 22.0: the materials list for each project on the board, so installers can
+    # load the truck before they leave. Keyed by project so the Work Bag can show it
+    # under each project's banner.
     materials_by_job = {}
-    job_ids = {r["job_id"] for r in rows}
+    job_ids = {r["project_id"] for r in rows}
     if job_ids:
         ph = ", ".join("?" * len(job_ids))
         for m in db.execute(
-                f"SELECT job_id, item, quantity, unit, status FROM job_materials"
-                f" WHERE job_id IN ({ph}) ORDER BY id", tuple(job_ids)).fetchall():
-            materials_by_job.setdefault(str(m["job_id"]), []).append({
+                f"SELECT project_id, item, quantity, unit, status FROM project_materials"
+                f" WHERE project_id IN ({ph}) ORDER BY id", tuple(job_ids)).fetchall():
+            materials_by_job.setdefault(str(m["project_id"]), []).append({
                 "item": m["item"], "quantity": m["quantity"], "unit": m["unit"],
                 "status": m["status"]})
     return jsonify({
@@ -8284,7 +8362,7 @@ def api_work_bag_submit():
     total_hours = 0.0
     for ch in payload.get("changes", []) or []:
         row = db.execute(
-            "SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
+            "SELECT * FROM project_tasks WHERE id = ? AND employee_id = ?",
             (ch.get("id"), user["id"])).fetchone()
         if row is None:
             continue
@@ -8368,21 +8446,21 @@ def approve_submission(sub_id):
     for it in db.execute(
             "SELECT * FROM field_submission_items WHERE submission_id = ?",
             (sub_id,)).fetchall():
-        row = db.execute("SELECT * FROM job_tasks WHERE id = ?",
+        row = db.execute("SELECT * FROM project_tasks WHERE id = ?",
                          (it["task_id"],)).fetchone()
         if row is None:
             continue
         status = it["new_status"] if it["new_status"] in TASK_STATUSES else row["status"]
         completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
         db.execute(
-            "UPDATE job_tasks SET status = ?, notes = ?, completed_at = ?,"
+            "UPDATE project_tasks SET status = ?, notes = ?, completed_at = ?,"
             " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
             (status, it["new_notes"], completed, it["task_id"]))
         # Field-approved completions re-anchor the next open step's deadline too.
         if status == "Done" and row["status"] != "Done":
-            _redefault_next_due(db, row["job_id"], completed)
+            _redefault_next_due(db, row["project_id"], completed)
         # Piece 27.9: post the task's time (split by pay type) as PENDING payroll
-        # entries for this job — Finance approves them on the payroll page. Two
+        # entries for this project — Finance approves them on the payroll page. Two
         # sign-offs: the supervisor confirms the work here, Finance approves pay.
         segments = []
         if "hours_json" in it.keys() and it["hours_json"]:
@@ -8398,10 +8476,10 @@ def approve_submission(sub_id):
             if not hrs or hrs <= 0 or pid is None:
                 continue
             db.execute(
-                "INSERT INTO time_entries (employee_id, work_date, job_id,"
+                "INSERT INTO time_entries (employee_id, work_date, project_id,"
                 " pay_type_id, hours, note, status, created_by)"
                 " VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
-                (sub["employee_id"], wd, row["job_id"], pid, round(hrs, 2),
+                (sub["employee_id"], wd, row["project_id"], pid, round(hrs, 2),
                  f"Field: {it['task_title']}", who["name"] if who else ""))
     db.execute(
         "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"
@@ -8427,19 +8505,19 @@ def reject_submission(sub_id):
 
 
 # -------------------------------------------------------------------- files
-def job_upload_dir(job_id):
-    directory = UPLOADS_DIR / f"job_{job_id}"
+def project_upload_dir(project_id):
+    directory = UPLOADS_DIR / f"job_{project_id}"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
-@app.route("/jobs/<int:job_id>/files/upload", methods=["POST"])
-def upload_file(job_id):
-    fetch_job(job_id)
+@app.route("/projects/<int:project_id>/files/upload", methods=["POST"])
+def upload_file(project_id):
+    fetch_project(project_id)
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="documents"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     db = get_db()
     label = request.form.get("rule_label", "").strip()
@@ -8450,80 +8528,80 @@ def upload_file(job_id):
         where = f"“{label}” accepts" if label else "This upload accepts"
         flash(f"{where} only: {', '.join('.' + e for e in sorted(allowed))}. "
               f"You picked .{extension or '(no extension)'}.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="documents"))
     # Piece 25.4 (revised 33): auto-rename to Job_Slot_Date.ext for recordkeeping.
     who = db.execute(
-        "SELECT job_name FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        "SELECT job_name FROM projects WHERE id = ?", (project_id,)).fetchone()
     friendly = friendly_filename(
         [who["job_name"] if who else "", label or "Document"], extension,
-        taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+        taken=_taken_names(db, "project_files", "original_name", "project_id", project_id))
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-    upload.save(job_upload_dir(job_id) / stored)
+    upload.save(project_upload_dir(project_id) / stored)
     db.execute(
-        "INSERT INTO job_files (job_id, rule_label, stored_name, original_name)"
+        "INSERT INTO project_files (project_id, rule_label, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (job_id, label, stored, friendly),
+        (project_id, label, stored, friendly),
     )
     db.commit()
     flash(f"Uploaded: {friendly}")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="documents"))
 
 
-@app.route("/jobs/<int:job_id>/files/<int:file_id>/download")
-def download_file(job_id, file_id):
+@app.route("/projects/<int:project_id>/files/<int:file_id>/download")
+def download_file(project_id, file_id):
     record = get_db().execute(
-        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
-        (file_id, job_id),
+        "SELECT * FROM project_files WHERE id = ? AND project_id = ?",
+        (file_id, project_id),
     ).fetchone()
     if record is None:
         abort(404)
     return send_from_directory(
-        job_upload_dir(job_id), record["stored_name"], as_attachment=True,
+        project_upload_dir(project_id), record["stored_name"], as_attachment=True,
         download_name=record["original_name"],
     )
 
 
-@app.route("/jobs/<int:job_id>/files/<int:file_id>/delete", methods=["POST"])
+@app.route("/projects/<int:project_id>/files/<int:file_id>/delete", methods=["POST"])
 @delete_required
-def delete_file(job_id, file_id):
-    ok, msg = trash_item("job_file", file_id)
+def delete_file(project_id, file_id):
+    ok, msg = trash_item("project_file", file_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="documents"))
 
 
-@app.route("/jobs/<int:job_id>/files/<int:file_id>/view")
-def view_file(job_id, file_id):
+@app.route("/projects/<int:project_id>/files/<int:file_id>/view")
+def view_file(project_id, file_id):
     """Serve a stored file inline (not as an attachment) — used for photo
     thumbnails and lightbox previews."""
     record = get_db().execute(
-        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
-        (file_id, job_id)).fetchone()
+        "SELECT * FROM project_files WHERE id = ? AND project_id = ?",
+        (file_id, project_id)).fetchone()
     if record is None:
         abort(404)
     return send_from_directory(
-        job_upload_dir(job_id), record["stored_name"], as_attachment=False,
+        project_upload_dir(project_id), record["stored_name"], as_attachment=False,
         download_name=record["original_name"])
 
 
 @app.route("/work-bag/tasks/<int:task_id>/photos", methods=["GET", "POST"])
 def task_photos(task_id):
     """Piece 21.7: the Work Bag's photo page for a single task — take/upload
-    job photos from a phone and see the ones already on file. Photos are stored
-    as job_files (tagged FIELD_PHOTO_LABEL + this task) so they also surface on
-    the job record."""
+    project photos from a phone and see the ones already on file. Photos are stored
+    as project_files (tagged FIELD_PHOTO_LABEL + this task) so they also surface on
+    the project record."""
     db = get_db()
     task = db.execute(
-        "SELECT t.id, t.title, j.id AS job_id, j.job_name, j.install_date"
-        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id WHERE t.id = ?",
+        "SELECT t.id, t.title, j.id AS project_id, j.job_name, j.install_date"
+        " FROM project_tasks t JOIN projects j ON j.id = t.project_id WHERE t.id = ?",
         (task_id,)).fetchone()
     if task is None:
         abort(404)
-    job_id = task["job_id"]
+    project_id = task["project_id"]
     if request.method == "POST":
         saved = 0
         # Piece 25.4 (revised 33): auto-rename photos to Job_Task_Date.ext (a
         # numeric suffix keeps a burst of shots on one day distinct).
-        taken = _taken_names(db, "job_files", "original_name", "job_id", job_id)
+        taken = _taken_names(db, "project_files", "original_name", "project_id", project_id)
         for up in request.files.getlist("photos"):
             if not up or not up.filename:
                 continue
@@ -8535,20 +8613,20 @@ def task_photos(task_id):
                 ext, taken=taken)
             taken.add(friendly)
             stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-            up.save(job_upload_dir(job_id) / stored)
+            up.save(project_upload_dir(project_id) / stored)
             db.execute(
-                "INSERT INTO job_files"
-                " (job_id, rule_label, stored_name, original_name, task_id)"
+                "INSERT INTO project_files"
+                " (project_id, rule_label, stored_name, original_name, task_id)"
                 " VALUES (?, ?, ?, ?, ?)",
-                (job_id, FIELD_PHOTO_LABEL, stored, friendly, str(task_id)))
+                (project_id, FIELD_PHOTO_LABEL, stored, friendly, str(task_id)))
             saved += 1
         db.commit()
         flash(f"Added {saved} photo(s)." if saved
               else "No photos added — choose image files.", "" if saved else "error")
         return redirect(url_for("task_photos", task_id=task_id))
     photos = db.execute(
-        "SELECT * FROM job_files WHERE job_id = ? AND rule_label = ? AND task_id = ?"
-        " ORDER BY id DESC", (job_id, FIELD_PHOTO_LABEL, str(task_id))).fetchall()
+        "SELECT * FROM project_files WHERE project_id = ? AND rule_label = ? AND task_id = ?"
+        " ORDER BY id DESC", (project_id, FIELD_PHOTO_LABEL, str(task_id))).fetchall()
     pay_types = payroll_pay_types(db)
     return render_template(
         "work_bag_photos.html", task=task, photos=photos,
@@ -8560,12 +8638,12 @@ def task_photos(task_id):
 def complete_photo_task(task_id):
     """Piece 28.0: finish a photo step from its dedicated screen — record the
     photos already uploaded plus (optionally) the time it took, submit the task
-    for the supervisor's approval, and return to the job's Work Bag page."""
+    for the supervisor's approval, and return to the project's Work Bag page."""
     user = current_user()
     if user is None:
         abort(403)
     db = get_db()
-    task = db.execute("SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
+    task = db.execute("SELECT * FROM project_tasks WHERE id = ? AND employee_id = ?",
                       (task_id, user["id"])).fetchone()
     if task is None:
         flash("That task isn't in your bag.", "error")
@@ -8576,7 +8654,7 @@ def complete_photo_task(task_id):
     work_date = request.form.get("work_date", "").strip()
     if status == "Done":
         n = db.execute(
-            "SELECT COUNT(*) AS c FROM job_files WHERE task_id = ? AND rule_label = ?",
+            "SELECT COUNT(*) AS c FROM project_files WHERE task_id = ? AND rule_label = ?",
             (str(task_id), FIELD_PHOTO_LABEL)).fetchone()["c"]
         if not n:
             flash("Take at least one photo before submitting this step as done.", "error")
@@ -8605,7 +8683,7 @@ def complete_photo_task(task_id):
     db.commit()
     flash(f"“{task['title']}” submitted for approval."
           if status == "Done" else f"“{task['title']}” flagged as blocked for the office.")
-    return redirect(url_for("work_bag_job", job_id=task["job_id"]))
+    return redirect(url_for("work_bag_job", project_id=task["project_id"]))
 
 
 @app.route("/work-bag/photos/<int:file_id>/delete", methods=["POST"])
@@ -8613,15 +8691,15 @@ def delete_task_photo(file_id):
     """Remove a field photo the crew took (scoped to FIELD_PHOTO_LABEL, so this
     can't touch requirement documents — those stay GM-only via delete_file)."""
     db = get_db()
-    rec = db.execute("SELECT * FROM job_files WHERE id = ? AND rule_label = ?",
+    rec = db.execute("SELECT * FROM project_files WHERE id = ? AND rule_label = ?",
                      (file_id, FIELD_PHOTO_LABEL)).fetchone()
     if rec is None:
         abort(404)
     try:
-        (job_upload_dir(rec["job_id"]) / rec["stored_name"]).unlink()
+        (project_upload_dir(rec["project_id"]) / rec["stored_name"]).unlink()
     except OSError:
         pass
-    db.execute("DELETE FROM job_files WHERE id = ?", (file_id,))
+    db.execute("DELETE FROM project_files WHERE id = ?", (file_id,))
     db.commit()
     flash("Photo removed.")
     back = int(rec["task_id"]) if str(rec["task_id"]).isdigit() else 0
@@ -8629,26 +8707,26 @@ def delete_task_photo(file_id):
                     else url_for("work_bag"))
 
 
-@app.route("/jobs/<int:job_id>/report")
-def job_report(job_id):
-    """Download a plain-text checklist report of the job's selections and
+@app.route("/projects/<int:project_id>/report")
+def project_report(project_id):
+    """Download a plain-text checklist report of the project's selections and
     every license, permit, and compliance item they resolve to."""
-    job = fetch_job(job_id)
+    project = fetch_project(project_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    groups = group_rules(match_rules(job, rules))
+    groups = group_rules(match_rules(project, rules))
 
     lines = [
-        f"JOB REPORT — {job['job_name'] or 'Job #' + str(job['id'])}",
-        f"Created: {job['created_at']}   Report generated: {datetime.now():%Y-%m-%d %H:%M}",
+        f"PROJECT REPORT — {project['job_name'] or 'Project #' + str(project['id'])}",
+        f"Created: {project['created_at']}   Report generated: {datetime.now():%Y-%m-%d %H:%M}",
         "=" * 64,
         "",
-        "JOB DETAILS",
+        "PROJECT DETAILS",
         "-" * 64,
     ]
-    for field in JOB_FIELDS:
-        value = str(job[field] or "").strip()
+    for field in PROJECT_FIELDS:
+        value = str(project[field] or "").strip()
         if value:
-            lines.append(f"{JOB_FIELD_LABELS[field] + ':':34}{value}")
+            lines.append(f"{PROJECT_FIELD_LABELS[field] + ':':34}{value}")
     for heading, items in groups:
         lines += ["", f"{heading.upper()} ({len(items)} ITEM{'S' if len(items) != 1 else ''})", "-" * 64]
         for rule in items:
@@ -8669,7 +8747,7 @@ def job_report(job_id):
     if not groups:
         lines += ["", "No license/permit/compliance requirements matched."]
     materials = get_db().execute(
-        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_materials WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     if materials:
         lines += ["", f"MATERIAL LIST ({len(materials)} ITEMS)", "-" * 64]
@@ -8681,7 +8759,7 @@ def job_report(job_id):
                 entry += f" ({m['supplier']})"
             lines.append(entry)
     files = get_db().execute(
-        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_files WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     if files:
         lines += ["", f"DOCUMENTS ON FILE ({len(files)})", "-" * 64]
@@ -8695,35 +8773,35 @@ def job_report(job_id):
         "\n".join(lines),
         mimetype="text/plain",
         headers={"Content-Disposition":
-                 f"attachment; filename=job_{job_id}_report.txt"},
+                 f"attachment; filename=job_{project_id}_report.txt"},
     )
 
 
-@app.route("/jobs/<int:job_id>/bpmn")
-def job_bpmn(job_id):
-    """Download this job's process as a BPMN 2.0 file: the master
-    pipeline instantiated with the job's resolved permits and variables."""
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/bpmn")
+def project_bpmn(project_id):
+    """Download this project's process as a BPMN 2.0 file: the master
+    pipeline instantiated with the project's resolved permits and variables."""
+    project = fetch_project(project_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    materials, files, materials_note, docs_note = job_progress_extras(job_id)
-    xml, _details = build_job_bpmn(job, match_rules(job, rules),
+    materials, files, materials_note, docs_note = project_progress_extras(project_id)
+    xml, _details = build_job_bpmn(project, match_rules(project, rules),
                                    materials_note, docs_note)
     return Response(
         xml, mimetype="application/xml",
         headers={"Content-Disposition":
-                 f"attachment; filename=job_{job_id}_process.bpmn"},
+                 f"attachment; filename=job_{project_id}_process.bpmn"},
     )
 
 
-def job_progress_extras(job_id):
-    """Materials and documents for a job, plus one-line summaries used
+def project_progress_extras(project_id):
+    """Materials and documents for a project, plus one-line summaries used
     as annotations in the exported BPMN."""
     db = get_db()
     materials = db.execute(
-        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_materials WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     files = db.execute(
-        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+        "SELECT * FROM project_files WHERE project_id = ? ORDER BY id", (project_id,)
     ).fetchall()
     materials_note = ""
     if materials:
@@ -8740,12 +8818,12 @@ def job_progress_extras(job_id):
     return materials, files, materials_note, docs_note
 
 
-@app.route("/jobs/<int:job_id>/bpmn/view")
-def job_bpmn_view(job_id):
-    job = fetch_job(job_id)
+@app.route("/projects/<int:project_id>/bpmn/view")
+def project_bpmn_view(project_id):
+    project = fetch_project(project_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    materials, files, materials_note, docs_note = job_progress_extras(job_id)
-    _xml, details = build_job_bpmn(job, match_rules(job, rules),
+    materials, files, materials_note, docs_note = project_progress_extras(project_id)
+    _xml, details = build_job_bpmn(project, match_rules(project, rules),
                                    materials_note, docs_note)
     steps = sorted(details.values(), key=lambda d: d["order"])
     files_by_label = {}
@@ -8756,7 +8834,7 @@ def job_bpmn_view(job_id):
     for m in materials:
         material_counts[m["status"]] = material_counts.get(m["status"], 0) + 1
     return render_template(
-        "bpmn_view.html", job=job, steps=steps,
+        "bpmn_view.html", project=project, steps=steps,
         files_by_label=files_by_label, materials=materials,
         material_counts=material_counts,
     )
@@ -8769,12 +8847,12 @@ def rules_page():
         "SELECT * FROM resource_rules"
         " ORDER BY field_name, field_value, category, label"
     ).fetchall()
-    # When reached from a job page, offer a way back to that job.
+    # When reached from a project page, offer a way back to that project.
     from_job = None
     from_job_id = request.args.get("from_job", type=int)
     if from_job_id:
         from_job = db.execute(
-            "SELECT id, job_name FROM jobs WHERE id = ?", (from_job_id,)
+            "SELECT id, job_name FROM projects WHERE id = ?", (from_job_id,)
         ).fetchone()
     # Piece 25.0: in-place edit — ?edit pre-fills the add form with that rule.
     edit_rule = None
@@ -8787,8 +8865,8 @@ def rules_page():
     return render_template(
         "rules.html", rules=rules, groups=groups, from_job=from_job,
         edit_rule=edit_rule, category_headings=CATEGORY_HEADINGS,
-        job_fields=[f for f in JOB_FIELDS if f != "job_name"],
-        field_labels=JOB_FIELD_LABELS, categories=RULE_CATEGORIES,
+        job_fields=[f for f in PROJECT_FIELDS if f != "job_name"],
+        field_labels=PROJECT_FIELD_LABELS, categories=RULE_CATEGORIES,
     )
 
 
@@ -8801,10 +8879,10 @@ def add_rule():
     from_job = request.form.get("from_job") or None
     field_name2 = request.form.get("field_name2", "").strip()
     field_value2 = request.form.get("field_value2", "").strip()
-    if field_name not in JOB_FIELDS or not field_value or not label:
-        flash("A rule needs a job field, a value to match, and a label.", "error")
+    if field_name not in PROJECT_FIELDS or not field_value or not label:
+        flash("A rule needs a project field, a value to match, and a label.", "error")
         return redirect(url_for("rules_page", from_job=from_job))
-    if field_name2 and (field_name2 not in JOB_FIELDS or not field_value2):
+    if field_name2 and (field_name2 not in PROJECT_FIELDS or not field_value2):
         flash("The second condition needs both a field and a value.", "error")
         return redirect(url_for("rules_page", from_job=from_job))
     db = get_db()
@@ -8846,10 +8924,10 @@ def update_rule(rule_id):
     from_job = request.form.get("from_job") or None
     field_name2 = request.form.get("field_name2", "").strip()
     field_value2 = request.form.get("field_value2", "").strip()
-    if field_name not in JOB_FIELDS or not field_value or not label:
-        flash("A rule needs a job field, a value to match, and a label.", "error")
+    if field_name not in PROJECT_FIELDS or not field_value or not label:
+        flash("A rule needs a project field, a value to match, and a label.", "error")
         return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
-    if field_name2 and (field_name2 not in JOB_FIELDS or not field_value2):
+    if field_name2 and (field_name2 not in PROJECT_FIELDS or not field_value2):
         flash("The second condition needs both a field and a value.", "error")
         return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
     db.execute(
@@ -8877,7 +8955,7 @@ def update_rule(rule_id):
 
 @app.route("/directory")
 def rule_directory():
-    """Read-only, browsable view of every rule, filterable by job type
+    """Read-only, browsable view of every rule, filterable by project type
     and by the product variants. No editing happens here."""
     product = request.args.get("product", "")
     connection = request.args.get("connection", "")
@@ -8909,7 +8987,7 @@ def rule_directory():
             return False
         if product:
             # At least one condition must tie the rule to the chosen
-            # job type (its product row or one of its variant fields).
+            # project type (its product row or one of its variant fields).
             tied = any(
                 (f == "products" and v.strip().lower() == product.lower())
                 or (f in VARIANT_OWNERS and VARIANT_OWNERS[f] == product)
@@ -8925,7 +9003,7 @@ def rule_directory():
     total = sum(len(items) for _, items in groups)   # consolidated requirements
     return render_template(
         "directory.html", groups=groups, total=total,
-        field_labels=JOB_FIELD_LABELS,
+        field_labels=PROJECT_FIELD_LABELS,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         property_types=PROPERTY_TYPES,
@@ -9264,12 +9342,12 @@ def employee_detail(employee_id):
     license_labels = [r["label"] for r in db.execute(
         "SELECT DISTINCT label FROM resource_rules WHERE category = 'License'"
         " ORDER BY label").fetchall()]
-    # Piece 10: everything assigned to this person, across all jobs. Open
+    # Piece 10: everything assigned to this person, across all projects. Open
     # (not-Done) tasks first, then by due date, so what's pending is on top.
     assigned_tasks = db.execute(
-        "SELECT t.*, j.job_name, j.id AS job_id"
-        " FROM job_tasks t"
-        " JOIN jobs j ON j.id = t.job_id"
+        "SELECT t.*, j.job_name, j.id AS project_id"
+        " FROM project_tasks t"
+        " JOIN projects j ON j.id = t.project_id"
         " WHERE t.employee_id = ?"
         " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
@@ -9559,7 +9637,7 @@ def delete_employee(employee_id):
                      (employee_id,)).fetchone()
     if emp is None:
         abort(404)
-    task_count = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (employee_id,))
+    task_count = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE employee_id = ?", (employee_id,))
     sub_count = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (employee_id,))
     if request.method == "POST":
         reason = request.form.get("reason", "").strip()
@@ -9572,7 +9650,7 @@ def delete_employee(employee_id):
             flash("This employee has field-work submissions on record (approved "
                   "hours) — handle those first. Removal cancelled.", "error")
             return redirect(url_for("employee_detail", employee_id=employee_id))
-        db.execute("UPDATE job_tasks SET employee_id = NULL,"
+        db.execute("UPDATE project_tasks SET employee_id = NULL,"
                    " updated_at = strftime('%Y-%m-%d %H:%M:%f','now')"
                    " WHERE employee_id = ?", (employee_id,))
         db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
@@ -9829,7 +9907,7 @@ ASSISTANT_SYSTEM_PROMPT = (
     "someone's tasks). Prefer tools over guessing, and you may "
     "call several in a row to narrow things down.\n\n"
     "Everything you can see — snapshot and tools alike — is already limited to "
-    "what THIS signed-in user is permitted to see. Never invent jobs, names, "
+    "what THIS signed-in user is permitted to see. Never invent projects, names, "
     "numbers, or dates; if the tools don't return something, say so plainly and "
     "suggest where in Compendium to look. Be concise and specific; use short lists "
     "for multiple items. You are read-only: you cannot change data, so if asked "
@@ -9882,47 +9960,47 @@ def build_assistant_snapshot(db, user):
     today = datetime.now().strftime("%Y-%m-%d")
     lines.append(f"Today is {today}.")
 
-    # Jobs by pipeline stage (visible to everyone).
+    # Projects by pipeline stage (visible to everyone).
     by_stage = db.execute(
-        "SELECT status, COUNT(*) c FROM jobs GROUP BY status").fetchall()
+        "SELECT status, COUNT(*) c FROM projects GROUP BY status").fetchall()
     if by_stage:
         counts = ", ".join(f"{r['status'] or 'Unset'}: {r['c']}" for r in by_stage)
-        lines.append(f"Jobs by stage — {counts}.")
+        lines.append(f"Projects by stage — {counts}.")
 
-    # Active (non-terminal) jobs, capped for token budget.
+    # Active (non-terminal) projects, capped for token budget.
     active = db.execute(
-        "SELECT job_name, status, install_date FROM jobs"
-        " WHERE status NOT IN ('Complete','Lost')"
+        "SELECT job_name, status, install_date FROM projects"
+        " WHERE status NOT IN ('Done','Abandoned')"
         " ORDER BY (install_date = ''), install_date, id LIMIT 40"
     ).fetchall()
     if active:
-        lines.append("Active jobs (job — stage — install date):")
+        lines.append("Active projects (project — stage — install date):")
         for r in active:
             lines.append(
-                f"  • {r['job_name'] or 'Job'} — {r['status']}"
+                f"  • {r['job_name'] or 'Project'} — {r['status']}"
                 f" — install {r['install_date'] or 'TBD'}")
 
     # This user's own open tasks.
     if user:
         mine = db.execute(
             "SELECT t.title, t.status, t.due_date, j.job_name"
-            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
+            " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Abandoned'"
             " ORDER BY (t.due_date = ''), t.due_date LIMIT 25", (user["id"],)
         ).fetchall()
         if mine:
-            lines.append(f"{name}'s open tasks (task — job — due):")
+            lines.append(f"{name}'s open tasks (task — project — due):")
             for r in mine:
                 lines.append(
-                    f"  • {r['title']} — {r['job_name'] or 'Job'}"
+                    f"  • {r['title']} — {r['job_name'] or 'Project'}"
                     f" — due {r['due_date'] or 'no date'} [{r['status']}]")
         else:
             lines.append(f"{name} has no open tasks assigned.")
 
     # Overdue open tasks across the company (status is not sensitive).
     overdue = db.execute(
-        "SELECT COUNT(*) FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-        " WHERE t.status != 'Done' AND j.status != 'Lost'"
+        "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+        " WHERE t.status != 'Done' AND j.status != 'Abandoned'"
         " AND COALESCE(t.due_date,'') != '' AND t.due_date < ?", (today,)
     ).fetchone()[0]
     lines.append(f"Company-wide overdue open tasks: {overdue}.")
@@ -9930,12 +10008,12 @@ def build_assistant_snapshot(db, user):
     # Contract totals only for pricing-cleared viewers.
     if can_price:
         row = db.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM jobs"
-            " WHERE status NOT IN ('Complete','Lost')"
+            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
+            " WHERE status NOT IN ('Done','Abandoned')"
             " AND COALESCE(contract_amount,0) > 0").fetchone()
         if row and row["n"]:
             lines.append(
-                f"Active jobs with a contract total: {row['n']}, "
+                f"Active projects with a contract total: {row['n']}, "
                 f"summing ${row['t']:,.0f}.")
 
     return "\n".join(lines)
@@ -9967,7 +10045,7 @@ def build_assistant_tools(db, user):
     exposes pay. Each returns a compact text block for the model to read."""
     can_price = _can_see_pricing()
 
-    def find_jobs(args):
+    def find_projects(args):
         text = (args.get("text") or "").strip()
         stage = (args.get("stage") or "").strip()
         county = (args.get("county") or "").strip()
@@ -9994,22 +10072,22 @@ def build_assistant_tools(db, user):
         today = datetime.now().strftime("%Y-%m-%d")
         if overdue_only:
             where.append(
-                "EXISTS (SELECT 1 FROM job_tasks t WHERE t.job_id = j.id"
+                "EXISTS (SELECT 1 FROM project_tasks t WHERE t.project_id = j.id"
                 " AND t.status != 'Done' AND COALESCE(t.due_date,'') != ''"
                 " AND t.due_date < ?)")
             params.append(today)
         rows = db.execute(
             "SELECT id, job_name, status, install_date, county,"
             "  COALESCE(contract_amount,0) AS amt"
-            " FROM jobs j"
+            " FROM projects j"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY (install_date = ''), install_date, id LIMIT ?",
             params + [limit]).fetchall()
         if not rows:
-            return "No jobs match those filters."
-        out = [f"{len(rows)} job(s):"]
+            return "No projects match those filters."
+        out = [f"{len(rows)} project(s):"]
         for r in rows:
-            line = (f"#{r['id']} {r['job_name'] or 'Job'} — "
+            line = (f"#{r['id']} {r['job_name'] or 'Project'} — "
                     f"{r['status']} — install {r['install_date'] or 'TBD'}"
                     f"{' — ' + r['county'] if r['county'] else ''}")
             if can_price and r["amt"]:
@@ -10017,33 +10095,33 @@ def build_assistant_tools(db, user):
             out.append("• " + line)
         return "\n".join(out)
 
-    def job_details(args):
-        ident = (args.get("job") or "").strip()
+    def project_details(args):
+        ident = (args.get("project") or "").strip()
         if not ident:
-            return "Provide a job name or #id."
+            return "Provide a project name or #id."
         row = None
         if ident.lstrip("#").isdigit():
             row = db.execute(
-                "SELECT * FROM jobs WHERE id = ?",
+                "SELECT * FROM projects WHERE id = ?",
                 (int(ident.lstrip("#")),)).fetchone()
         if row is None:
             row = db.execute(
-                "SELECT * FROM jobs WHERE job_name LIKE ? ORDER BY id LIMIT 1",
+                "SELECT * FROM projects WHERE job_name LIKE ? ORDER BY id LIMIT 1",
                 (f"%{ident}%",)).fetchone()
         if row is None:
-            return f"No job found matching '{ident}'."
-        out = [f"Job #{row['id']}: {row['job_name'] or 'Job'}",
+            return f"No project found matching '{ident}'."
+        out = [f"Project #{row['id']}: {row['job_name'] or 'Project'}",
                f"Stage: {row['status']}",
                f"Install date: {row['install_date'] or 'TBD'}",
                f"County: {row['county'] or '—'}",
                f"Payment: {row['cost_method'] or '—'}"]
         if can_price and (row["contract_amount"] or 0):
             out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
-        if (row["status"] or "") == "Lost" and (row["cancel_reason"] or ""):
+        if (row["status"] or "") == "Abandoned" and (row["cancel_reason"] or ""):
             out.append(f"Cancelled — reason: {row['cancel_reason']}")
         tasks = db.execute(
             "SELECT title, status, due_date, COALESCE(pipeline_status,'') AS ps"
-            " FROM job_tasks WHERE job_id = ? AND status != 'Done'"
+            " FROM project_tasks WHERE project_id = ? AND status != 'Done'"
             " ORDER BY (due_date=''), due_date LIMIT 20", (row["id"],)).fetchall()
         if tasks:
             out.append(f"Open tasks ({len(tasks)}):")
@@ -10053,13 +10131,13 @@ def build_assistant_tools(db, user):
         else:
             out.append("No open tasks.")
         mats = db.execute(
-            "SELECT status, COUNT(*) c FROM job_materials WHERE job_id = ?"
+            "SELECT status, COUNT(*) c FROM project_materials WHERE project_id = ?"
             " GROUP BY status", (row["id"],)).fetchall()
         if mats:
             out.append("Materials: " + ", ".join(f"{m['status'] or '—'}: {m['c']}"
                                                   for m in mats))
         notes = db.execute(
-            "SELECT note, created_at FROM job_notes WHERE job_id = ?"
+            "SELECT note, created_at FROM project_notes WHERE project_id = ?"
             " ORDER BY id DESC LIMIT 3", (row["id"],)).fetchall()
         if notes:
             out.append("Recent field notes:")
@@ -10075,7 +10153,7 @@ def build_assistant_tools(db, user):
             limit = min(int(args.get("limit") or 30), 60)
         except (TypeError, ValueError):
             limit = 30
-        where = ["t.status != 'Done'", "j.status != 'Lost'"]
+        where = ["t.status != 'Done'", "j.status != 'Abandoned'"]
         params = []
         if assignee.lower() in ("me", "mine") and user:
             where.append("t.employee_id = ?"); params.append(user["id"])
@@ -10090,7 +10168,7 @@ def build_assistant_tools(db, user):
         rows = db.execute(
             "SELECT t.title, t.status, t.due_date, j.job_name,"
             "  COALESCE(e.name,'') AS who"
-            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
             " LEFT JOIN employees e ON e.id = t.employee_id"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY (t.due_date=''), t.due_date LIMIT ?",
@@ -10099,7 +10177,7 @@ def build_assistant_tools(db, user):
             return "No matching open tasks."
         out = [f"{len(rows)} task(s):"]
         for r in rows:
-            out.append(f"• {r['title']} — {r['job_name'] or 'Job'}"
+            out.append(f"• {r['title']} — {r['job_name'] or 'Project'}"
                        f" — due {r['due_date'] or 'no date'}"
                        f"{' — ' + r['who'] if r['who'] else ' — unassigned'}")
         return "\n".join(out)
@@ -10116,28 +10194,28 @@ def build_assistant_tools(db, user):
             return "No staff match."
         return "\n".join(f"• {r['name']} — {r['roles'] or 'no roles'}" for r in rows)
 
-    stages = ", ".join(JOB_STATUSES)
+    stages = ", ".join(PROJECT_STATUSES)
     return [
-        {"name": "find_jobs",
-         "description": ("Search jobs with optional filters. Use for questions like "
-                         "'jobs in Job Prep', 'jobs in Bernalillo county', 'overdue "
-                         "jobs', or a job name search."),
+        {"name": "find_projects",
+         "description": ("Search projects with optional filters. Use for questions like "
+                         "'projects in Prep', 'projects in Bernalillo county', 'overdue "
+                         "projects', or a project name search."),
          "parameters": {"type": "object", "properties": {
-             "text": {"type": "string", "description": "match job name"},
+             "text": {"type": "string", "description": "match project name"},
              "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
              "county": {"type": "string", "description": "NM county name"},
-             "overdue_only": {"type": "boolean", "description": "only jobs with an overdue task"},
+             "overdue_only": {"type": "boolean", "description": "only projects with an overdue task"},
              "min_contract": {"type": "number", "description": "minimum contract total (only honored for pricing-cleared users)"},
              "limit": {"type": "integer", "description": "max rows (default 25)"}}},
-         "run": find_jobs},
-        {"name": "job_details",
-         "description": ("Full detail for one job by name or #id: stage, install "
+         "run": find_projects},
+        {"name": "project_details",
+         "description": ("Full detail for one project by name or #id: stage, install "
                          "date, payment, open tasks, materials, recent notes "
                          "(and contract total if you may see pricing)."),
          "parameters": {"type": "object", "properties": {
-             "job": {"type": "string", "description": "job name or #id"}},
-             "required": ["job"]},
-         "run": job_details},
+             "project": {"type": "string", "description": "project name or #id"}},
+             "required": ["project"]},
+         "run": project_details},
         {"name": "list_tasks",
          "description": ("List open tasks. assignee 'me' for the current user, or a "
                          "name; optional overdue_only and stage filters."),

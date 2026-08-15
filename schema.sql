@@ -1,29 +1,29 @@
--- Job Creator database schema.
+-- Household Compendium database schema.
 -- Household Compendium: Vixinman household task/project manager (Piece 2, revised).
--- Jobs (aka projects): job profiles belonging to the household (Piece 3).
+-- Projects: project profiles belonging to the household (Piece 3, renamed Piece 34).
 -- Resource rules arrive in Piece 4.
 
 -- Piece 33: household idea backlog. Replaces the old multi-client lead
 -- pipeline (clients/cold_leads/lead_followups) now that this app manages one
 -- household directly — a single table with a status field instead of moving
 -- rows between two tables. status is 'Backlog' (not started), 'Started' (a
--- real job/project now exists, see started_job_id), or 'Abandoned' (kept for
+-- real project now exists, see started_project_id), or 'Abandoned' (kept for
 -- reference, not deleted). reminder_date is an optional per-idea custom
 -- reminder on top of the monthly whole-backlog review nudge.
 CREATE TABLE IF NOT EXISTS household_ideas (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT NOT NULL,
-    notes           TEXT DEFAULT '',
-    target_date     TEXT DEFAULT '',
-    proposed_by     INTEGER REFERENCES employees(id),
-    budget_estimate REAL DEFAULT 0,
-    status          TEXT NOT NULL DEFAULT 'Backlog',
-    reminder_date   TEXT DEFAULT '',
-    reminder_sent   TEXT DEFAULT '',
-    started_job_id  INTEGER REFERENCES jobs(id),
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    started_at      TEXT DEFAULT '',
-    abandoned_at    TEXT DEFAULT ''
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    name               TEXT NOT NULL,
+    notes              TEXT DEFAULT '',
+    target_date        TEXT DEFAULT '',
+    proposed_by        INTEGER REFERENCES employees(id),
+    budget_estimate    REAL DEFAULT 0,
+    status             TEXT NOT NULL DEFAULT 'Backlog',
+    reminder_date      TEXT DEFAULT '',
+    reminder_sent      TEXT DEFAULT '',
+    started_project_id INTEGER REFERENCES projects(id),
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at         TEXT DEFAULT '',
+    abandoned_at       TEXT DEFAULT ''
 );
 
 -- Piece 17.1: soft-delete trash. A deleted row is snapshotted here (full
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS permission_grants (
     expires_on  TEXT DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS jobs (
+CREATE TABLE IF NOT EXISTS projects (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     job_name         TEXT DEFAULT '',   -- the name used in bookkeeping records
     site_location    TEXT DEFAULT '',   -- address or GPS coordinates; .kmz link planned
@@ -74,29 +74,29 @@ CREATE TABLE IF NOT EXISTS jobs (
     battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
     property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
-    status           TEXT NOT NULL DEFAULT 'Proposal',  -- Piece 16 pipeline stage
-    install_date     TEXT DEFAULT '',   -- Piece 18: set in Job Prep; gates Installation
+    status           TEXT NOT NULL DEFAULT 'Planning',  -- Piece 16 pipeline stage (renamed Piece 34)
+    install_date     TEXT DEFAULT '',   -- Piece 18: set in Prep; gates In Progress
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 4: the rules engine. Each row: "when job.<field_name> matches
--- <field_value>, this job needs <label>". Categories group the output
+-- Piece 4: the rules engine. Each row: "when project.<field_name> matches
+-- <field_value>, this project needs <label>". Categories group the output
 -- (License / Permit / Compliance / Link / Phone / Doc). match_type
 -- 'contains' is for list fields like products; 'equals' for single values.
--- Prior states of edited jobs, kept for recordkeeping. data is a JSON
--- snapshot of every job field at the moment it was replaced.
-CREATE TABLE IF NOT EXISTS job_versions (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id   INTEGER NOT NULL REFERENCES jobs(id),
+-- Prior states of edited projects, kept for recordkeeping. data is a JSON
+-- snapshot of every project field at the moment it was replaced.
+CREATE TABLE IF NOT EXISTS project_versions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
     version  INTEGER NOT NULL,
     data     TEXT NOT NULL,
     saved_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 7: material list per job.
-CREATE TABLE IF NOT EXISTS job_materials (
+-- Piece 7: material list per project.
+CREATE TABLE IF NOT EXISTS project_materials (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
     item       TEXT NOT NULL,
     quantity   TEXT DEFAULT '',
     unit       TEXT DEFAULT '',
@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS job_materials (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 7: uploaded documents per job; optionally tied to a requirement
+-- Piece 7: uploaded documents per project; optionally tied to a requirement
 -- label so the requirements panel can show filing coverage.
-CREATE TABLE IF NOT EXISTS job_files (
+CREATE TABLE IF NOT EXISTS project_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id        INTEGER NOT NULL REFERENCES jobs(id),
+    project_id    INTEGER NOT NULL REFERENCES projects(id),
     rule_label    TEXT DEFAULT '',   -- requirement this document satisfies
     stored_name   TEXT NOT NULL,     -- name on disk (uploads/job_<id>/)
     original_name TEXT NOT NULL,
@@ -118,12 +118,12 @@ CREATE TABLE IF NOT EXISTS job_files (
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 21.9: free-form field notes on a job, jotted from the Work Bag for the
--- office to read later. Each note carries its own timestamp (same clock as the
--- audit log) and author.
-CREATE TABLE IF NOT EXISTS job_notes (
+-- Piece 21.9: free-form field notes on a project, jotted from the Work Bag for
+-- the office to read later. Each note carries its own timestamp (same clock as
+-- the audit log) and author.
+CREATE TABLE IF NOT EXISTS project_notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
     note       TEXT NOT NULL DEFAULT '',
     author     TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Piece 8: the employee directory. Vixinman's household members, kept
--- separate from jobs. Each row records who the person is (name), what they do
+-- separate from projects. Each row records who the person is (name), what they do
 -- (roles — comma-separated selections), the licenses and certifications
 -- they hold, and their working schedule.
 CREATE TABLE IF NOT EXISTS employees (
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Piece 8.1: each license/certification an employee holds as its own row,
 -- so expiry can be tracked and flagged. rule_label optionally ties the
--- credential to a License requirement in resource_rules, which lets a job
+-- credential to a License requirement in resource_rules, which lets a project
 -- page show whether someone on staff holds the licenses it requires.
 CREATE TABLE IF NOT EXISTS employee_credentials (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,8 +181,8 @@ CREATE TABLE IF NOT EXISTS employee_files (
 
 -- Piece 9: Electric Loads Calculator / System Sizing, ported from the
 -- standalone loads_calculator.html field tool. Catalogs are global
--- reference data (shared across every job, editable at /catalog);
--- the survey, bill of materials, and sizing inputs are per-job.
+-- reference data (shared across every project, editable at /catalog);
+-- the survey, bill of materials, and sizing inputs are per-project.
 CREATE TABLE IF NOT EXISTS appliance_catalog (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
@@ -218,12 +218,12 @@ CREATE TABLE IF NOT EXISTS component_catalog (
     created_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- A room in a job's load survey. room_type 'scenario' marks a custom
+-- A room in a project's load survey. room_type 'scenario' marks a custom
 -- use-case room (seasonal/unusual load) that can be excluded from
 -- totals via `enabled` without deleting the data.
-CREATE TABLE IF NOT EXISTS job_load_rooms (
+CREATE TABLE IF NOT EXISTS project_load_rooms (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
     name       TEXT NOT NULL,
     room_type  TEXT NOT NULL DEFAULT 'standard',  -- standard / scenario
     enabled    INTEGER NOT NULL DEFAULT 1,
@@ -231,10 +231,10 @@ CREATE TABLE IF NOT EXISTS job_load_rooms (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS job_load_items (
+CREATE TABLE IF NOT EXISTS project_load_items (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id     INTEGER NOT NULL REFERENCES jobs(id),
-    room_id    INTEGER NOT NULL REFERENCES job_load_rooms(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    room_id    INTEGER NOT NULL REFERENCES project_load_rooms(id),
     appliance  TEXT NOT NULL,
     watts      REAL NOT NULL DEFAULT 0,
     qty        REAL NOT NULL DEFAULT 1,
@@ -243,12 +243,12 @@ CREATE TABLE IF NOT EXISTS job_load_items (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Bill of materials per job, pulled from component_catalog (component_id
+-- Bill of materials per project, pulled from component_catalog (component_id
 -- set) or hand-entered (component_id NULL). Name/category/cost are
 -- snapshotted at add-time so catalog price edits don't rewrite history.
-CREATE TABLE IF NOT EXISTS job_bom (
+CREATE TABLE IF NOT EXISTS project_bom (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id         INTEGER NOT NULL REFERENCES jobs(id),
+    project_id     INTEGER NOT NULL REFERENCES projects(id),
     component_id   INTEGER REFERENCES component_catalog(id),
     component_name TEXT NOT NULL,
     category       TEXT DEFAULT '',
@@ -258,11 +258,11 @@ CREATE TABLE IF NOT EXISTS job_bom (
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- One row per job: System Sizing inputs + the Sales/Designer view mode.
+-- One row per project: System Sizing inputs + the Sales/Designer view mode.
 -- Outputs (array kW, panel count, battery kWh, Voc string...) are
 -- computed on the fly from these inputs plus the load survey, not stored.
-CREATE TABLE IF NOT EXISTS job_sizing (
-    job_id              INTEGER PRIMARY KEY REFERENCES jobs(id),
+CREATE TABLE IF NOT EXISTS project_sizing (
+    project_id          INTEGER PRIMARY KEY REFERENCES projects(id),
     ui_mode             TEXT NOT NULL DEFAULT 'designer',  -- sales / designer
     system_type         TEXT NOT NULL DEFAULT 'custom',    -- offgrid / gridtie / custom
     sun_hours           REAL DEFAULT 5.5,
@@ -301,13 +301,13 @@ CREATE TABLE IF NOT EXISTS resource_rules (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 10: per-job tasks, each optionally assigned to an employee. The
+-- Piece 10: per-project tasks, each optionally assigned to an employee. The
 -- assignee is a nullable reference (NULL = unassigned); deleting an
 -- employee unassigns their tasks rather than removing the work. Drives the
--- "Tasks" tab on a job and the "assigned to me" list on an employee.
-CREATE TABLE IF NOT EXISTS job_tasks (
+-- "Tasks" tab on a project and the "assigned to me" list on an employee.
+CREATE TABLE IF NOT EXISTS project_tasks (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id       INTEGER NOT NULL REFERENCES jobs(id),
+    project_id   INTEGER NOT NULL REFERENCES projects(id),
     employee_id  INTEGER REFERENCES employees(id),   -- NULL = unassigned
     title        TEXT NOT NULL,
     status       TEXT NOT NULL DEFAULT 'To do',      -- To do/In progress/Blocked/Done
@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS onboarding_steps (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 -- Piece 29.6: Finance reference data. NM gross-receipts-tax rate per county
--- (jobs auto-fill their GRT rate from the install county), and the default
+-- (projects auto-fill their GRT rate from the install county), and the default
 -- equipment markup % per catalog category (turns Vixinman's cost into the customer
 -- price). Both are seeded once and edited on the Finance Settings page.
 CREATE TABLE IF NOT EXISTS county_tax_rates (
@@ -377,13 +377,13 @@ CREATE TABLE IF NOT EXISTS markup_categories (
     markup_pct REAL NOT NULL DEFAULT 0   -- percent added to unit cost
 );
 
--- Piece 29.8: Vixinman's Cost Model Defaults — the estimating template behind job
--- pricing. One row per line, grouped by section (Equipment Inventory, Equipment
--- Non-Inventory, Labor, Travel, Adders, Overhead). Equipment Inventory rows are
--- the per-category equipment markups (feed the BOM); other sections carry a
--- default qty, unit cost, unit label, and markup. Overhead rows are a percent
--- (in markup_pct) applied to the whole job subtotal. Seeded once, then edited
--- on the Cost Model page.
+-- Piece 29.8: Vixinman's Cost Model Defaults — the estimating template behind
+-- project pricing. One row per line, grouped by section (Equipment Inventory,
+-- Equipment Non-Inventory, Labor, Travel, Adders, Overhead). Equipment
+-- Inventory rows are the per-category equipment markups (feed the BOM); other
+-- sections carry a default qty, unit cost, unit label, and markup. Overhead
+-- rows are a percent (in markup_pct) applied to the whole project subtotal.
+-- Seeded once, then edited on the Cost Model page.
 CREATE TABLE IF NOT EXISTS cost_model_lines (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     section     TEXT NOT NULL,
@@ -396,14 +396,15 @@ CREATE TABLE IF NOT EXISTS cost_model_lines (
     active      TEXT NOT NULL DEFAULT '1'
 );
 
--- Piece 29.9: a job's estimate — quantities against the cost-model lines for
--- the non-equipment sections (Equipment Non-Inventory, Labor, Travel, Adders).
+-- Piece 29.9: a project's estimate — quantities against the cost-model lines
+-- for the non-equipment sections (Equipment Non-Inventory, Labor, Travel, Adders).
 -- Each row is a snapshot (item/unit/cost/markup copied from the cost model when
--- added, then adjustable for this job) with the job-specific qty. Equipment
--- Inventory is priced from the job's BOM, not here; overhead is applied on top.
-CREATE TABLE IF NOT EXISTS job_estimate_lines (
+-- added, then adjustable for this project) with the project-specific qty.
+-- Equipment Inventory is priced from the project's BOM, not here; overhead is
+-- applied on top.
+CREATE TABLE IF NOT EXISTS project_estimate_lines (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id      INTEGER NOT NULL REFERENCES jobs(id),
+    project_id  INTEGER NOT NULL REFERENCES projects(id),
     section     TEXT NOT NULL,
     item        TEXT NOT NULL,
     unit        TEXT DEFAULT '',
@@ -416,7 +417,7 @@ CREATE TABLE IF NOT EXISTS job_estimate_lines (
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.
--- Piece 30.8: "Boards" — standalone to-dos not tied to any job
+-- Piece 30.8: "Boards" — standalone to-dos not tied to any project
 -- (clean the bathroom, call X, …). Each can be assigned to a team member, carry
 -- a running notes log, and log time spent.
 CREATE TABLE IF NOT EXISTS boards (
@@ -471,7 +472,7 @@ CREATE TABLE IF NOT EXISTS employee_onboarding (
 
 -- Piece 12 (revised Piece 33): household-wide document storage — files that
 -- aren't tied to one specific project (insurance policies, warranties,
--- general correspondence), kept separate from a job's requirement documents.
+-- general correspondence), kept separate from a project's requirement documents.
 -- No owner FK needed: there's exactly one household. Files on disk in
 -- uploads/household/, only metadata here.
 CREATE TABLE IF NOT EXISTS household_files (
@@ -486,7 +487,7 @@ CREATE TABLE IF NOT EXISTS household_files (
 -- from the field, it is saved here as a PENDING copy (with their reported
 -- hours) — it does NOT change the authoritative task data or count as hours
 -- until a manager (admin) approves it. On approval the item changes are
--- applied to job_tasks and approved_hours becomes the authoritative record.
+-- applied to project_tasks and approved_hours becomes the authoritative record.
 CREATE TABLE IF NOT EXISTS field_submissions (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id    INTEGER NOT NULL REFERENCES employees(id),
@@ -503,7 +504,7 @@ CREATE TABLE IF NOT EXISTS field_submissions (
 CREATE TABLE IF NOT EXISTS field_submission_items (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     submission_id   INTEGER NOT NULL REFERENCES field_submissions(id),
-    task_id         INTEGER NOT NULL REFERENCES job_tasks(id),
+    task_id         INTEGER NOT NULL REFERENCES project_tasks(id),
     task_title      TEXT DEFAULT '',       -- snapshot, for the review screen
     new_status      TEXT DEFAULT '',
     new_notes       TEXT DEFAULT '',
@@ -522,18 +523,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
     endpoint TEXT DEFAULT '',
     method   TEXT DEFAULT '',
     path     TEXT DEFAULT '',
-    entity   TEXT DEFAULT '',       -- JSON of URL params (job_id, ...)
+    entity   TEXT DEFAULT '',       -- JSON of URL params (project_id, ...)
     detail   TEXT DEFAULT '',       -- JSON of submitted fields
     status   INTEGER,
     ip       TEXT DEFAULT ''
 );
 
--- Piece 21: per-job financial ledger — income (deposits/invoices/rebates) and
--- expenses (materials, permits, labor, subs). Drives the Finance viewport's
--- Payments table and the QuickBooks CSV export. Dollar amounts stored as REAL.
-CREATE TABLE IF NOT EXISTS job_transactions (
+-- Piece 21: per-project financial ledger — income (deposits/invoices/rebates)
+-- and expenses (materials, permits, labor, subs). Drives the Finance
+-- viewport's Payments table and the QuickBooks CSV export. Dollar amounts
+-- stored as REAL.
+CREATE TABLE IF NOT EXISTS project_transactions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id      INTEGER NOT NULL REFERENCES jobs(id),
+    project_id  INTEGER NOT NULL REFERENCES projects(id),
     kind        TEXT NOT NULL DEFAULT 'Expense',      -- Income / Expense
     category    TEXT DEFAULT '',                      -- 50% Deposit, Materials, Permit / Fees, ...
     description TEXT DEFAULT '',
@@ -570,7 +572,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL REFERENCES employees(id),
     work_date   TEXT DEFAULT '',                    -- YYYY-MM-DD
-    job_id      INTEGER,                            -- optional job the hours were on
+    project_id  INTEGER REFERENCES projects(id),    -- optional project the hours were on
     pay_type_id INTEGER REFERENCES pay_types(id),
     hours       REAL NOT NULL DEFAULT 0,
     note        TEXT DEFAULT '',
@@ -608,7 +610,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     on_po            INTEGER NOT NULL DEFAULT 0,
     active           INTEGER NOT NULL DEFAULT 1,
     status           TEXT NOT NULL DEFAULT 'Active',  -- Active / Discontinued (Piece 23.3)
-    last_used        TEXT DEFAULT '',              -- Piece 23.4: last time used on a job (for the stale-stock notice)
+    last_used        TEXT DEFAULT '',              -- Piece 23.4: last time used on a project (for the stale-stock notice)
     specs            TEXT NOT NULL DEFAULT '{}',   -- JSON of category-specific specs
     flags            TEXT DEFAULT '',              -- standardization / research notes
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -662,7 +664,7 @@ CREATE TABLE IF NOT EXISTS inventory_txns (
     item_id     INTEGER NOT NULL REFERENCES inventory_items(id),
     kind        TEXT NOT NULL DEFAULT 'used',   -- received | used | count | adjust
     qty         INTEGER NOT NULL DEFAULT 0,      -- signed delta applied to available
-    job_id      INTEGER REFERENCES jobs(id),     -- optional, for 'used' on a job
+    project_id  INTEGER REFERENCES projects(id), -- optional, for 'used' on a project
     note        TEXT DEFAULT '',
     created_by  TEXT DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
@@ -673,7 +675,7 @@ CREATE INDEX IF NOT EXISTS idx_inventory_txns_item ON inventory_txns(item_id);
 -- (unique serial) tied to an inventory entity. Non-consumables (tools / PPE /
 -- vehicles) get one tag per physical unit and track In stock / Out; consumables
 -- (components / hardware) get a SKU label whose scan-out records a 'used' stock
--- movement against the item + job (the inventory_txns ledger from Piece 24.4).
+-- movement against the item + project (the inventory_txns ledger from Piece 24.4).
 CREATE TABLE IF NOT EXISTS inventory_assets (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     serial         TEXT UNIQUE NOT NULL,
@@ -682,7 +684,7 @@ CREATE TABLE IF NOT EXISTS inventory_assets (
     entity_id      INTEGER NOT NULL,
     label          TEXT DEFAULT '',       -- cached human description for the tag
     status         TEXT NOT NULL DEFAULT 'In stock',  -- In stock | Out | Retired
-    job_id         INTEGER REFERENCES jobs(id),        -- current checkout (non-consumables)
+    project_id     INTEGER REFERENCES projects(id),   -- current checkout (non-consumables)
     registered_by  TEXT DEFAULT '',
     registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
     last_action    TEXT DEFAULT '',
