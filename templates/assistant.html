@@ -8,7 +8,7 @@
      style="padding:0.3rem 0.7rem; font-size:0.85rem;">⚙️ AI settings</a>
   {% endif %}
 </div>
-<p class="muted" style="margin-top:0;">Ask about jobs, the idea backlog, tasks and the schedule.
+<p class="muted" style="margin-top:0;">Ask about projects, the idea backlog, tasks and the schedule.
   Answers are grounded in <strong>what you're allowed to see</strong> and the assistant
   is <strong>read-only</strong> — it can explain and summarize, but never changes anything.
   Needs an internet connection.</p>
@@ -24,7 +24,7 @@
 <div class="card">
   <div id="chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
     <div class="muted" id="chat-empty" style="font-size:0.9rem;">
-      Try: “Which jobs are in Job Prep?”, “What are my open tasks?”, or
+      Try: “Which projects are in Prep?”, “What are my open tasks?”, or
       “How many overdue tasks are there?”
     </div>
   </div>
@@ -33,7 +33,7 @@
     <div class="field" style="flex:1 1 20rem;">
       <label for="question">Your question</label>
       <textarea id="question" name="question" rows="2"
-                placeholder="Ask about jobs, tasks…" required></textarea>
+                placeholder="Ask about projects, tasks…" required></textarea>
     </div>
     {% if providers|length > 1 %}
     <div class="field" style="flex:0 0 auto;">

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Work Bag · {{ job["job_name"] or "Job #" ~ job["id"] }}{% endblock %}
+{% block title %}Work Bag · {{ project["job_name"] or "Project #" ~ project["id"] }}{% endblock %}
 {% block content %}
 <div style="margin-bottom:0.7rem;">
-  <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">← All jobs</a>
+  <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">← All projects</a>
 </div>
 <div class="toolbar">
-  <h1 style="margin:0;">🏠 {{ job["job_name"] or "Job #" ~ job["id"] }}</h1>
+  <h1 style="margin:0;">🏠 {{ project["job_name"] or "Project #" ~ project["id"] }}</h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
     <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary">🚚 Load truck</a>
     <span id="net" class="badge">…</span>
@@ -13,7 +13,7 @@
   </div>
 </div>
 <p class="muted">When a task is finished, hit <strong>Submit as done</strong> and enter the
-time it took — split into pay types (regular, roof, travel…) if the job needs it. It's
+time it took — split into pay types (regular, roof, travel…) if the project needs it. It's
 held for your supervisor to approve, then Finance approves the hours for payroll.
 Everything is saved on this device, so it keeps working offline.</p>
 
@@ -31,11 +31,11 @@ Everything is saved on this device, so it keeps working offline.</p>
 
 <div class="card" id="hours">
   <h2 style="margin-top:0; font-size:1.1rem;">⏱ Log other hours</h2>
-  <p class="muted" style="margin-top:0;">For time on this job that isn't tied to a task
+  <p class="muted" style="margin-top:0;">For time on this project that isn't tied to a task
   (shop time, standby…). Task time is best logged on the task itself, above. These go to
   your supervisor to approve — overtime is figured automatically past the weekly limit.</p>
   <form method="post" action="{{ url_for('log_my_hours') }}">
-    <input type="hidden" name="job_id" value="{{ job['id'] }}">
+    <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field"><label>Date</label><input type="date" name="work_date" value="{{ today }}"></div>
       <div class="field">
@@ -55,7 +55,7 @@ Everything is saved on this device, so it keeps working offline.</p>
   </div>
 
   {% if my_entries %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours on this job</h3>
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours on this project</h3>
   <div style="overflow-x:auto;">
   <table>
     <thead><tr><th>Date</th><th>Pay type</th><th style="text-align:right;">Hours</th><th>Status</th><th></th></tr></thead>
@@ -70,7 +70,7 @@ Everything is saved on this device, so it keeps working offline.</p>
           {% if e["status"] == "Pending" %}
           <form method="post" action="{{ url_for('delete_my_hours', entry_id=e['id']) }}" style="margin:0;"
                 onsubmit="return confirm('Remove this pending time entry?');">
-            <input type="hidden" name="job_id" value="{{ job['id'] }}">
+            <input type="hidden" name="project_id" value="{{ project['id'] }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>
           {% endif %}
@@ -86,9 +86,9 @@ Everything is saved on this device, so it keeps working offline.</p>
 <div class="card" id="receipts">
   <h2 style="margin-top:0; font-size:1.1rem;">🧾 Add a receipt</h2>
   <p class="muted" style="margin-top:0;">Snap a photo of the receipt and log the
-  details — it's filed on this job and recorded as a paid expense for bookkeeping.</p>
+  details — it's filed on this project and recorded as a paid expense for bookkeeping.</p>
   <form method="post" action="{{ url_for('add_receipt') }}" enctype="multipart/form-data">
-    <input type="hidden" name="job_id" value="{{ job['id'] }}">
+    <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field wide">
         <label>Receipt photo *</label>
@@ -109,7 +109,7 @@ Everything is saved on this device, so it keeps working offline.</p>
   </form>
 
   {% if my_receipts %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent receipts on this job</h3>
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent receipts on this project</h3>
   <div style="overflow-x:auto;">
   <table>
     <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th style="text-align:right;">Total</th><th>Photo</th></tr></thead>
@@ -120,7 +120,7 @@ Everything is saved on this device, so it keeps working offline.</p>
         <td>{{ r["party"] or "—" }}{% if r["reference"] %}<br><span class="muted" style="font-size:0.78rem;">#{{ r["reference"] }}</span>{% endif %}</td>
         <td class="muted">{{ r["category"] or "—" }}</td>
         <td style="text-align:right;">${{ (r["amount"] or 0)|money }}</td>
-        <td>{% if r["file_id"] %}<a href="{{ url_for('view_file', job_id=job['id'], file_id=r['file_id']) }}" target="_blank">📎 view</a>{% else %}—{% endif %}</td>
+        <td>{% if r["file_id"] %}<a href="{{ url_for('view_file', project_id=project['id'], file_id=r['file_id']) }}" target="_blank">📎 view</a>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -130,12 +130,12 @@ Everything is saved on this device, so it keeps working offline.</p>
 </div>
 
 <div class="card" id="notes">
-  <h2 style="margin-top:0; font-size:1.1rem;">📝 Job notes</h2>
+  <h2 style="margin-top:0; font-size:1.1rem;">📝 Project notes</h2>
   <p class="muted" style="margin-top:0;">Jot anything the office should know about
-  this job — access details, a change on site, a callback needed. Each note is
+  this project — access details, a change on site, a callback needed. Each note is
   stamped with the time and your name.</p>
-  <form method="post" action="{{ url_for('add_job_note') }}">
-    <input type="hidden" name="job_id" value="{{ job['id'] }}">
+  <form method="post" action="{{ url_for('add_project_note') }}">
+    <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field wide"><label>Note *</label>
         <textarea name="note" rows="2" required placeholder="what happened / what the office should know"></textarea></div>
@@ -144,7 +144,7 @@ Everything is saved on this device, so it keeps working offline.</p>
   </form>
 
   {% if my_notes %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent notes on this job</h3>
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent notes on this project</h3>
   <div style="overflow-x:auto;">
   <table>
     <thead><tr><th>When</th><th>Note</th><th></th></tr></thead>
@@ -154,9 +154,9 @@ Everything is saved on this device, so it keeps working offline.</p>
         <td class="muted" style="white-space:nowrap; font-size:0.82rem;">{{ n["created_at"] }}</td>
         <td>{{ n["note"] }}</td>
         <td>
-          <form method="post" action="{{ url_for('delete_job_note', note_id=n['id']) }}" style="margin:0;"
+          <form method="post" action="{{ url_for('delete_project_note', note_id=n['id']) }}" style="margin:0;"
                 onsubmit="return confirm('Remove this note?');">
-            <input type="hidden" name="job_id" value="{{ job['id'] }}">
+            <input type="hidden" name="project_id" value="{{ project['id'] }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>
         </td>
@@ -171,11 +171,11 @@ Everything is saved on this device, so it keeps working offline.</p>
 <script>
 (function () {
   const LS_TASKS = "compendium_wb_tasks", LS_QUEUE = "compendium_wb_queue", LS_MATS = "compendium_wb_mats";
-  const JOB_ID = {{ job['id'] }};
+  const PROJECT_ID = {{ project['id'] }};
   const TODAY = {{ today | tojson }};
   const PAY_TYPES = {{ pay_types_js | tojson }};
   const PALETTE = ["#1a6e3c", "#b45309", "#1d4ed8", "#6d28d9", "#0891b2", "#be185d", "#4d7c0f", "#9a3412"];
-  const FIELD_STAGES = ["Installation", "Inspections"];
+  const FIELD_STAGES = ["In Progress", "Wrap-up"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let tasks = load(LS_TASKS, []);
@@ -286,7 +286,7 @@ Everything is saved on this device, so it keeps working offline.</p>
     const n = (t.photos || []).length;
     const thumbs = (t.photos || []).slice(0, 6).map(p =>
       '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' +
-      '<img src="' + esc(p.url) + '" loading="lazy" alt="job photo" ' +
+      '<img src="' + esc(p.url) + '" loading="lazy" alt="project photo" ' +
       'style="width:52px; height:52px; object-fit:cover; border-radius:5px; border:1px solid var(--border);"></a>').join("");
     if (primary) {
       wrap.innerHTML =
@@ -445,12 +445,12 @@ Everything is saved on this device, so it keeps working offline.</p>
 
   function render() {
     const list = $("#tasklist");
-    const field = tasks.filter(t => FIELD_STAGES.indexOf(t.pipeline_status) !== -1 && t.job_id === JOB_ID);
+    const field = tasks.filter(t => FIELD_STAGES.indexOf(t.pipeline_status) !== -1 && t.project_id === PROJECT_ID);
     list.innerHTML = "";
     if (!field.length) {
-      list.innerHTML = '<p class="empty">No field tasks for this job in your bag right now.</p>';
+      list.innerHTML = '<p class="empty">No field tasks for this project in your bag right now.</p>';
     } else {
-      const mats = materials[JOB_ID] || materials[String(JOB_ID)] || [];
+      const mats = materials[PROJECT_ID] || materials[String(PROJECT_ID)] || [];
       if (mats.length) {
         const md = document.createElement("details");
         md.style.cssText = "margin:0 0 0.6rem;";

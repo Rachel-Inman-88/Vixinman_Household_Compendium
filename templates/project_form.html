@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}{% if editing_job_id %}Edit job{% else %}New job{% endif %}{% endblock %}
+{% block title %}{% if editing_job_id %}Edit project{% else %}New project{% endif %}{% endblock %}
 {% block content %}
 {% if editing_job_id %}
-<h1>Edit “{{ values.get('job_name') or 'Job #' ~ editing_job_id }}”</h1>
+<h1>Edit “{{ values.get('job_name') or 'Project #' ~ editing_job_id }}”</h1>
 <p class="muted">Saving keeps the current state as a numbered version for
 recordkeeping.</p>
 {% else %}
-<h1>Create a job</h1>
+<h1>Create a project</h1>
 {% endif %}
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
-      <label for="job_name">Job name * <span class="muted">(used in bookkeeping records)</span></label>
+      <label for="job_name">Project name * <span class="muted">(used in bookkeeping records)</span></label>
       <input id="job_name" name="job_name"
              placeholder="e.g. 8kW PV + battery"
              value="{{ values.get('job_name', '') }}" required>
@@ -57,9 +57,9 @@ recordkeeping.</p>
     {% else %}
     <div class="field wide">
       <p class="muted" style="margin:0.2rem 0 0; font-size:0.85rem;">⚡ <strong>Electric loads</strong> are
-      collected during the proposal walkthrough — not at job creation. After the
-      site visit, record them on the job's <strong>Loads &amp; Sizing</strong> page;
-      the Proposal stage can't advance until they're recorded.</p>
+      collected during the proposal walkthrough — not at project creation. After the
+      site visit, record them on the project's <strong>Loads &amp; Sizing</strong> page;
+      the Planning stage can't advance until they're recorded.</p>
     </div>
     {% endif %}
     <div class="field">
@@ -157,11 +157,11 @@ recordkeeping.</p>
       <legend>🛠️ Technician Service options</legend>
       {% if existing_jobs %}
       <div class="field" style="margin-bottom: 0.7rem;">
-        <label for="prefill_select">Pre-fill from a job already on the books? (optional)</label>
+        <label for="prefill_select">Pre-fill from a project already on the books? (optional)</label>
         <select id="prefill_select">
           <option value="">— no, start a blank service ticket —</option>
           {% for ej in existing_jobs %}
-          <option value="{{ ej['id'] }}">{{ ej["job_name"] or "Job #" ~ ej["id"] }}</option>
+          <option value="{{ ej['id'] }}">{{ ej["job_name"] or "Project #" ~ ej["id"] }}</option>
           {% endfor %}
         </select>
       </div>
@@ -184,9 +184,9 @@ recordkeeping.</p>
     </fieldset>
   </div>
   <div class="actions">
-    <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create job{% endif %}</button>
+    <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create project{% endif %}</button>
     {% if editing_job_id %}
-    <a href="{{ url_for('job_detail', job_id=editing_job_id) }}" class="btn btn-secondary">Cancel</a>
+    <a href="{{ url_for('project_detail', project_id=editing_job_id) }}" class="btn btn-secondary">Cancel</a>
     {% else %}
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancel</a>
     {% endif %}
@@ -220,12 +220,12 @@ recordkeeping.</p>
     .forEach(r => r.addEventListener("change", updateSections));
   updateSections();
 
-  // Service pre-fill: reload the form seeded from the chosen existing job.
+  // Service pre-fill: reload the form seeded from the chosen existing project.
   const prefill = document.getElementById("prefill_select");
   if (prefill) {
     prefill.addEventListener("change", () => {
       if (prefill.value) {
-        window.location = "{{ url_for('new_job') }}?prefill=" + prefill.value;
+        window.location = "{{ url_for('new_project') }}?prefill=" + prefill.value;
       }
     });
   }

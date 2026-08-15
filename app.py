@@ -4441,7 +4441,7 @@ def render_project_form(values, selected, existing_jobs=False,
         jobs_on_books = get_db().execute(
             "SELECT id, job_name FROM projects ORDER BY created_at DESC").fetchall()
     return render_template(
-        "job_form.html", values=values, selected=selected,
+        "project_form.html", values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         payment_terms=PAYMENT_TERMS,                       # Piece 31.8
@@ -7439,7 +7439,8 @@ def projects_list():
     projects = db.execute(
         "SELECT id, job_name, status, install_date FROM projects"
         " ORDER BY (status = 'Done'), (status = 'Abandoned'), id DESC").fetchall()
-    return render_template("projects_list.html", projects=projects)
+    return render_template("projects_list.html", projects=projects,
+                           job_status_class=PROJECT_STATUS_CLASS)
 
 
 @app.route("/projects/<int:project_id>/install-date", methods=["POST"])

@@ -50,16 +50,16 @@
   <p class="muted" style="margin:0;">This tag is retired.</p>
 
   {% elif asset["kind"] == "consumable" %}
-  {# Consumable: scanning out records stock used against a job. #}
+  {# Consumable: scanning out records stock used against a project. #}
   <form method="post" action="{{ url_for('inventory_asset_checkout', asset_id=asset['id']) }}"
         style="display:flex; gap:0.6rem; align-items:end; flex-wrap:wrap;">
     <div class="field" style="margin:0;"><label>Quantity used</label>
       <input name="qty" type="number" min="1" step="1" value="1" style="width:6rem;"></div>
     <div class="field" style="margin:0;">
-      <label>On job (optional)</label>
-      <select name="job_id">
+      <label>On project (optional)</label>
+      <select name="project_id">
         <option value="">— none —</option>
-        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
+        {% for j in projects %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
       </select>
     </div>
     <div class="field" style="margin:0;"><button type="submit" class="btn">− Record used</button></div>
@@ -72,14 +72,14 @@
   </form>
 
   {% else %}
-  {# Non-consumable in stock: check it out to a job. #}
+  {# Non-consumable in stock: check it out to a project. #}
   <form method="post" action="{{ url_for('inventory_asset_checkout', asset_id=asset['id']) }}"
         style="display:flex; gap:0.6rem; align-items:end; flex-wrap:wrap;">
     <div class="field" style="margin:0;">
-      <label>Check out to job (optional)</label>
-      <select name="job_id">
+      <label>Check out to project (optional)</label>
+      <select name="project_id">
         <option value="">— none —</option>
-        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
+        {% for j in projects %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
       </select>
     </div>
     <div class="field" style="margin:0;"><button type="submit" class="btn">→ Check out</button></div>

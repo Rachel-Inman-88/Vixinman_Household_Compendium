@@ -68,16 +68,16 @@
         <label>Movement</label>
         <select name="kind" id="txn-kind" onchange="document.getElementById('txn-job').style.display=(this.value=='used')?'':'none';">
           <option value="received">Received (+)</option>
-          <option value="used" selected>Used on job (−)</option>
+          <option value="used" selected>Used on project (−)</option>
           <option value="count">Count correction (set on-hand)</option>
         </select>
       </div>
       <div class="field"><label>Quantity</label><input name="qty" type="number" min="0" step="1" value="1"></div>
       <div class="field" id="txn-job">
-        <label>Job (for “used”)</label>
-        <select name="job_id">
+        <label>Project (for “used”)</label>
+        <select name="project_id">
           <option value="">— none —</option>
-          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
+          {% for j in projects %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
         </select>
       </div>
       <div class="field wide"><label>Note</label><input name="note" placeholder="e.g. PO #1042, or count after warehouse audit"></div>
@@ -89,7 +89,7 @@
   <h3 style="font-size:0.9rem; margin:1rem 0 0.3rem;">Recent activity</h3>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table" style="font-size:0.82rem;">
-    <thead><tr><th>When</th><th>Movement</th><th style="text-align:right;">Qty</th><th>Job</th><th>Note</th><th>By</th></tr></thead>
+    <thead><tr><th>When</th><th>Movement</th><th style="text-align:right;">Qty</th><th>Project</th><th>Note</th><th>By</th></tr></thead>
     <tbody>
       {% for t in txns %}
       <tr>

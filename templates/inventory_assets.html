@@ -9,7 +9,7 @@
   </div>
 </div>
 <p class="muted" style="margin-top:0;">Register a physical unit to mint a serial and print its barcode.
-<strong>Consumables</strong> (components/hardware) get one SKU label — scanning it out records stock used on a job.
+<strong>Consumables</strong> (components/hardware) get one SKU label — scanning it out records stock used on a project.
 <strong>Non-consumables</strong> (tools, PPE, vehicles) get one tag per unit that toggles In&nbsp;stock ↔ Out.</p>
 
 {% if can('inventory.register') %}
@@ -59,7 +59,7 @@
   {% if assets %}
   <div style="overflow-x:auto;">
   <table class="inv-table" style="font-size:0.85rem;">
-    <thead><tr><th>Serial</th><th>Item</th><th>Kind</th><th>Status</th><th>On job</th><th>Last action</th><th></th></tr></thead>
+    <thead><tr><th>Serial</th><th>Item</th><th>Kind</th><th>Status</th><th>On project</th><th>Last action</th><th></th></tr></thead>
     <tbody>
       {% for a in assets %}
       <tr>

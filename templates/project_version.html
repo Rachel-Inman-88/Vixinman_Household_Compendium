@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}v{{ version["version"] }} — {{ job["job_name"] }}{% endblock %}
+{% block title %}v{{ version["version"] }} — {{ project["job_name"] }}{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>Version {{ version["version"] }} <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
-  <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Current job</a>
+  <h1>Version {{ version["version"] }} <span class="muted">· {{ project["job_name"] or "Project #" ~ project["id"] }}</span></h1>
+  <a href="{{ url_for('project_detail', project_id=project['id']) }}" class="btn btn-secondary">← Current project</a>
 </div>
 <div class="flash">📁 Archived snapshot from {{ version["saved_at"] }} — read-only,
-kept for recordkeeping. The live job profile may differ.</div>
+kept for recordkeeping. The live project profile may differ.</div>
 
 <div class="card">
   <dl class="profile">

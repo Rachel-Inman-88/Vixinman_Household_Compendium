@@ -3,7 +3,7 @@
 {% block content %}
 <div style="margin-bottom: 0.8rem;">
   {% if from_job %}
-  <a href="{{ url_for('job_detail', job_id=from_job['id']) }}" class="btn btn-secondary">← Back to {{ from_job["job_name"] or "Job #" ~ from_job["id"] }}</a>
+  <a href="{{ url_for('project_detail', project_id=from_job['id']) }}" class="btn btn-secondary">← Back to {{ from_job["job_name"] or "Project #" ~ from_job["id"] }}</a>
   {% else %}
   <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to dashboard</a>
   {% endif %}
@@ -12,11 +12,11 @@
   <h1 style="margin:0;">⚙️ Rules Editor</h1>
   <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse the L/P/C Directory →</a>
 </div>
-<p class="muted" style="margin-top:0.4rem;">Each rule says: when a job's
-<strong>field</strong> matches a <strong>value</strong>, the job needs this license,
-permit, compliance item, link, or phone number. Jobs read these rules live — add one
-here and every matching job page updates immediately, no code changes.
-To look up what applies to a given job type instead of editing, use the read-only
+<p class="muted" style="margin-top:0.4rem;">Each rule says: when a project's
+<strong>field</strong> matches a <strong>value</strong>, the project needs this license,
+permit, compliance item, link, or phone number. Projects read these rules live — add one
+here and every matching project page updates immediately, no code changes.
+To look up what applies to a given project type instead of editing, use the read-only
 <a href="{{ url_for('rule_directory') }}">L/P/C Directory</a>.</p>
 
 {% if can('rules.manage') %}
@@ -27,7 +27,7 @@ To look up what applies to a given job type instead of editing, use the read-onl
   <h2 style="margin-top:0; font-size:1.05rem;">{{ "Edit rule" if er else "Add a rule" }}</h2>
   <div class="form-grid">
     <div class="field">
-      <label for="field_name">When this job field…</label>
+      <label for="field_name">When this project field…</label>
       <select id="field_name" name="field_name">
         {% for f in job_fields %}
         <option value="{{ f }}" {% if er and er['field_name'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
@@ -71,7 +71,7 @@ To look up what applies to a given job type instead of editing, use the read-onl
              placeholder="only if a second field is chosen">
     </div>
     <div class="field wide">
-      <label for="label">The job needs… (label) *</label>
+      <label for="label">The project needs… (label) *</label>
       <input id="label" name="label" required value="{{ er['label'] if er else '' }}"
              placeholder="e.g. County flood-plain permit">
     </div>
@@ -122,7 +122,7 @@ To look up what applies to a given job type instead of editing, use the read-onl
     <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1.2rem 0 0.3rem;">{{ heading }} <span class="sect-count">{{ items|length }}</span></h3>
     <table>
       <thead>
-        <tr><th style="width:32%;">When the job…</th><th>Requires</th><th>Notes</th><th></th></tr>
+        <tr><th style="width:32%;">When the project…</th><th>Requires</th><th>Notes</th><th></th></tr>
       </thead>
       <tbody>
         {% for r in items %}

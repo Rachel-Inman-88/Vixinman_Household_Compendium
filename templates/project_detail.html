@@ -1,54 +1,54 @@
 {% extends "base.html" %}
 {% from "_widgets.html" import job_progress %}
-{% block title %}Job #{{ job["id"] }} — {{ job["job_name"] or "Job #" ~ job["id"] }}{% endblock %}
+{% block title %}Project #{{ project["id"] }} — {{ project["job_name"] or "Project #" ~ project["id"] }}{% endblock %}
 {% block content %}
 {# Piece 28.3: the pipeline stage shows as plain text with an ✎ that reveals the
-   stage dropdown in place — used in the stage panel (and the Complete/Lost card). #}
+   stage dropdown in place — used in the stage panel (and the Done/Abandoned card). #}
 {% macro stage_editor() %}
 <span class="stage-editor" style="display:inline-flex; align-items:center; gap:0.35rem; vertical-align:middle;">
-  <strong class="stage-label">{{ job["status"] or "Proposal" }}</strong>
+  <strong class="stage-label">{{ project["status"] or "Planning" }}</strong>
   <a class="stage-pencil" title="Change the stage" role="button" tabindex="0"
      style="cursor:pointer; text-decoration:none; font-size:0.9rem;"
      onclick="var w=this.closest('.stage-editor'); w.querySelector('.stage-label').style.display='none'; this.style.display='none'; w.querySelector('form').style.display='inline-flex';">✎</a>
-  <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="display:none; margin:0;">
+  <form method="post" action="{{ url_for('set_project_status', project_id=project['id']) }}" style="display:none; margin:0;">
     <select name="status" onchange="this.form.submit()" style="padding:0.25rem;">
-      {% for s in job_statuses if s != 'Lost' %}
-      <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
+      {% for s in job_statuses if s != 'Abandoned' %}
+      <option value="{{ s }}" {% if (project["status"] or "Planning") == s %}selected{% endif %}>{{ s }}</option>
       {% endfor %}
     </select>
   </form>
 </span>
 {% endmacro %}
-<h1 style="margin-bottom:0.7rem;">{{ job["job_name"] or "Job #" ~ job["id"] }}</h1>
+<h1 style="margin-bottom:0.7rem;">{{ project["job_name"] or "Project #" ~ project["id"] }}</h1>
 
 <div class="card" style="padding:0.9rem 1.1rem;">
   {{ job_progress(progress) }}
 </div>
 
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
-  <a href="{{ url_for('job_calendar_ics', job_id=job['id']) }}" class="btn btn-secondary"
-     title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
-  <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
-  <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
+  <a href="{{ url_for('project_calendar_ics', project_id=project['id']) }}" class="btn btn-secondary"
+     title="Download this project's due dates + install date to import into your calendar">📅 Calendar</a>
+  <a href="{{ url_for('project_bpmn_view', project_id=project['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
+  <a href="{{ url_for('edit_project', project_id=project['id']) }}" class="btn">✎ Edit project</a>
   <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"
      style="margin-left:auto;">← Dashboard</a>
 </div>
 
-{% if job["status"] == "Lost" %}
-{# Piece 30.2: a cancelled job — reason, who/when, and a Reopen action. #}
+{% if project["status"] == "Abandoned" %}
+{# Piece 30.2: a cancelled project — reason, who/when, and a Reopen action. #}
 <div class="card" style="border-left:4px solid #9a1c1c; background:#fbe9e9; padding:0.9rem 1.1rem;">
   <div class="toolbar" style="margin-bottom:0.35rem;">
-    <h2 style="margin:0; font-size:1.05rem; color:#9a1c1c;">🚫 Job cancelled (Lost)</h2>
-    <form method="post" action="{{ url_for('reopen_job', job_id=job['id']) }}" style="margin:0;"
-          onsubmit="return confirm('Reopen this job? Its tasks will show again.');">
-      <button type="submit" class="btn">↩ Reopen job</button>
+    <h2 style="margin:0; font-size:1.05rem; color:#9a1c1c;">🚫 Project cancelled (Abandoned)</h2>
+    <form method="post" action="{{ url_for('reopen_project', project_id=project['id']) }}" style="margin:0;"
+          onsubmit="return confirm('Reopen this project? Its tasks will show again.');">
+      <button type="submit" class="btn">↩ Reopen project</button>
     </form>
   </div>
-  {% if job["cancel_reason"] %}<p style="margin:0.2rem 0;">Reason: “{{ job["cancel_reason"] }}”</p>{% endif %}
+  {% if project["cancel_reason"] %}<p style="margin:0.2rem 0;">Reason: “{{ project["cancel_reason"] }}”</p>{% endif %}
   <p class="muted" style="margin:0; font-size:0.85rem;">
-    {% if job["cancelled_by"] %}Cancelled by {{ job["cancelled_by"] }}{% endif %}
-    {% if job["cancelled_at"] %} on {{ job["cancelled_at"][:16].replace("T"," ") }}{% endif %}
-    {% if job["pre_lost_status"] %} · reopens at {{ job["pre_lost_status"] }}{% endif %}.
+    {% if project["cancelled_by"] %}Cancelled by {{ project["cancelled_by"] }}{% endif %}
+    {% if project["cancelled_at"] %} on {{ project["cancelled_at"][:16].replace("T"," ") }}{% endif %}
+    {% if project["pre_lost_status"] %} · reopens at {{ project["pre_lost_status"] }}{% endif %}.
     Its open tasks are hidden from My Tasks, the task board and the Work Bag while it's cancelled.</p>
 </div>
 {% else %}
@@ -71,29 +71,29 @@
       {{ "✅" if stage.tasks_done >= stage.tasks_total else "⬜" }} Stage tasks
       <strong>{{ stage.tasks_done }}/{{ stage.tasks_total }}</strong> done</span>
     {% endif %}
-    {% if stage.status == "Proposal" %}
-    <span title="Electric loads are collected during the walkthrough, not at job creation">
+    {% if stage.status == "Planning" %}
+    <span title="Electric loads are collected during the walkthrough, not at project creation">
       {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded</span>
     {% endif %}
-    <a href="{{ url_for('job_loads', job_id=job['id']) }}"
-       class="btn{{ '' if stage.status == 'Proposal' else ' btn-secondary' }}"
+    <a href="{{ url_for('project_loads', project_id=project['id']) }}"
+       class="btn{{ '' if stage.status == 'Planning' else ' btn-secondary' }}"
        style="padding:0.25rem 0.7rem; font-size:0.85rem;"
        title="Electric loads &amp; system sizing worksheet">⚡ Loads &amp; Sizing</a>
-    {% if stage.status == "Job Prep" %}
+    {% if stage.status == "Prep" %}
     <span title="Permit-category requirements with a filed document">
       {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
       <strong>{{ stage.permits_filed }}/{{ stage.permits_total }}</strong></span>
-    <form method="post" action="{{ url_for('set_install_date', job_id=job['id']) }}"
+    <form method="post" action="{{ url_for('set_install_date', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center;">
-      <span>{{ "✅" if job["install_date"] else "⬜" }} Install date</span>
-      <input type="date" name="install_date" value="{{ job['install_date'] or '' }}" style="padding:0.2rem;">
+      <span>{{ "✅" if project["install_date"] else "⬜" }} Install date</span>
+      <input type="date" name="install_date" value="{{ project['install_date'] or '' }}" style="padding:0.2rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button>
     </form>
-    {% elif job["install_date"] %}
-    <span class="muted" style="font-size:0.82rem;">📅 Install date {{ job["install_date"] }}</span>
+    {% elif project["install_date"] %}
+    <span class="muted" style="font-size:0.82rem;">📅 Install date {{ project["install_date"] }}</span>
     {% endif %}
     {% if stage.next %}
-    <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0 0 0 auto;"
+    <form method="post" action="{{ url_for('set_project_status', project_id=project['id']) }}" style="margin:0 0 0 auto;"
           {% if not stage.ready %}onsubmit="return confirm('This stage isn’t complete ({{ stage.pending|join(', ') }}). Advance to {{ stage.next }} anyway?');"{% endif %}>
       <input type="hidden" name="status" value="{{ stage.next }}">
       <button type="submit" class="btn {{ '' if stage.ready else 'btn-secondary' }}"
@@ -110,20 +110,20 @@
   <span style="font-weight:600;">Pipeline stage · </span>{{ stage_editor() }}
 </div>
 {% endif %}
-{# Piece 30.2: cancel this job (requires a reason; recorded in the audit log). #}
+{# Piece 30.2: cancel this project (requires a reason; recorded in the audit log). #}
 <details class="card" style="border-left:4px solid #d97706; padding:0.6rem 0.9rem;">
-  <summary style="cursor:pointer; font-weight:600; color:#92400e;">🚫 Cancel this job</summary>
-  <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">Marks the job <strong>Lost</strong>
+  <summary style="cursor:pointer; font-weight:600; color:#92400e;">🚫 Cancel this project</summary>
+  <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">Marks the project <strong>Abandoned</strong>
     and hides its open tasks from everyone's My Tasks, the task board and the Work Bag. Nothing is
     deleted — you can reopen it later at the same stage.</p>
-  <form method="post" action="{{ url_for('cancel_job', job_id=job['id']) }}"
-        onsubmit="return confirm('Cancel this job (mark it Lost)?');"
+  <form method="post" action="{{ url_for('cancel_project', project_id=project['id']) }}"
+        onsubmit="return confirm('Cancel this project (mark it Abandoned)?');"
         style="margin:0; display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
     <div class="field" style="margin:0; flex:1; min-width:16rem;">
       <label style="font-size:0.85rem;">Reason (required, logged)</label>
       <input name="reason" required placeholder="e.g. customer went with another installer">
     </div>
-    <button type="submit" class="btn" style="background:#9a1c1c;">🚫 Cancel job</button>
+    <button type="submit" class="btn" style="background:#9a1c1c;">🚫 Cancel project</button>
   </form>
 </details>
 {% endif %}
@@ -142,52 +142,52 @@
 <div class="tab-panel" id="tab-general">
 <div class="card">
   <div style="margin-bottom: 0.9rem;">
-    {% for p in job["products"].split(", ") if p %}
+    {% for p in project["products"].split(", ") if p %}
       <span class="badge">{{ p }}</span>
     {% endfor %}
   </div>
   <dl class="profile">
-    <dt>Site location</dt><dd>{{ job["site_location"] or "—" }}</dd>
-    <dt>County</dt><dd>{{ job["county"] or "—" }}</dd>
+    <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
+    <dt>County</dt><dd>{{ project["county"] or "—" }}</dd>
     <dt>Electric loads</dt>
-    <dd>{{ job["electric_loads"] or "—" }}
+    <dd>{{ project["electric_loads"] or "—" }}
       {% if load_has_survey %}
       <br><span class="muted" style="font-size:0.85rem;">📋 Load survey on file:
         <strong>{{ "%.1f"|format(load_daily_kwh) }} kWh/day</strong>,
         peak <strong>{{ load_peak_w|int }} W</strong> ·
-        <a href="{{ url_for('job_loads', job_id=job['id']) }}">open Loads &amp; Sizing</a></span>
+        <a href="{{ url_for('project_loads', project_id=project['id']) }}">open Loads &amp; Sizing</a></span>
       {% endif %}
     </dd>
-    <dt>Utility provider</dt><dd>{{ job["utility_provider"] or "—" }}</dd>
-    <dt>Warranty type</dt><dd>{{ job["warranty_type"] or "—" }}</dd>
-    <dt>Payment</dt><dd>{{ job["cost_method"] or "—" }}</dd>
-    <dt>Tax credit</dt><dd>{{ job["tax_credit"] }}</dd>
-    <dt>Expand option</dt><dd>{{ job["expand_option"] }}</dd>
-    <dt>Property type</dt><dd>{{ job["property_type"] or "—" }}</dd>
-    {% if job["pv_utility_connection"] or job["pv_mounting_type"] %}
-    <dt>PV — utility connection</dt><dd>{{ job["pv_utility_connection"] or "—" }}</dd>
+    <dt>Utility provider</dt><dd>{{ project["utility_provider"] or "—" }}</dd>
+    <dt>Warranty type</dt><dd>{{ project["warranty_type"] or "—" }}</dd>
+    <dt>Payment</dt><dd>{{ project["cost_method"] or "—" }}</dd>
+    <dt>Tax credit</dt><dd>{{ project["tax_credit"] }}</dd>
+    <dt>Expand option</dt><dd>{{ project["expand_option"] }}</dd>
+    <dt>Property type</dt><dd>{{ project["property_type"] or "—" }}</dd>
+    {% if project["pv_utility_connection"] or project["pv_mounting_type"] %}
+    <dt>PV — utility connection</dt><dd>{{ project["pv_utility_connection"] or "—" }}</dd>
     <dt>PV — mounting type</dt>
-    <dd>{{ job["pv_mounting_type"] or "—" }}{% if job["pv_manufactured_house"] == "Yes" %} · manufactured house{% endif %}</dd>
+    <dd>{{ project["pv_mounting_type"] or "—" }}{% if project["pv_manufactured_house"] == "Yes" %} · manufactured house{% endif %}</dd>
     {% endif %}
-    {% if job["generator_utility_connection"] %}
-    <dt>Generator — utility connection</dt><dd>{{ job["generator_utility_connection"] }}</dd>
+    {% if project["generator_utility_connection"] %}
+    <dt>Generator — utility connection</dt><dd>{{ project["generator_utility_connection"] }}</dd>
     {% endif %}
-    {% if job["battery_utility_connection"] %}
-    <dt>Battery bank — utility connection</dt><dd>{{ job["battery_utility_connection"] }}</dd>
+    {% if project["battery_utility_connection"] %}
+    <dt>Battery bank — utility connection</dt><dd>{{ project["battery_utility_connection"] }}</dd>
     {% endif %}
-    {% if job["service_type"] %}
-    <dt>Service type</dt><dd>{{ job["service_type"] }}</dd>
+    {% if project["service_type"] %}
+    <dt>Service type</dt><dd>{{ project["service_type"] }}</dd>
     {% endif %}
-    <dt>Created</dt><dd>{{ job["created_at"][:10] }}</dd>
+    <dt>Created</dt><dd>{{ project["created_at"][:10] }}</dd>
   </dl>
 </div>
 
 {# Piece 21.9: field notes jotted from the Work Bag, for the office to read. #}
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">📝 Field notes <span class="badge">{{ job_notes|length }}</span></h2>
-  {% if job_notes %}
+  <h2 style="margin-top:0; font-size:1.1rem;">📝 Field notes <span class="badge">{{ project_notes|length }}</span></h2>
+  {% if project_notes %}
   <ul style="list-style:none; margin:0; padding:0;">
-    {% for n in job_notes %}
+    {% for n in project_notes %}
     <li style="padding:0.5rem 0; border-bottom:1px solid var(--border);">
       <div class="muted" style="font-size:0.8rem;">{{ n["created_at"] }} · {{ n["author"] or "—" }}</div>
       <div style="white-space:pre-wrap;">{{ n["note"] }}</div>
@@ -202,12 +202,12 @@
 {% if versions %}
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">Version history</h2>
-  <p class="muted">Previous states of this job, kept for recordkeeping.
+  <p class="muted">Previous states of this project, kept for recordkeeping.
   The current profile is always the live version above.</p>
   <ul style="margin:0; padding-left:1.2rem;">
     {% for v in versions %}
     <li style="margin-bottom:0.25rem;">
-      <a href="{{ url_for('job_version', job_id=job['id'], version=v['version']) }}">Version {{ v["version"] }}</a>
+      <a href="{{ url_for('project_version', project_id=project['id'], version=v['version']) }}">Version {{ v["version"] }}</a>
       <span class="muted">— replaced {{ v["saved_at"] }}</span>
     </li>
     {% endfor %}
@@ -220,7 +220,7 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom: 0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">Licenses, permits &amp; compliance</h2>
-    <a href="{{ url_for('job_report', job_id=job['id']) }}" class="btn">⬇ Export report</a>
+    <a href="{{ url_for('project_report', project_id=project['id']) }}" class="btn">⬇ Export report</a>
   </div>
   {% if groups %}
     {% set bottom = ["Technician licenses", "Compliance notes"] %}
@@ -241,7 +241,7 @@
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
           {% if r["instances"] and r["instances"]|length > 1 %}
-          <ul class="instances" title="Required by these selections on this job">
+          <ul class="instances" title="Required by these selections on this project">
             {% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}
           </ul>
           {% endif %}
@@ -249,16 +249,16 @@
           {% set filed = files_by_label.get(r["label"], []) %}
           <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.2rem;">
             {% for f in filed %}
-            <span class="badge">📎 <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a></span>
+            <span class="badge">📎 <a href="{{ url_for('download_file', project_id=project['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a></span>
             {% if can('delete') %}
-            <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+            <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
                   onsubmit="return confirm('Send this document to the trash?');" style="margin:0;">
               <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
             </form>
             {% endif %}
             {% endfor %}
             {% set rfmts = formats_by_label.get(r["label"]) %}
-            <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+            <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
                   style="display:flex; gap:0.3rem; align-items:center; margin:0; flex-wrap:wrap;">
               <input type="hidden" name="rule_label" value="{{ r['label'] }}">
               <input type="file" name="document" required style="font-size:0.78rem; max-width:12rem;"
@@ -307,14 +307,14 @@
     </details>
     {% endfor %}
   {% else %}
-  <p class="empty">No requirements matched this job's selections.</p>
+  <p class="empty">No requirements matched this project's selections.</p>
   {% endif %}
   <p class="verify-legend" style="margin-bottom:0.2rem;">
     <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
     <span class="flag flag-unverified">⚠ Unverified</span> confirm by phone ·
     a requirement shared by more than one selection is listed once with its selections beneath.</p>
   <p class="muted" style="margin-bottom:0;">Resolved automatically from this
-  job's fields · <a href="{{ url_for('rules_page', from_job=job['id']) }}">manage the rules</a></p>
+  project's fields · <a href="{{ url_for('rules_page', from_job=project['id']) }}">manage the rules</a></p>
 </div>
 </div>
 
@@ -333,7 +333,7 @@
         <td><input form="{{ mf }}" name="unit" value="{{ m['unit'] }}" style="padding:0.2rem; width:5rem;"></td>
         <td><input form="{{ mf }}" name="supplier" value="{{ m['supplier'] }}" style="padding:0.2rem; width:100%;"></td>
         <td>
-          <form method="post" action="{{ url_for('update_material_status', job_id=job['id'], material_id=m['id']) }}" style="margin:0;">
+          <form method="post" action="{{ url_for('update_material_status', project_id=project['id'], material_id=m['id']) }}" style="margin:0;">
             <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
               {% for s in material_statuses %}
               <option value="{{ s }}" {% if m["status"] == s %}selected{% endif %}>{{ s }}</option>
@@ -343,11 +343,11 @@
         </td>
         <td><input form="{{ mf }}" name="notes" value="{{ m['notes'] }}" style="padding:0.2rem; width:100%;"></td>
         <td style="white-space:nowrap;">
-          <form id="{{ mf }}" method="post" action="{{ url_for('edit_material', job_id=job['id'], material_id=m['id']) }}" style="display:inline; margin:0;">
+          <form id="{{ mf }}" method="post" action="{{ url_for('edit_material', project_id=project['id'], material_id=m['id']) }}" style="display:inline; margin:0;">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save changes to this row">Save</button>
           </form>
           {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_material', job_id=job['id'], material_id=m['id']) }}"
+          <form method="post" action="{{ url_for('delete_material', project_id=project['id'], material_id=m['id']) }}"
                 onsubmit="return confirm('Send this material to the trash?');" style="display:inline; margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
@@ -360,7 +360,7 @@
   {% else %}
   <p class="empty">No materials listed yet.</p>
   {% endif %}
-  <form method="post" action="{{ url_for('add_material', job_id=job['id']) }}" style="margin-top:0.8rem;">
+  <form method="post" action="{{ url_for('add_material', project_id=project['id']) }}" style="margin-top:0.8rem;">
     <div class="form-grid">
       <div class="field"><label>Item *</label><input name="item" required placeholder="e.g. 400W panels"></div>
       <div class="field"><label>Quantity</label><input name="quantity" placeholder="20"></div>
@@ -376,10 +376,10 @@
 <div class="tab-panel" id="tab-documents">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Documents</h2>
-  <p class="muted" style="margin-top:0; font-size:0.85rem;">Each file the job needs
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Each file the project needs
   has its own upload slot — from the signed contract to permits and site photos.
   Slots that require a specific format say so; set a requirement's accepted formats
-  on the <a href="{{ url_for('rules_page', from_job=job['id']) }}">rules</a> page.
+  on the <a href="{{ url_for('rules_page', from_job=project['id']) }}">rules</a> page.
   Max 25 MB per file.</p>
 
   {% for heading, labels in doc_sections %}
@@ -393,10 +393,10 @@
         <div style="font-weight:600;">{{ "📎" if filed else "⬜" }} {{ label }}</div>
         {% for f in filed %}
         <div class="muted" style="font-size:0.82rem; margin-top:0.15rem;">
-          <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+          <a href="{{ url_for('download_file', project_id=project['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
           · {{ f["uploaded_at"][:10] }}
           {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+          <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
                 onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.2rem;">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
           </form>
@@ -405,7 +405,7 @@
         {% endfor %}
       </div>
       {% set fmts = formats_by_label.get(label) %}
-      <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+      <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
             style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
         <input type="hidden" name="rule_label" value="{{ label }}">
         <input type="file" name="document" required style="font-size:0.8rem; max-width:15rem;"
@@ -424,11 +424,11 @@
     <ul style="margin:0.3rem 0 0.6rem; padding-left:1.2rem;">
       {% for f in other_files %}
       <li style="margin-bottom:0.3rem;">
-        <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+        <a href="{{ url_for('download_file', project_id=project['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
         {% if f["rule_label"] %}<span class="badge">{{ f["rule_label"] }}</span>{% endif %}
         <span class="muted">{{ f["uploaded_at"][:10] }}</span>
         {% if can('delete') %}
-        <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+        <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
               onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
           <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
         </form>
@@ -437,7 +437,7 @@
       {% endfor %}
     </ul>
     {% endif %}
-    <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+    <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
           style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
       <input type="hidden" name="rule_label" value="">
       <label style="font-size:0.85rem; margin:0;">Anything else:</label>
@@ -452,9 +452,9 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
-    <form method="post" action="{{ url_for('generate_tasks', job_id=job['id']) }}"
+    <form method="post" action="{{ url_for('generate_tasks', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;"
-          onsubmit="return confirm('Add this job’s process steps as tasks? Steps already on the list are skipped.');">
+          onsubmit="return confirm('Add this project’s process steps as tasks? Steps already on the list are skipped.');">
       <label style="margin:0; font-size:0.8rem; color:var(--muted);"
              title="Optional: gives each generated task a due date, spaced around the install">
         Install date <input type="date" name="install_date" style="padding:0.3rem;">
@@ -473,7 +473,7 @@
       <tr>
         <td><input form="{{ tf }}" name="title" value="{{ t['title'] }}" required style="padding:0.2rem; width:100%; min-width:12rem;"></td>
         <td>
-          <form method="post" action="{{ url_for('set_task_assignee', job_id=job['id'], task_id=t['id']) }}" style="margin:0;">
+          <form method="post" action="{{ url_for('set_task_assignee', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
             <select name="employee_id" onchange="this.form.submit()" style="padding:0.2rem;">
               <option value="" {% if not t["employee_id"] %}selected{% endif %}>— Unassigned —</option>
               {% for e in employees %}
@@ -483,7 +483,7 @@
           </form>
         </td>
         <td>
-          <form method="post" action="{{ url_for('set_task_due', job_id=job['id'], task_id=t['id']) }}"
+          <form method="post" action="{{ url_for('set_task_due', project_id=project['id'], task_id=t['id']) }}"
                 style="margin:0; display:flex; gap:0.3rem; align-items:center;">
             <input type="date" name="due_date" value="{{ t['due_date'] }}"
                    onchange="this.form.submit()" style="padding:0.15rem;">
@@ -491,7 +491,7 @@
           </form>
         </td>
         <td>
-          <form method="post" action="{{ url_for('set_task_status', job_id=job['id'], task_id=t['id']) }}" style="margin:0;">
+          <form method="post" action="{{ url_for('set_task_status', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
             <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
               {% for s in task_statuses %}
               <option value="{{ s }}" {% if t["status"] == s %}selected{% endif %}>{{ s }}</option>
@@ -501,11 +501,11 @@
         </td>
         <td><input form="{{ tf }}" name="notes" value="{{ t['notes'] }}" style="padding:0.2rem; width:100%; min-width:8rem;"></td>
         <td style="white-space:nowrap;">
-          <form id="{{ tf }}" method="post" action="{{ url_for('edit_task', job_id=job['id'], task_id=t['id']) }}" style="display:inline; margin:0;">
+          <form id="{{ tf }}" method="post" action="{{ url_for('edit_task', project_id=project['id'], task_id=t['id']) }}" style="display:inline; margin:0;">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save the task name/notes">Save</button>
           </form>
           {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_task', job_id=job['id'], task_id=t['id']) }}"
+          <form method="post" action="{{ url_for('delete_task', project_id=project['id'], task_id=t['id']) }}"
                 onsubmit="return confirm('Send this task to the trash?');" style="display:inline; margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
@@ -520,7 +520,7 @@
   <p class="empty">No tasks yet — add the first one below.</p>
   {% endif %}
 
-  <form method="post" action="{{ url_for('add_task', job_id=job['id']) }}" style="margin-top:0.8rem;">
+  <form method="post" action="{{ url_for('add_task', project_id=project['id']) }}" style="margin-top:0.8rem;">
     <div class="form-grid">
       <div class="field wide"><label>Task *</label><input name="title" required placeholder="e.g. Pull electrical permit"></div>
       <div class="field">
@@ -550,15 +550,15 @@
 {% if can_see_pricing %}
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.5rem;">
-    <h2 style="margin:0; font-size:1.1rem;">📐 Job estimate</h2>
+    <h2 style="margin:0; font-size:1.1rem;">📐 Project estimate</h2>
     <div style="display:flex; gap:0.4rem;">
-      <form method="post" action="{{ url_for('estimate_prefill', job_id=job['id']) }}" style="margin:0;">
-        <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.83rem;" title="Add the cost-model default lines to this job">↻ Prefill from cost model</button>
+      <form method="post" action="{{ url_for('estimate_prefill', project_id=project['id']) }}" style="margin:0;">
+        <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.83rem;" title="Add the cost-model default lines to this project">↻ Prefill from cost model</button>
       </form>
     </div>
   </div>
-  <p class="muted" style="margin-top:0; font-size:0.86rem;">Set quantities against Vixinman's cost model to build this job's price.
-    <strong>Equipment</strong> comes from the <a href="{{ url_for('job_loads', job_id=job['id']) }}">BOM (Loads &amp; Sizing)</a>; enter labor, travel and adders below. Each line = qty × cost × (1 + markup); Overhead (G&amp;A) applies on the subtotal.</p>
+  <p class="muted" style="margin-top:0; font-size:0.86rem;">Set quantities against Vixinman's cost model to build this project's price.
+    <strong>Equipment</strong> comes from the <a href="{{ url_for('project_loads', project_id=project['id']) }}">BOM (Loads &amp; Sizing)</a>; enter labor, travel and adders below. Each line = qty × cost × (1 + markup); Overhead (G&amp;A) applies on the subtotal.</p>
 
   <div class="form-grid" style="margin-bottom:0.6rem;">
     <div class="field"><label>Equipment (BOM, marked up)</label><div style="font-weight:700;">${{ (pricing.equipment_price)|money }}</div></div>
@@ -569,14 +569,14 @@
     {% if pricing.overhead_pct %}<div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(pricing.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ (pricing.overhead_amount)|money }}</div></div>{% endif %}
     <div class="field"><label>Suggested price</label><div style="font-weight:800; color:var(--brand); font-size:1.1rem;">${{ (pricing.suggested)|money }}</div></div>
   </div>
-  <form method="post" action="{{ url_for('estimate_to_contract', job_id=job['id']) }}" style="margin:0 0 0.4rem;"
+  <form method="post" action="{{ url_for('estimate_to_contract', project_id=project['id']) }}" style="margin:0 0 0.4rem;"
         onsubmit="return confirm('Set the contract total to the suggested price?');">
     <button type="submit" class="btn">Use suggested as contract total →</button>
     {% if pricing.contract %}<span class="muted" style="font-size:0.83rem; margin-left:0.4rem;">current contract ${{ (pricing.contract)|money0 }}</span>{% endif %}
   </form>
 </div>
 
-<form method="post" action="{{ url_for('estimate_save', job_id=job['id']) }}">
+<form method="post" action="{{ url_for('estimate_save', project_id=project['id']) }}">
 {% for sec in estimate_sections %}
 {% set rows = pricing.estimate_lines | selectattr('section','equalto',sec) | list %}
 <div class="card">
@@ -594,7 +594,7 @@
         <td><input name="cost_{{ r['id'] }}" type="number" step="any" min="0" value="{{ ('%g'|format(r['unit_cost'])) if r['unit_cost'] is not none else '' }}" style="max-width:6.5rem;"></td>
         <td><input name="markup_{{ r['id'] }}" type="number" step="0.1" min="0" value="{{ ('%g'|format(r['markup_pct'])) if r['markup_pct'] is not none else '0' }}" style="max-width:5.5rem;"></td>
         <td style="text-align:right; font-weight:600; white-space:nowrap;">${{ (r["line_total"])|money }}</td>
-        <td><button type="submit" formaction="{{ url_for('estimate_delete_line', job_id=job['id'], line_id=r['id']) }}"
+        <td><button type="submit" formaction="{{ url_for('estimate_delete_line', project_id=project['id'], line_id=r['id']) }}"
                     class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;"
                     onclick="return confirm('Remove this line?');" title="Remove">✕</button></td>
       </tr>
@@ -612,7 +612,7 @@
 
 <div class="card">
   <h3 style="margin-top:0; font-size:1rem;">Add a line</h3>
-  <form method="post" action="{{ url_for('estimate_add_line', job_id=job['id']) }}"
+  <form method="post" action="{{ url_for('estimate_add_line', project_id=project['id']) }}"
         style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
     <div class="field" style="margin:0;"><label>Section</label>
       <select name="section" required>{% for s in estimate_sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
@@ -634,7 +634,7 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">💵 Billing</h2>
-    <form method="post" action="{{ url_for('set_contract', job_id=job['id']) }}"
+    <form method="post" action="{{ url_for('set_contract', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
       <label style="margin:0; font-size:0.85rem; color:var(--muted);">Contract total $</label>
       <input name="contract_amount" type="number" step="0.01" min="0"
@@ -642,7 +642,7 @@
              placeholder="0.00" style="padding:0.3rem; width:9rem;">
       <label style="margin:0; font-size:0.85rem; color:var(--muted);" title="NM gross-receipts tax added to each customer invoice. Leave 0 if the solar deduction (NMSA 7-9-112) applies.">GRT %</label>
       <input id="grt-input" name="grt_rate" type="number" step="0.0001" min="0"
-             value="{{ ('%.4f'|format(job['grt_rate']|float)).rstrip('0').rstrip('.') if 'grt_rate' in job.keys() and job['grt_rate'] else '' }}"
+             value="{{ ('%.4f'|format(project['grt_rate']|float)).rstrip('0').rstrip('.') if 'grt_rate' in project.keys() and project['grt_rate'] else '' }}"
              placeholder="0" style="padding:0.3rem; width:5rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
     </form>
@@ -695,19 +695,19 @@
       <tr>
         <td class="muted">{{ t["txn_date"] or "—" }}</td>
         <td><span class="badge {{ '' if t['kind'] == 'Income' else 'danger' }}">{{ t["kind"] }}</span></td>
-        <td>{% set dt = t["doc_type"] if "doc_type" in t.keys() else "" %}{% if dt %}<span class="badge neutral">{{ dt }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if "receipt_file_id" in t.keys() and t["receipt_file_id"] %} <a href="{{ url_for('view_file', job_id=job['id'], file_id=t['receipt_file_id']) }}" target="_blank" title="View the attached document">📎</a>{% endif %}</td>
+        <td>{% set dt = t["doc_type"] if "doc_type" in t.keys() else "" %}{% if dt %}<span class="badge neutral">{{ dt }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if "receipt_file_id" in t.keys() and t["receipt_file_id"] %} <a href="{{ url_for('view_file', project_id=project['id'], file_id=t['receipt_file_id']) }}" target="_blank" title="View the attached document">📎</a>{% endif %}</td>
         <td>{{ t["category"] or "—" }}</td>
         <td class="muted">{{ t["party"] or "—" }}{% if t["reference"] %}<br><span style="font-size:0.78rem;">#{{ t["reference"] }}</span>{% endif %}</td>
         <td>{{ t["description"] or "—" }}</td>
         <td style="text-align:right; font-weight:600;">${{ (t["amount"] or 0)|money }}</td>
         <td>
-          <form method="post" action="{{ url_for('toggle_transaction_paid', job_id=job['id'], txn_id=t['id']) }}" style="margin:0;">
+          <form method="post" action="{{ url_for('toggle_transaction_paid', project_id=project['id'], txn_id=t['id']) }}" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;"
                     title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
           </form>
         </td>
         <td>
-          <form method="post" action="{{ url_for('delete_transaction', job_id=job['id'], txn_id=t['id']) }}"
+          <form method="post" action="{{ url_for('delete_transaction', project_id=project['id'], txn_id=t['id']) }}"
                 onsubmit="return confirm('Delete this transaction?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>
@@ -721,7 +721,7 @@
   <p class="empty">No transactions yet — record deposits, invoices and expenses below.</p>
   {% endif %}
 
-  <form method="post" action="{{ url_for('add_transaction', job_id=job['id']) }}"
+  <form method="post" action="{{ url_for('add_transaction', project_id=project['id']) }}"
         enctype="multipart/form-data" style="margin-top:0.9rem;">
     <div class="form-grid">
       <div class="field">

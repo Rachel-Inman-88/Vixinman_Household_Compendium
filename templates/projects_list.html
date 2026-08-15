@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🗂 Projects</h1>
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+</div>
+<p class="muted" style="margin-top:0;">Every project, active and closed —
+active ones first. See <a href="{{ url_for('closed_jobs_page') }}">Closed
+projects</a> for cancellation reasons and reopen actions.</p>
+
+<div class="card">
+  {% if projects %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Project</th><th>Stage</th><th>Install date</th></tr></thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td><a href="{{ url_for('project_detail', project_id=p['id']) }}">{{ p["job_name"] or "Project #" ~ p["id"] }}</a></td>
+        <td><span class="badge {{ job_status_class.get(p['status'], 'neutral') }}">{{ p["status"] }}</span></td>
+        <td class="muted">{{ p["install_date"] or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No projects yet — <a href="{{ url_for('new_project') }}">create the first one</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

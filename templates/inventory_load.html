@@ -6,27 +6,27 @@
   <a href="{{ url_for('inventory_scan') }}" class="btn btn-secondary">📷 Single scan</a>
 </div>
 
-{% if not job %}
+{% if not project %}
 <div class="card">
   <form method="get" action="{{ url_for('inventory_load') }}" style="display:flex; gap:0.7rem; align-items:end; flex-wrap:wrap;">
     <div class="field" style="margin:0; flex:1 1 260px;">
-      <label>Which job are you loading for?</label>
-      <select name="job_id" required>
-        <option value="">— pick a job —</option>
-        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
+      <label>Which project are you loading for?</label>
+      <select name="project_id" required>
+        <option value="">— pick a project —</option>
+        {% for j in projects %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
       </select>
     </div>
     <div class="field" style="margin:0;"><button type="submit" class="btn">Start loading</button></div>
   </form>
-  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Pick the job once,
-    then scan each tag to load it out. Two people can load the same job at the same
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Pick the project once,
+    then scan each tag to load it out. Two people can load the same project at the same
     time from their own phones — every scan is recorded independently.</p>
 </div>
 {% else %}
 <div class="card" style="border-left:4px solid var(--brand);">
   <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-    <div><strong>Loading:</strong> {{ job['job_name'] }}</div>
-    <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Change job</a>
+    <div><strong>Loading:</strong> {{ project['job_name'] }}</div>
+    <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Change project</a>
   </div>
   <div style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap; margin-top:0.7rem;">
     <div class="field" style="margin:0; flex:1 1 200px;">
@@ -52,7 +52,7 @@
 
 <script>
 (function () {
-  var JOB_ID = {{ job['id'] }};
+  var PROJECT_ID = {{ project['id'] }};
   var serial = document.getElementById("serial"),
       list = document.getElementById("loaded"),
       count = document.getElementById("count"),
@@ -87,7 +87,7 @@
     try {
       var r = await fetch("{{ url_for('api_scan_out') }}", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serial: code, job_id: JOB_ID })
+        body: JSON.stringify({ serial: code, project_id: PROJECT_ID })
       });
       var d = await r.json();
       if (d.ok && !d.warn) { loaded++; count.textContent = loaded; row((d.label || code) + " — " + d.action, ""); beep(true); }

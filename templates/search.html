@@ -5,28 +5,28 @@
 <form method="get" action="{{ url_for('search') }}" class="card"
       style="display:flex; gap:0.5rem; align-items:center;">
   <input type="search" name="q" value="{{ q }}" autofocus
-         placeholder="Job name, site, county, backlog idea…"
+         placeholder="Project name, site, county, backlog idea…"
          style="flex:1;">
   <button type="submit" class="btn">Search</button>
 </form>
 
 {% if q %}
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.05rem;">Jobs ({{ jobs|length }})</h2>
-  {% if jobs %}
+  <h2 style="margin-top:0; font-size:1.05rem;">Projects ({{ projects|length }})</h2>
+  {% if projects %}
   <table>
-    <thead><tr><th>Job</th><th>Status</th><th>County</th></tr></thead>
+    <thead><tr><th>Project</th><th>Status</th><th>County</th></tr></thead>
     <tbody>
-      {% for j in jobs %}
+      {% for j in projects %}
       <tr>
-        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        <td><span class="badge {{ job_status_class.get(j["status"] or "Proposal", "neutral") }}">{{ j["status"] or "Proposal" }}</span></td>
+        <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
+        <td><span class="badge {{ job_status_class.get(j["status"] or "Planning", "neutral") }}">{{ j["status"] or "Planning" }}</span></td>
         <td>{{ j["county"] }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="empty">No matching jobs.</p>{% endif %}
+  {% else %}<p class="empty">No matching projects.</p>{% endif %}
 </div>
 
 <div class="card">
@@ -47,6 +47,6 @@
   {% else %}<p class="empty">No matching backlog ideas.</p>{% endif %}
 </div>
 {% else %}
-<p class="muted">Type something above to search jobs and the backlog.</p>
+<p class="muted">Type something above to search projects and the backlog.</p>
 {% endif %}
 {% endblock %}

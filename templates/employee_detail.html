@@ -162,13 +162,13 @@
   {% if assigned_tasks %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Task</th><th>Job</th><th>Due</th><th>Status</th></tr></thead>
+    <thead><tr><th>Task</th><th>Project</th><th>Due</th><th>Status</th></tr></thead>
     <tbody>
       {% for t in assigned_tasks %}
       {% set overdue = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
       <tr{% if t["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
         <td>{{ t["title"] }}{% if t["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ t["notes"] }}</span>{% endif %}</td>
-        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a></td>
+        <td><a href="{{ url_for('project_detail', project_id=t['project_id']) }}#tasks">{{ t["job_name"] or "Project #" ~ t["project_id"] }}</a></td>
         <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
@@ -179,7 +179,7 @@
     </tbody>
   </table>
   </div>
-  <p class="muted" style="margin:0.5rem 0 0; font-size:0.85rem;">Open a job to
+  <p class="muted" style="margin:0.5rem 0 0; font-size:0.85rem;">Open a project to
   change a task's status or reassign it, or use the
   <a href="{{ url_for('tasks_dashboard', employee=employee['id']) }}">task board</a>.</p>
   {% else %}
@@ -251,7 +251,7 @@
         <input id="expires" name="expires" type="date" value="{{ ecr['expires'] if ecr else '' }}">
       </div>
       <div class="field">
-        <label for="rule_label">Satisfies job requirement (optional)</label>
+        <label for="rule_label">Satisfies project requirement (optional)</label>
         <select id="rule_label" name="rule_label">
           <option value="">— not tied to a requirement —</option>
           {% for label in license_labels %}
@@ -268,7 +268,7 @@
       {% if ecr %}<a href="{{ url_for('employee_detail', employee_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
   </form>
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
-  to a job requirement lets each job page show whether someone on staff holds
+  to a project requirement lets each project page show whether someone on staff holds
   the licenses it needs — and warn when a credential has lapsed.</p>
   {% endif %}
 </div>
@@ -320,7 +320,7 @@
 </div>
 
 <script>
-  // Same hash-based tab persistence as the job page, so posts that redirect
+  // Same hash-based tab persistence as the project page, so posts that redirect
   // back (add a license, upload a doc) land on the tab you were using.
   const TABS = ["details", "onboarding", "tasks", "licenses", "documents"];
   function activateTab(name, updateHash) {

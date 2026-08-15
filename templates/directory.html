@@ -8,7 +8,7 @@
   {% endif %}
 </div>
 <p class="muted" style="margin-top:0.4rem;">Look up the <strong>licenses, permits &amp;
-compliance</strong> items (and portals, phones, docs) a job needs, filtered to a job type.
+compliance</strong> items (and portals, phones, docs) a project needs, filtered to a project type.
 Each requirement is listed once with every scenario it applies to beneath it.
 <strong>Read-only</strong>{% if can('rules.manage') %} — to add or change a rule, use the
 <a href="{{ url_for('rules_page') }}">Rules Editor</a>{% endif %}.</p>
@@ -19,9 +19,9 @@ Each requirement is listed once with every scenario it applies to beneath it.
 <form method="get" class="card" id="filter_form">
   <div class="form-grid">
     <div class="field">
-      <label for="product">Job type</label>
+      <label for="product">Project type</label>
       <select id="product" name="product">
-        <option value="">All job types</option>
+        <option value="">All project types</option>
         {% for p in products %}
         <option value="{{ p }}" {% if filters.product == p %}selected{% endif %}>{{ p }}</option>
         {% endfor %}

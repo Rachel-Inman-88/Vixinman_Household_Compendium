@@ -5,14 +5,14 @@
   <h1>💵 Cost model &amp; finance</h1>
   <a href="{{ url_for('dashboard', mode='Finance') }}" class="btn btn-secondary">← Finance dashboard</a>
 </div>
-<p class="muted" style="margin-top:0;">Vixinman's estimating defaults behind job pricing.
+<p class="muted" style="margin-top:0;">Vixinman's estimating defaults behind project pricing.
 Each line is <strong>qty × cost × (1 + markup)</strong>; the section subtotals add
 up and <strong>Overhead (G&amp;A)</strong> is applied on top. Equipment Inventory
-markups price the actual job BOM; the other sections are default estimate lines.</p>
+markups price the actual project BOM; the other sections are default estimate lines.</p>
 
-{# ---- Rollup summary of a default "standard job" ---- #}
+{# ---- Rollup summary of a default "standard project" ---- #}
 <div class="card" style="background:#f3faf5; border-left:4px solid var(--brand);">
-  <h2 style="margin-top:0; font-size:1.05rem;">Default job rollup</h2>
+  <h2 style="margin-top:0; font-size:1.05rem;">Default project rollup</h2>
   <div class="form-grid">
     {% for s, tot in rollup.section_totals.items() %}
     <div class="field"><label>{{ s }}</label><div style="font-weight:600;">${{ (tot)|money }}</div></div>
@@ -22,7 +22,7 @@ markups price the actual job BOM; the other sections are default estimate lines.
     <div class="field"><label>Total</label><div style="font-weight:800; color:var(--brand); font-size:1.1rem;">${{ (rollup.total)|money }}</div></div>
   </div>
   <p class="muted" style="margin:0.3rem 0 0; font-size:0.8rem;">Equipment Inventory isn't
-    in this rollup — it prices each job's real BOM. Overhead applies to every job's subtotal
+    in this rollup — it prices each project's real BOM. Overhead applies to every project's subtotal
     in its pricing breakdown.</p>
 </div>
 
@@ -87,7 +87,7 @@ markups price the actual job BOM; the other sections are default estimate lines.
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">🗺 NM county GRT rates</h2>
   <p class="muted" style="margin-top:0; font-size:0.88rem;">Gross-receipts-tax rate
-    per install county. A job auto-fills its GRT rate from its county (still
+    per install county. A project auto-fills its GRT rate from its county (still
     overridable — e.g. 0 for the solar deduction). Enter current NM&nbsp;TRD figures.</p>
   <form method="post" action="{{ url_for('finance_save_counties') }}">
     <div style="overflow-x:auto;">

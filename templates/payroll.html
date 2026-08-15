@@ -17,14 +17,14 @@
   <summary>🕗 Hours awaiting approval <span class="sect-count">{{ pending|length }}</span></summary>
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Date</th><th>Employee</th><th>Pay type</th><th>Job</th><th style="text-align:right;">Hours</th><th>Note</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Employee</th><th>Pay type</th><th>Project</th><th style="text-align:right;">Hours</th><th>Note</th><th></th></tr></thead>
     <tbody>
       {% for e in pending %}
       <tr>
         <td class="muted">{{ e["work_date"] or "—" }}</td>
         <td>{{ e["emp_name"] }}</td>
         <td>{{ e["type_name"] or "—" }}{% if e["is_leave"] %} <span class="badge neutral" style="font-size:0.68rem;" title="Leave can't be used to exceed the weekly 40 h cap">leave</span>{% endif %}</td>
-        <td class="muted">{% if e["job_id"] %}<a href="{{ url_for('job_detail', job_id=e['job_id']) }}">{{ e["job_name"] or "Job #" ~ e["job_id"] }}</a>{% else %}—{% endif %}</td>
+        <td class="muted">{% if e["project_id"] %}<a href="{{ url_for('project_detail', project_id=e['project_id']) }}">{{ e["job_name"] or "Project #" ~ e["project_id"] }}</a>{% else %}—{% endif %}</td>
         <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
         <td class="muted">{{ e["note"] }}</td>
         <td style="white-space:nowrap;">
@@ -109,14 +109,14 @@
   {% if entries %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Date</th><th>Employee</th><th>Pay type</th><th>Job</th><th style="text-align:right;">Hours</th><th>Note</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Employee</th><th>Pay type</th><th>Project</th><th style="text-align:right;">Hours</th><th>Note</th><th></th></tr></thead>
     <tbody>
       {% for e in entries %}
       <tr>
         <td class="muted">{{ e["work_date"] or "—" }}</td>
         <td>{{ e["emp_name"] }}</td>
         <td>{{ e["type_name"] or "—" }}</td>
-        <td class="muted">{% if e["job_id"] %}<a href="{{ url_for('job_detail', job_id=e['job_id']) }}">{{ e["job_name"] or "Job #" ~ e["job_id"] }}</a>{% else %}—{% endif %}</td>
+        <td class="muted">{% if e["project_id"] %}<a href="{{ url_for('project_detail', project_id=e['project_id']) }}">{{ e["job_name"] or "Project #" ~ e["project_id"] }}</a>{% else %}—{% endif %}</td>
         <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
         <td class="muted">{{ e["note"] }}</td>
         <td>

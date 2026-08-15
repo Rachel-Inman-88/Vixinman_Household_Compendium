@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Process steps — {{ job["job_name"] }}{% endblock %}
+{% block title %}Process steps — {{ project["job_name"] }}{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>Process steps <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
+  <h1>Process steps <span class="muted">· {{ project["job_name"] or "Project #" ~ project["id"] }}</span></h1>
   <div style="display:flex; gap:0.5rem;">
-    <a href="{{ url_for('job_bpmn', job_id=job['id']) }}" class="btn">⬇ Export BPMN diagram</a>
-    <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Job</a>
+    <a href="{{ url_for('project_bpmn', project_id=project['id']) }}" class="btn">⬇ Export BPMN diagram</a>
+    <a href="{{ url_for('project_detail', project_id=project['id']) }}" class="btn btn-secondary">← Project</a>
   </div>
 </div>
-<p class="muted">The master Vixinman pipeline instantiated for this job, start to
-finish — resolved permits expand the permitting phase, off-grid jobs skip
+<p class="muted">The master Vixinman pipeline instantiated for this project, start to
+finish — resolved permits expand the permitting phase, off-grid projects skip
 interconnection. Open any step for its particulars, filed documents, and
 materials. The exported .bpmn opens in
 <a href="https://demo.bpmn.io" target="_blank">demo.bpmn.io</a> or Camunda
@@ -46,12 +46,12 @@ Modeler for the visual diagram.</p>
               {% if item.label in files_by_label %}
               <ul style="margin:0.2rem 0 0; padding-left:1.1rem;">
                 {% for f in files_by_label[item.label] %}
-                <li>📎 <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+                <li>📎 <a href="{{ url_for('download_file', project_id=project['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
                     <span class="muted">{{ f["uploaded_at"][:10] }}</span></li>
                 {% endfor %}
               </ul>
               {% elif item.category in ("Permit", "License", "Compliance") %}
-              <div class="muted" style="font-size:0.8rem;">no document on file yet — upload on the job page</div>
+              <div class="muted" style="font-size:0.8rem;">no document on file yet — upload on the project page</div>
               {% endif %}
             </li>
             {% endfor %}
@@ -69,7 +69,7 @@ Modeler for the visual diagram.</p>
               {% endfor %}
             </ul>
             {% else %}
-            <p class="muted" style="margin:0;">No materials listed yet — add them on the job page.</p>
+            <p class="muted" style="margin:0;">No materials listed yet — add them on the project page.</p>
             {% endif %}
           {% else %}
           <p class="muted" style="margin:0;">Standard pipeline step — responsibility: {{ s["lane"] }}.</p>

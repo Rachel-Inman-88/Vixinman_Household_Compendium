@@ -34,9 +34,9 @@
     <button type="submit" class="btn">🚀 Start as a project</button>
   </form>
 </div>
-{% elif idea["status"] == "Started" and idea["started_job_id"] %}
+{% elif idea["status"] == "Started" and idea["started_project_id"] %}
 <div class="card">
-  <p style="margin:0;">Started as <a href="{{ url_for('job_detail', job_id=idea['started_job_id']) }}">this project</a>{% if idea["started_at"] %} on {{ idea["started_at"][:10] }}{% endif %}.</p>
+  <p style="margin:0;">Started as <a href="{{ url_for('project_detail', project_id=idea['started_project_id']) }}">this project</a>{% if idea["started_at"] %} on {{ idea["started_at"][:10] }}{% endif %}.</p>
 </div>
 {% endif %}
 

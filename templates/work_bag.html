@@ -8,9 +8,9 @@
     <button id="refresh" class="btn btn-secondary">Refresh</button>
   </div>
 </div>
-<p class="muted">Your jobs. Tap a job to see its tasks, log hours, add receipts,
-and leave notes. Once you've opened a job it keeps working offline —
-<strong>open the jobs you'll need before you lose signal.</strong></p>
+<p class="muted">Your projects. Tap a project to see its tasks, log hours, add receipts,
+and leave notes. Once you've opened a project it keeps working offline —
+<strong>open the projects you'll need before you lose signal.</strong></p>
 
 <div id="status" class="flash" style="display:none;"></div>
 <div id="joblist"><p class="empty">Loading…</p></div>
@@ -19,8 +19,8 @@ and leave notes. Once you've opened a job it keeps working offline —
 (function () {
   const LS_TASKS = "compendium_wb_tasks", LS_QUEUE = "compendium_wb_queue";
   // Field work only (install & inspection) — office/scheduling tasks live on the
-  // dashboard, so the bag only surfaces the jobs the crew is on site for.
-  const FIELD_STAGES = ["Installation", "Inspections"];
+  // dashboard, so the bag only surfaces the projects the crew is on site for.
+  const FIELD_STAGES = ["In Progress", "Wrap-up"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let tasks = load(LS_TASKS, []);
@@ -47,11 +47,11 @@ and leave notes. Once you've opened a job it keeps working offline —
       list.innerHTML = '<p class="empty">No tasks assigned to you.</p>'; setNet(); return;
     }
     if (!field.length) {
-      list.innerHTML = '<p class="empty">No jobs in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
+      list.innerHTML = '<p class="empty">No projects in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
       setNet(); return;
     }
     const order = [], groups = {};
-    field.forEach(t => { const k = t.job_id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(t); });
+    field.forEach(t => { const k = t.project_id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(t); });
     order.forEach(k => {
       const g = groups[k], first = g[0];
       const open = g.filter(t => t.status !== "Done").length;
@@ -89,18 +89,18 @@ and leave notes. Once you've opened a job it keeps working offline —
   }
 
   async function pull() {
-    if (!navigator.onLine) { msg("Offline — showing the jobs saved on this device.", "error"); render(); return; }
+    if (!navigator.onLine) { msg("Offline — showing the projects saved on this device.", "error"); render(); return; }
     try {
       const r = await fetch("/api/my-tasks", { headers: { "Accept": "application/json" } });
       if (r.status === 401) { msg("Please sign in to use your Work Bag.", "error"); return; }
       applyServer(await r.json());
       msg("", "");
       render();
-    } catch (e) { msg("Couldn't reach the office — showing saved jobs.", "error"); render(); }
+    } catch (e) { msg("Couldn't reach the office — showing saved projects.", "error"); render(); }
   }
 
   window.addEventListener("online", () => { setNet(); pull(); });
-  window.addEventListener("offline", () => { setNet(); msg("Offline — showing saved jobs.", "error"); });
+  window.addEventListener("offline", () => { setNet(); msg("Offline — showing saved projects.", "error"); });
   $("#refresh").addEventListener("click", pull);
 
   render();

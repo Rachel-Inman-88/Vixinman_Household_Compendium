@@ -51,7 +51,7 @@
       padding: 0.45rem 0.6rem; border-radius: 6px; white-space: nowrap;
     }
     .navdrop-menu a:hover { background: var(--bg); }
-    /* Piece 28.4: nav search over jobs & backlog ideas, with an autocomplete dropdown. */
+    /* Piece 28.4: nav search over projects & backlog ideas, with an autocomplete dropdown. */
     .navsearch { position: relative; }
     .navsearch input {
       width: 230px; max-width: 42vw; padding: 0.4rem 0.65rem; border-radius: 8px;
@@ -214,7 +214,7 @@
       padding: 0.1rem 0.5rem;
       font-size: 0.8rem;
     }
-    /* Piece 20.2: per-job pipeline progress widget — a segmented bar, one
+    /* Piece 20.2: per-project pipeline progress widget — a segmented bar, one
        segment per stage, filled up to the current stage, with the next step
        called out beneath. */
     .jobprog { margin: 0.2rem 0; }
@@ -437,7 +437,7 @@
     <nav id="mainnav" class="mainnav">
     <div class="navsearch">
       <input id="navsearch-input" type="search" autocomplete="off"
-             placeholder="🔍 Search jobs & backlog…" aria-label="Search jobs and backlog">
+             placeholder="🔍 Search projects & backlog…" aria-label="Search projects and backlog">
       <div id="navsearch-menu" class="navsearch-menu" style="display:none;"></div>
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
@@ -460,6 +460,7 @@
     <details class="navdrop">
       <summary>🗄 Databases</summary>
       <div class="navdrop-menu">
+        <a href="{{ url_for('projects_list') }}">🗂 Projects</a>
         <a href="{{ url_for('backlog_page') }}">🗂 Backlog</a>
         <a href="{{ url_for('household_files_page') }}">📁 Household Files</a>
         <a href="/rules">⚙️ Rules Editor</a>
@@ -467,7 +468,7 @@
         <a href="/inventory">📦 Inventory</a>
         <a href="/catalog">🔌 Calculator Catalog</a>
         {% if can_payroll %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
-        {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed jobs</a>{% endif %}
+        {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed projects</a>{% endif %}
       </div>
     </details>
     {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
@@ -543,7 +544,7 @@
     }
   </script>
   <script>
-    // Piece 28.4 (revised 33): nav search over job & backlog-idea names.
+    // Piece 28.4 (revised 33): nav search over project & backlog-idea names.
     (function () {
       var input = document.getElementById("navsearch-input");
       if (!input) return;
@@ -554,11 +555,11 @@
       function hide() { menu.style.display = "none"; active = -1; }
       function render() {
         if (!results.length) {
-          menu.innerHTML = '<div style="padding:0.5rem 0.6rem; color:var(--muted); font-size:0.85rem;">No matching jobs or backlog ideas.</div>';
+          menu.innerHTML = '<div style="padding:0.5rem 0.6rem; color:var(--muted); font-size:0.85rem;">No matching projects or backlog ideas.</div>';
           menu.style.display = "block"; return;
         }
         menu.innerHTML = results.map(function (r, i) {
-          var icon = r.type === "job" ? "📋 Job" : "🗂 Idea";
+          var icon = r.type === "project" ? "📋 Project" : "🗂 Idea";
           return '<a class="navsearch-item' + (i === active ? ' active' : '') + '" href="' + esc(r.url) + '">' +
             '<span class="ns-type">' + icon + '</span>' + esc(r.label) +
             (r.sub ? '<span class="ns-sub">' + esc(r.sub) + '</span>' : '') + '</a>';

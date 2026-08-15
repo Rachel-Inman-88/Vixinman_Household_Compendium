@@ -3,12 +3,12 @@
 {% block content %}
 <div class="toolbar">
   <h1>📷 {{ task["title"] }}</h1>
-  <a href="{{ url_for('work_bag_job', job_id=task['job_id']) }}" class="btn btn-secondary">← Back to job</a>
+  <a href="{{ url_for('work_bag_job', project_id=task['project_id']) }}" class="btn btn-secondary">← Back to project</a>
 </div>
 
-{# Job context, styled like the Work Bag's job banner so it reads as the same place. #}
+{# Project context, styled like the Work Bag's project banner so it reads as the same place. #}
 <div style="padding:0.55rem 0.75rem; background:#e7f4ec; border-left:4px solid var(--brand); border-radius:6px; margin-bottom:0.8rem;">
-  <div style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 {{ task["job_name"] or "Job #" ~ task["job_id"] }}</div>
+  <div style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 {{ task["job_name"] or "Project #" ~ task["project_id"] }}</div>
   {% if task["install_date"] %}<div class="muted" style="font-size:0.85rem;">🔧 install {{ task["install_date"] }}</div>{% endif %}
   <div style="margin-top:0.2rem; font-weight:600;">Step: {{ task["title"] }}</div>
 </div>
@@ -17,7 +17,7 @@
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">1 · Take or upload photos</h2>
-  <p class="muted" style="margin-top:0;">On a phone this opens the camera. You can pick several at once. They're saved to this job as you go.</p>
+  <p class="muted" style="margin-top:0;">On a phone this opens the camera. You can pick several at once. They're saved to this project as you go.</p>
   <form method="post" action="{{ url_for('task_photos', task_id=task['id']) }}"
         enctype="multipart/form-data" id="photoform">
     <input type="file" name="photos" accept="image/*" capture="environment" multiple
@@ -34,8 +34,8 @@
   <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.6rem;">
     {% for p in photos %}
     <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
-      <a href="{{ url_for('view_file', job_id=task['job_id'], file_id=p['id']) }}" target="_blank" rel="noopener">
-        <img src="{{ url_for('view_file', job_id=task['job_id'], file_id=p['id']) }}" loading="lazy"
+      <a href="{{ url_for('view_file', project_id=task['project_id'], file_id=p['id']) }}" target="_blank" rel="noopener">
+        <img src="{{ url_for('view_file', project_id=task['project_id'], file_id=p['id']) }}" loading="lazy"
              alt="{{ p['original_name'] }}"
              style="width:100%; height:130px; object-fit:cover; display:block;">
       </a>
@@ -57,7 +57,7 @@
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">3 · Submit &amp; mark done</h2>
   <p class="muted" style="margin-top:0;">Add any notes and the time it took (split by
-  pay type if the job needs it), then submit — it goes to your supervisor to approve.</p>
+  pay type if the project needs it), then submit — it goes to your supervisor to approve.</p>
   <form method="post" action="{{ url_for('complete_photo_task', task_id=task['id']) }}" id="completeform">
     <input type="hidden" name="segments" id="segments-json" value="[]">
     <div class="form-grid">
@@ -88,7 +88,7 @@
       });
     }
 
-    // Time segments + timeline (mirrors the per-job task form).
+    // Time segments + timeline (mirrors the per-project task form).
     var PAY_TYPES = {{ pay_types_js | tojson }};
     var PALETTE = ["#1a6e3c", "#b45309", "#1d4ed8", "#6d28d9", "#0891b2", "#be185d", "#4d7c0f", "#9a3412"];
     var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]); }); };
