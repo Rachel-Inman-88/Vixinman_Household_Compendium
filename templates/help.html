@@ -27,7 +27,7 @@ button below isn't visible to you, you may not have access to it (ask a General 
   <strong>Contents</strong>
   <div class="help-toc" style="margin-top:0.4rem;">
     <a href="#account">1. Signing in &amp; your account</a>
-    <a href="#clients">2. Clients &amp; leads</a>
+    <a href="#clients">2. The idea backlog</a>
     <a href="#jobs">3. Jobs &amp; the pipeline</a>
     <a href="#loads">4. Loads, sizing &amp; the BOM</a>
     <a href="#rules">5. Rules, licenses, permits &amp; compliance</a>
@@ -66,20 +66,20 @@ button below isn't visible to you, you may not have access to it (ask a General 
 
 <!-- 2 -->
 <div class="card" id="clients">
-  <h2>2. Clients &amp; leads</h2>
+  <h2>2. The idea backlog</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
-  <h3>Tutorial — add a client and start a job</h3>
+  <h3>Tutorial — add an idea and start it as a project</h3>
   <ol class="steps">
-    <li>From <strong>🗄 Databases → Client Profiles</strong>, add a client (mailing/billing address split into fields).</li>
-    <li>Open the client and choose <strong>New job</strong> to create a job under them.</li>
-    <li>Leads get scheduled <strong>follow-ups</strong>; entering job details converts the lead automatically.</li>
+    <li>From <strong>🗄 Databases → Backlog</strong>, add an idea — a repair, build, or certification not started yet.</li>
+    <li>Optionally set who proposed it, a target/someday date, a rough budget estimate, and a custom reminder date.</li>
+    <li>When you're ready, open the idea and click <strong>🚀 Start as a project</strong> — it becomes a real job you fill in from there.</li>
   </ol>
-  <details><summary>What is a "cold lead"?</summary>
-    <p>A lead that's gone quiet can be moved to the <strong>cold-leads</strong> list; a GM/Admin can restore or
-    purge it later. Old cold leads are flagged for review.</p></details>
-  <details><summary>Someone edited a client — can I see what changed?</summary>
-    <p>Yes. Editing a client saves the prior version; the changed data is hidden with a note, and an admin can
-    request the older info. Everything is in the audit log too.</p></details>
+  <details><summary>What happens to an idea I'm not doing anymore?</summary>
+    <p>Mark it <strong>Abandoned</strong> from the idea's page — it stays on record (not deleted) and can be moved
+    back to the backlog later if you change your mind.</p></details>
+  <details><summary>How do backlog reminders work?</summary>
+    <p>Once a month, everyone with a login gets a single notification if anything is still sitting in the backlog.
+    You can also set a custom reminder date on a specific idea for a one-time nudge on top of that.</p></details>
 </div>
 
 <!-- 3 -->
@@ -167,7 +167,7 @@ button below isn't visible to you, you may not have access to it (ask a General 
   <h2>6b. Boards — stand-alone to-dos</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <p class="muted" style="margin-top:0;"><strong>Boards</strong> (📋 in the top bar) are to-dos
-  <em>not</em> tied to a job or client — clean the bathroom, call a vendor, etc.</p>
+  <em>not</em> tied to a job — clean the bathroom, call a vendor, etc.</p>
   <h3>Tutorial — create a to-do and send it to a teammate</h3>
   <ol class="steps">
     <li>Open <strong>📋 Boards</strong> and use <strong>＋ New board</strong> — give it a title, optionally a person to <strong>send it to</strong>, a priority, and a due date.</li>
@@ -191,18 +191,18 @@ button below isn't visible to you, you may not have access to it (ask a General 
     <li>Set quantities for Labor / Travel / Adders / mounts; equipment pulls from the BOM. Overhead (G&amp;A) applies automatically.</li>
     <li>Use <strong>Use suggested as contract total</strong> to set the contract.</li>
   </ol>
-  <h3>Tutorial — bill the customer (50 / 40 / 10)</h3>
+  <h3>Tutorial — track a job's budget</h3>
   <ol class="steps">
-    <li>On the <strong>💵 Billing</strong> tab, set the contract total (and GRT — it auto-fills from the job's county).</li>
-    <li>Generate the <strong>Deposit 50%</strong>, then <strong>Progress 40%</strong>, then <strong>Final 10%</strong> invoices.</li>
-    <li>Print the <strong>customer copy</strong> — it shows the schedule, amount due, and equipment list, but never per-item prices.</li>
+    <li>On the <strong>💵 Billing</strong> tab, set the contract total (and GRT if applicable).</li>
+    <li>Record deposits, receipts, and expenses as income/expense ledger entries as the project goes.</li>
+    <li>The Billing tab totals up contract, collected, outstanding, and expenses so you can see where the budget stands.</li>
   </ol>
   <details><summary>Where do markups, county tax, and travel rates live?</summary>
     <p><strong>🗄 Databases → Cost model &amp; finance</strong> (Finance/Admin/GM): six cost-model sections
     (equipment markup, labor, travel, adders, overhead) plus the NM county GRT table.</p></details>
   <details><summary>Who can see the cost/margin breakdown?</summary>
     <p>The internal <strong>Pricing breakdown</strong> on the Billing tab is visible to Finance, Sales &amp; Design
-    only — never on the customer copy.</p></details>
+    only.</p></details>
   <details><summary>How does payroll work?</summary>
     <p>Crews log hours by pay type in the Work Bag; supervisors approve them; Finance runs payroll (Sun→Sat periods,
     automatic overtime, QuickBooks CSV export). Only the GM and Payroll Manager change pay rates.</p></details>

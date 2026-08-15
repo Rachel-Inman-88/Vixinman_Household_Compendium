@@ -77,7 +77,7 @@
         <label>Job (for “used”)</label>
         <select name="job_id">
           <option value="">— none —</option>
-          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }} — {{ j['client_name'] }}</option>{% endfor %}
+          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
         </select>
       </div>
       <div class="field wide"><label>Note</label><input name="note" placeholder="e.g. PO #1042, or count after warehouse audit"></div>

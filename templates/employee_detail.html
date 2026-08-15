@@ -168,7 +168,7 @@
       {% set overdue = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
       <tr{% if t["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
         <td>{{ t["title"] }}{% if t["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ t["notes"] }}</span>{% endif %}</td>
-        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a><br><span class="muted" style="font-size:0.8rem;">{{ t["client_name"] }}</span></td>
+        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a></td>
         <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}

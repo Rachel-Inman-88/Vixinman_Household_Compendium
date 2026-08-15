@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ idea["name"] }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:0.7rem;"><a href="{{ url_for('backlog_page') }}" class="btn btn-secondary">← Backlog</a></div>
+
+<div class="toolbar">
+  <h1 style="margin:0;">🗂 {{ idea["name"] }}
+    {% set sc = {"Backlog":"neutral","Started":"","Abandoned":"danger"} %}
+    <span class="badge {{ sc.get(idea['status'],'neutral') }}" style="vertical-align:middle;">{{ idea["status"] }}</span></h1>
+  {% if idea["status"] == "Backlog" %}
+  <form method="post" action="{{ url_for('backlog_status', idea_id=idea['id']) }}" style="margin:0;">
+    <input type="hidden" name="status" value="Abandoned">
+    <button type="submit" class="btn btn-secondary" onclick="return confirm('Mark this idea abandoned?');">Mark abandoned</button>
+  </form>
+  {% elif idea["status"] == "Abandoned" %}
+  <form method="post" action="{{ url_for('backlog_status', idea_id=idea['id']) }}" style="margin:0;">
+    <input type="hidden" name="status" value="Backlog">
+    <button type="submit" class="btn btn-secondary">Move back to backlog</button>
+  </form>
+  {% endif %}
+</div>
+<p class="muted" style="margin-top:0; font-size:0.85rem;">
+  Added {{ idea["created_at"][:16].replace("T"," ") if idea["created_at"] else "—" }}
+  {% if idea["proposed_by_name"] %} · proposed by {{ idea["proposed_by_name"] }}{% endif %}.
+</p>
+
+{% if idea["status"] == "Backlog" %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">🚀 Ready to start?</h2>
+  <p class="muted" style="margin:0 0 0.6rem;">Turns this idea into a real project — you'll fill in the rest on the
+  project form that follows.</p>
+  <form method="post" action="{{ url_for('backlog_start', idea_id=idea['id']) }}"
+        onsubmit="return confirm('Start this as a project?');">
+    <button type="submit" class="btn">🚀 Start as a project</button>
+  </form>
+</div>
+{% elif idea["status"] == "Started" and idea["started_job_id"] %}
+<div class="card">
+  <p style="margin:0;">Started as <a href="{{ url_for('job_detail', job_id=idea['started_job_id']) }}">this project</a>{% if idea["started_at"] %} on {{ idea["started_at"][:10] }}{% endif %}.</p>
+</div>
+{% endif %}
+
+{# ---- Details (editable) ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">✎ Details</h2>
+  <form method="post" action="{{ url_for('backlog_edit', idea_id=idea['id']) }}">
+    <div class="form-grid">
+      <div class="field wide"><label>Idea *</label><input name="name" required value="{{ idea['name'] }}"></div>
+      <div class="field"><label>Proposed by</label>
+        <select name="proposed_by">
+          <option value="">— unspecified —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}" {% if idea["proposed_by"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label>Target / someday date</label><input name="target_date" type="date" value="{{ idea['target_date'] or '' }}"></div>
+      <div class="field"><label>Rough budget estimate</label><input name="budget_estimate" type="number" step="0.01" min="0" value="{{ idea['budget_estimate'] or '' }}"></div>
+      <div class="field"><label>Custom reminder</label><input name="reminder_date" type="date" value="{{ idea['reminder_date'] or '' }}"></div>
+      <div class="field wide"><label>Notes</label><input name="notes" value="{{ idea['notes'] or '' }}"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">Save details</button>
+      <button type="submit" class="btn btn-secondary" style="margin-left:0.5rem;"
+              formaction="{{ url_for('backlog_delete', idea_id=idea['id']) }}"
+              formnovalidate onclick="return confirm('Delete this idea?');">Delete idea</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

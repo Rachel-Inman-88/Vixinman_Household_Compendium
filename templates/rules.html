@@ -5,7 +5,7 @@
   {% if from_job %}
   <a href="{{ url_for('job_detail', job_id=from_job['id']) }}" class="btn btn-secondary">← Back to {{ from_job["job_name"] or "Job #" ~ from_job["id"] }}</a>
   {% else %}
-  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to clients</a>
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to dashboard</a>
   {% endif %}
 </div>
 <div class="toolbar" style="align-items:flex-start;">

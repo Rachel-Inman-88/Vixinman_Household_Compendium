@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}{% if editing_job_id %}Edit job{% else %}New job{% endif %} — {{ client["name"] }}{% endblock %}
+{% block title %}{% if editing_job_id %}Edit job{% else %}New job{% endif %}{% endblock %}
 {% block content %}
 {% if editing_job_id %}
 <h1>Edit “{{ values.get('job_name') or 'Job #' ~ editing_job_id }}”</h1>
 <p class="muted">Saving keeps the current state as a numbered version for
 recordkeeping.</p>
 {% else %}
-<h1>Create a job under “{{ client["name"] }}”</h1>
+<h1>Create a job</h1>
 {% endif %}
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
       <label for="job_name">Job name * <span class="muted">(used in bookkeeping records)</span></label>
       <input id="job_name" name="job_name"
-             placeholder="e.g. {{ client['name'] }} — 8kW PV + battery"
+             placeholder="e.g. 8kW PV + battery"
              value="{{ values.get('job_name', '') }}" required>
     </div>
     <div class="field" style="grid-column: 1 / -2;">
@@ -44,7 +44,7 @@ recordkeeping.</p>
                 data-current="{{ values.get('utility_provider', '') }}"></select>
         <button type="button" id="util_override" class="btn btn-secondary"
                 style="padding:0.4rem 0.7rem; white-space:nowrap;"
-                title="Show every utility statewide — for a client who doesn't follow the standard county mapping">Manual override</button>
+                title="Show every utility statewide — for a site that doesn't follow the standard county mapping">Manual override</button>
       </div>
       <p id="util_note" class="muted" style="margin:0.25rem 0 0; font-size:0.8rem;"></p>
     </div>
@@ -157,7 +157,7 @@ recordkeeping.</p>
       <legend>🛠️ Technician Service options</legend>
       {% if existing_jobs %}
       <div class="field" style="margin-bottom: 0.7rem;">
-        <label for="prefill_select">This client has jobs on the books — pre-fill from one? (optional)</label>
+        <label for="prefill_select">Pre-fill from a job already on the books? (optional)</label>
         <select id="prefill_select">
           <option value="">— no, start a blank service ticket —</option>
           {% for ej in existing_jobs %}
@@ -188,7 +188,7 @@ recordkeeping.</p>
     {% if editing_job_id %}
     <a href="{{ url_for('job_detail', job_id=editing_job_id) }}" class="btn btn-secondary">Cancel</a>
     {% else %}
-    <a href="{{ url_for('client_detail', client_id=client['id']) }}" class="btn btn-secondary">Cancel</a>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancel</a>
     {% endif %}
   </div>
 </form>
@@ -225,7 +225,7 @@ recordkeeping.</p>
   if (prefill) {
     prefill.addEventListener("change", () => {
       if (prefill.value) {
-        window.location = "{{ url_for('new_job', client_id=client['id']) }}?prefill=" + prefill.value;
+        window.location = "{{ url_for('new_job') }}?prefill=" + prefill.value;
       }
     });
   }

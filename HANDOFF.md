@@ -28,6 +28,31 @@ search (zero remaining matches for `ECC` / `Solbiz`, case-insensitive, across
   - Env var `SOLBIZ_DATA_DIR` → `COMPENDIUM_DATA_DIR` (verified consistent between
     `desktop/run_compendium.py` and `app.py`'s `DATA_DIR = Path(os.environ.get(...))`)
 
+**The `clients` removal (first piece of the structural reorg, Piece 33 / v0.2) is
+done.** `clients`/`cold_leads`/`lead_followups`/`client_versions`/`client_files` are
+gone from `schema.sql`; `jobs.client_id` is dropped. Replaced with:
+- `household_ideas` — the someday/maybe backlog (`/backlog`), one table with a
+  Backlog/Started/Abandoned status, hybrid reminders (monthly nudge + optional
+  per-idea custom date) through the notifications inbox.
+- `household_files` — flat household-wide document storage (`/household-files`,
+  no owner id — single household).
+- Home (`/`) merged into `/dashboard` (one view function, two routes — see
+  `dashboard()` in `app.py`).
+- Customer-facing invoicing (`view_invoice`, `generate_invoice`,
+  `quickbooks_export`) and their templates/constants are deleted outright — they
+  were hard-blocked by clients going away and were already slated for removal in
+  the "Billing → Project budget tracking" section below. The plain
+  `job_transactions` income/expense ledger stays.
+
+Verified via `git grep -i client` across `app.py`/`schema.sql`/`templates/` —
+remaining hits are historical comments, business-content data (compliance-rule
+text, task-title keyword matching), and unrelated identifiers (`ai_assistant.py`'s
+"HTTP client" docstring, `bpmn_export.py`'s BPMN node labels, `service_worker.js`'s
+browser API) — none are functional dependencies on the removed table. Manually
+click-tested against a fresh DB and against a simulated pre-reorg DB (the
+`clients_removed_v1` meta-guarded migration in `init_db()` cleans up an existing
+local database the same way).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -36,7 +61,11 @@ search (zero remaining matches for `ECC` / `Solbiz`, case-insensitive, across
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   after the schema/feature reorg below is done.
-- **The structural/domain reorg** — this is the actual task for this session. See below.
+- **The rest of the structural/domain reorg** — `jobs`→`projects` + pipeline-stage
+  relabeling, `employees`→`household_members`, the `routine_tasks`/`project_tasks`
+  split, the Requirements Engine relabel, inventory (barcode cut + empty starter
+  catalog), and the vendor/contractor directory repurpose of `nm_directory.py`. See
+  below — the open questions on all of these are already resolved.
 
 ---
 

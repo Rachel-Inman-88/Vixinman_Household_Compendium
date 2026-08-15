@@ -1,35 +1,29 @@
 -- Job Creator database schema.
--- Clients: Vixinman Designs' intake fields (Piece 2, revised).
--- Jobs: job profiles stored under a client (Piece 3).
+-- Household Compendium: Vixinman household task/project manager (Piece 2, revised).
+-- Jobs (aka projects): job profiles belonging to the household (Piece 3).
 -- Resource rules arrive in Piece 4.
 
-CREATE TABLE IF NOT EXISTS clients (
+-- Piece 33: household idea backlog. Replaces the old multi-client lead
+-- pipeline (clients/cold_leads/lead_followups) now that this app manages one
+-- household directly — a single table with a status field instead of moving
+-- rows between two tables. status is 'Backlog' (not started), 'Started' (a
+-- real job/project now exists, see started_job_id), or 'Abandoned' (kept for
+-- reference, not deleted). reminder_date is an optional per-idea custom
+-- reminder on top of the monthly whole-backlog review nudge.
+CREATE TABLE IF NOT EXISTS household_ideas (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
-    phone           TEXT DEFAULT '',
-    -- Piece 15: addresses are captured as separate fields to reduce typos.
-    -- mailing_address / billing_address stay as the composed full strings
-    -- (used by search, the roster, and job pre-fill) built from the parts.
-    mailing_street  TEXT DEFAULT '',
-    mailing_city    TEXT DEFAULT '',
-    mailing_state   TEXT DEFAULT '',
-    mailing_zip     TEXT DEFAULT '',
-    billing_street  TEXT DEFAULT '',
-    billing_city    TEXT DEFAULT '',
-    billing_state   TEXT DEFAULT '',
-    billing_zip     TEXT DEFAULT '',
-    mailing_address TEXT DEFAULT '',
-    billing_address TEXT DEFAULT '',
-    email           TEXT DEFAULT '',
-    referral_source TEXT DEFAULT '',
     notes           TEXT DEFAULT '',
-    -- Piece 16: lead lifecycle. lead_status is 'Lead' (new prospect, in the
-    -- follow-up cadence), 'Converted' (has a job), or 'Cold' (only used on the
-    -- cold_leads table). assigned_rep_id owns the follow-ups.
-    lead_status     TEXT DEFAULT 'Lead',
-    assigned_rep_id INTEGER,
-    converted_at    TEXT DEFAULT '',
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    target_date     TEXT DEFAULT '',
+    proposed_by     INTEGER REFERENCES employees(id),
+    budget_estimate REAL DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'Backlog',
+    reminder_date   TEXT DEFAULT '',
+    reminder_sent   TEXT DEFAULT '',
+    started_job_id  INTEGER REFERENCES jobs(id),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at      TEXT DEFAULT '',
+    abandoned_at    TEXT DEFAULT ''
 );
 
 -- Piece 17.1: soft-delete trash. A deleted row is snapshotted here (full
@@ -60,60 +54,8 @@ CREATE TABLE IF NOT EXISTS permission_grants (
     expires_on  TEXT DEFAULT ''
 );
 
--- Piece 16: scheduled follow-ups for a new lead (7 days / 2 weeks / 1 month).
--- Generated on demand; surfaced on the home page and the task board.
-CREATE TABLE IF NOT EXISTS lead_followups (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id  INTEGER NOT NULL REFERENCES clients(id),
-    rep_id     INTEGER,
-    milestone  TEXT NOT NULL,            -- '7-day' / '2-week' / '1-month'
-    due_date   TEXT NOT NULL,
-    status     TEXT NOT NULL DEFAULT 'Open',  -- Open / Done / Converted / Cold
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    done_at    TEXT DEFAULT ''
-);
-
--- Piece 16: leads marked "cold" are moved out of clients into here (they have
--- no jobs). Kept for reference; flagged stale after 6 months for admin purge.
-CREATE TABLE IF NOT EXISTS cold_leads (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    name              TEXT NOT NULL,
-    phone             TEXT DEFAULT '',
-    email             TEXT DEFAULT '',
-    referral_source   TEXT DEFAULT '',
-    notes             TEXT DEFAULT '',
-    mailing_street    TEXT DEFAULT '',
-    mailing_city      TEXT DEFAULT '',
-    mailing_state     TEXT DEFAULT '',
-    mailing_zip       TEXT DEFAULT '',
-    billing_street    TEXT DEFAULT '',
-    billing_city      TEXT DEFAULT '',
-    billing_state     TEXT DEFAULT '',
-    billing_zip       TEXT DEFAULT '',
-    mailing_address   TEXT DEFAULT '',
-    billing_address   TEXT DEFAULT '',
-    assigned_rep_id   INTEGER,
-    cold_reason       TEXT DEFAULT '',
-    original_created_at TEXT DEFAULT '',
-    cold_at           TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Piece 15: prior-version history for client profiles. Each edit snapshots
--- the outgoing values (JSON) plus the list of changed-field labels. The old
--- data is hidden from the profile; only admins can open the history.
-CREATE TABLE IF NOT EXISTS client_versions (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id      INTEGER NOT NULL REFERENCES clients(id),
-    version        INTEGER NOT NULL,
-    data           TEXT NOT NULL,          -- JSON snapshot of the old values
-    changed_fields TEXT NOT NULL DEFAULT '[]',  -- JSON list of changed labels
-    edited_by      TEXT DEFAULT '',
-    saved_at       TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS jobs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id        INTEGER NOT NULL REFERENCES clients(id),
     job_name         TEXT DEFAULT '',   -- the name used in bookkeeping records
     site_location    TEXT DEFAULT '',   -- address or GPS coordinates; .kmz link planned
     county           TEXT DEFAULT '',
@@ -193,8 +135,8 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 );
 
--- Piece 8: the employee directory. Vixinman's crew, kept separate from
--- clients/jobs. Each row records who the person is (name), what they do
+-- Piece 8: the employee directory. Vixinman's household members, kept
+-- separate from jobs. Each row records who the person is (name), what they do
 -- (roles — comma-separated selections), the licenses and certifications
 -- they hold, and their working schedule.
 CREATE TABLE IF NOT EXISTS employees (
@@ -474,7 +416,7 @@ CREATE TABLE IF NOT EXISTS job_estimate_lines (
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.
--- Piece 30.8: "Boards" — standalone to-dos not tied to any job or client
+-- Piece 30.8: "Boards" — standalone to-dos not tied to any job
 -- (clean the bathroom, call X, …). Each can be assigned to a team member, carry
 -- a running notes log, and log time spent.
 CREATE TABLE IF NOT EXISTS boards (
@@ -527,14 +469,14 @@ CREATE TABLE IF NOT EXISTS employee_onboarding (
     UNIQUE(employee_id, step_id)
 );
 
--- Piece 12: client-level document storage — files that belong to the
--- client across all their jobs (contracts, correspondence, intake, photos),
--- kept separate from a job's requirement documents. Files on disk in
--- uploads/client_<id>/, only metadata here.
-CREATE TABLE IF NOT EXISTS client_files (
+-- Piece 12 (revised Piece 33): household-wide document storage — files that
+-- aren't tied to one specific project (insurance policies, warranties,
+-- general correspondence), kept separate from a job's requirement documents.
+-- No owner FK needed: there's exactly one household. Files on disk in
+-- uploads/household/, only metadata here.
+CREATE TABLE IF NOT EXISTS household_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id     INTEGER NOT NULL REFERENCES clients(id),
-    category      TEXT DEFAULT '',   -- Contracts / Correspondence / Intake / Photos / Other
+    category      TEXT DEFAULT '',   -- Insurance / Warranty / Correspondence / Other
     stored_name   TEXT NOT NULL,
     original_name TEXT NOT NULL,
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))

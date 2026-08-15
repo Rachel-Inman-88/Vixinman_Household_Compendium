@@ -1,9 +1,10 @@
 # ☀️ Compendium
 
-**Compendium** — Vixinman Designs' internal operations tool. Build client profiles, create
-job profiles under each client, and automatically surface the right resources
+**Compendium** — the Vixinman household's task/project manager. Create job (project)
+profiles directly for the household, and automatically surface the right resources
 (licenses, permits, compliance items, links, phone numbers, docs) based on each
 job's fields — then run the whole job through a standardized, role-based pipeline.
+Someday/maybe ideas live in a household idea backlog until you're ready to start them.
 
 **Proprietary software — see [LICENSE](LICENSE). Do not distribute.**
 
@@ -46,20 +47,21 @@ can confirm a pull/update took effect.
 > current with each update. When a capability is added or changed, it is logged
 > here.
 
-### Clients & leads
-- **Client profiles** with separated address fields (street / city / state / ZIP
-  for both mailing and billing) to cut down on typos.
-- **Live search preview** on the landing page — matches appear as you type.
-- **Lead pipeline**: client-level lead status (Lead / Converted / Cold), an
-  assigned sales rep, conversion tracking, and a **cold-leads** list.
-- **Lead follow-ups**: scheduled follow-up milestones with due dates, surfaced
-  on the dashboard and flagged when overdue.
-- **Edit history**: editing a client saves the prior version; changed data is
-  hidden with a note that it changed — only an admin can request the older info.
-- **Client document storage** with categories.
+### Household idea backlog
+- **Backlog ideas** (`/backlog`) — someday/maybe projects (repairs, builds,
+  certifications) with a name, notes, an optional target/someday date, who
+  proposed it, and a rough budget estimate, before it's a real project.
+- **Lifecycle**: a single `Backlog` / `Started` / `Abandoned` status per idea —
+  no separate archive table. Starting an idea creates a real job/project you
+  fill in from there; abandoning one keeps it on record, not deleted.
+- **Reminders**: a monthly "review your backlog" nudge through the notifications
+  inbox if anything's still waiting, plus an optional custom reminder date on a
+  specific idea.
+- **Household-wide document storage** (`/household-files`) — files not tied to
+  one project (insurance, warranties, correspondence), with categories.
 
 ### Jobs
-- **Job profiles** stored under each client, with full field capture.
+- **Job profiles** belong to the household directly, with full field capture.
 - **Rules engine** — job selections → the licenses, permits, and compliance
   items that apply, across two pages:
   - **Rules Editor** (`/rules`): the editable catalog of resources (links, phone
@@ -122,7 +124,7 @@ can confirm a pull/update took effect.
 - **Per-slot upload formats**: a document slot can restrict its accepted file
   types (e.g. a permit slot to PDF), enforced on upload.
 - **Auto-renamed uploads**: every uploaded file is renamed to a self-describing
-  `Name_What_Date` scheme for recordkeeping (job docs, client files, employee
+  `Name_What_Date` scheme for recordkeeping (job docs, household files, employee
   files, and field photos each get their own pattern); the friendly name is what
   shows and downloads, while the on-disk name stays collision-safe.
 - **In-place editing** for the add/delete-only records (rules, appliance &
@@ -137,7 +139,7 @@ can confirm a pull/update took effect.
   an install date set — setting the install date auto-advances the job).
 - **Per-job progress widget** — a segmented progress bar (one per job) that shows
   at a glance where the job sits in the pipeline, with the **next step called
-  out**. Appears on the dashboard, client pages, and each job's header.
+  out**. Appears on the dashboard and each job's header.
 - **Pipeline-turnover notifications**: whenever a job advances to a new stage
   (from Proposal onward — new jobs, manual stage changes, and the install-date
   auto-advance), the department(s) that **own the new stage** are notified in
@@ -148,14 +150,13 @@ can confirm a pull/update took effect.
   **Lost** with a **required reason** recorded in the audit log (who/when), and
   remembers the stage it was at. A cancelled job's **open tasks are hidden** from
   My Tasks, the task board, and the Work Bag so they stop nagging the crew —
-  nothing is deleted. **Everyone involved so far** (task assignees, time loggers,
-  the assigned rep) is notified. A **↩ Reopen** action restores the exact prior
+  nothing is deleted. **Everyone involved so far** (task assignees, time loggers)
+  is notified. A **↩ Reopen** action restores the exact prior
   stage and its tasks. ("Lost" is removed from the plain stage dropdown so every
   cancellation captures a reason.)
 - **Closed jobs review** (🗄 Databases → Closed jobs, GM/Admin): a management view
-  of **cancelled** jobs — client, reason, who/when, prior stage, contract — each
-  with a one-click Reopen, plus a list of **completed** jobs (mirrors the
-  cold-leads review).
+  of **cancelled** jobs — reason, who/when, prior stage, contract — each
+  with a one-click Reopen, plus a list of **completed** jobs.
 - **Task generation** from a job's process, with each step auto-assigned to the
   role-holder responsible for it.
 - **Default task deadlines**: every generated task defaults to **7 days after the
@@ -168,7 +169,7 @@ can confirm a pull/update took effect.
 - **Work Bag** for field crews — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboards. It opens on a **jobs landing** that lists just the jobs in the
-  crew's bag (name, client, install date, open-task count); tapping a job opens
+  crew's bag (name, install date, open-task count); tapping a job opens
   its **own page** with that job's tasks, plus hours, receipts, and notes pinned
   to it.
 - **Submit-as-done with time by pay type**: instead of a status dropdown, each
@@ -201,8 +202,8 @@ can confirm a pull/update took effect.
 - **Grouped task board**: the cross-job task board and the dashboard's **My
   Tasks** are **grouped under each job** (a banner per job with its tasks as
   bullets beneath) so everything for a job reads at a glance.
-- **Boards** (📋 in the top nav): stand-alone **to-dos not tied to a job or
-  client** (clean the bathroom, call a vendor, …). Each can be **sent to a
+- **Boards** (📋 in the top nav): stand-alone **to-dos not tied to a
+  job** (clean the bathroom, call a vendor, …). Each can be **sent to a
   teammate** (who's notified), carries a **time log** (hours + notes, with a
   running total) and a **notes log** you add to over time, and has a
   priority / due date / status. Filter by Mine / All / Unassigned.
@@ -291,8 +292,8 @@ can confirm a pull/update took effect.
   **scanned but unexpected** (checked out, retired, or out of scope), **unknown tags**,
   and **duplicate scans** — with an **exportable CSV** of the whole reconciliation.
   Every scan is logged per session and past audits are kept for reference.
-- **Nav grouping**: the reference/data pages — **Client Profiles, Rules Editor,
-  L/P/C Directory, Inventory, Calculator Catalog**, plus **Cost model & finance**
+- **Nav grouping**: the reference/data pages — **Backlog, Household Files, Rules
+  Editor, L/P/C Directory, Inventory, Calculator Catalog**, plus **Cost model & finance**
   and **Closed jobs** — are consolidated under a single **🗄 Databases** dropdown
   in the header; **Employees + Payroll** sit under a **👥 Team** dropdown; and
   **Log / Trash / Access** sit under a **🔧 Admin** dropdown.
@@ -332,24 +333,16 @@ can confirm a pull/update took effect.
   total for each type).
 - **Payments table** on the Finance dashboard: every active job with Contract /
   Collected / Outstanding / Expenses / Net and a grand-total row.
-- **QuickBooks export**: a CSV whose first three columns (Date, Description,
-  Amount, signed) map straight onto QuickBooks Online's import; a **Document**
-  column carries the Receipt/Invoice/Bill tag, and (because QuickBooks imports
-  invoices (A/R), bills (A/P) and receipts through separate flows) it can be
-  filtered per document type. The export buttons live on **each job's Billing
-  tab** — scoped to that job — with a company-wide export still available.
-- **Customer invoice generation (50 / 40 / 10)**: from the Billing tab, generate
-  the progress-billing invoices straight from the contract + BOM — **Deposit 50%**
-  at signing, **Progress 40%**, **Final 10%** — where any materials added to the
-  BOM after the deposit are billed on top (split across the Progress/Final
-  invoices, with the Final trued-up). Each invoice records as an Income/Invoice
-  line (so it flows into the billing rollup and mark-paid) and prints a clean
-  **customer copy**: the Vixinman remit-to block, the 50/40/10 schedule, the amount
-  due, and the equipment (BOM) list **without per-item pricing**. A **NM
-  gross-receipts-tax** line is included — a per-job rate (defaulting to 0% for the
-  solar deduction), citing **NMSA 7-9-112** when exempt. The **50/40/10 pay-scheme
-  callout** also shows on the Sales and Finance dashboards so both explain it the
-  same way.
+- **NM gross-receipts-tax rate**: an optional per-job GRT rate, settable on the
+  Billing tab, for jobs where receipts are taxable (defaults to 0% for the solar
+  deduction). Not tied to any invoice-generation flow — a plain rate field.
+
+Customer-facing invoice generation and the job-transactions QuickBooks export
+were removed (Piece 33, household reorg) — this app manages one household
+directly, so there's no customer to invoice. The plain income/expense ledger
+above still tracks project budgets; only the customer-invoice presentation
+layer is gone. (Payroll's own QuickBooks export, unrelated, is unchanged —
+see Payroll below.)
 - **Cost Model Defaults** (🗄 Databases → Cost model & finance, Finance/Admin/GM):
   Vixinman's estimating template behind job pricing — six editable sections
   (**Equipment Inventory, Equipment Non-Inventory, Labor, Travel, Adders,
@@ -391,14 +384,14 @@ can confirm a pull/update took effect.
   export.
 
 ### AI Assistant
-- **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the business
-  data. Ask about jobs, clients, tasks and the schedule and get a grounded answer;
+- **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
+  data. Ask about jobs, tasks and the schedule and get a grounded answer;
   it can explain and summarize but **never changes anything**.
 - **Claude and/or Gemini, selectable.** Add a key for either or both under **AI
   settings** (admin only); when both are set, staff pick the model per question.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find jobs by
-  stage/county/rep/overdue/contract, drill into one job, search clients, list
+  stage/county/overdue/contract, drill into one job, list
   tasks, look up staff) rather than inventing details.
 - **Permission-scoped & private.** It only ever sees what the signed-in user is
   already allowed to see (pricing/contract figures are withheld from those who
@@ -604,6 +597,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   toggle in the listing, `inventory.manage`), independent of the automatic
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
+
+- **v0.2** — removed the multi-client model entirely (the first piece of the
+  household structural reorg): no more client profiles, lead pipeline, or
+  cold-leads list — jobs belong to the household directly (`jobs.client_id`
+  dropped). Replaced with a **household idea backlog** (`/backlog`) — Backlog /
+  Started / Abandoned status, target date, proposed-by, budget estimate, and a
+  hybrid reminder (monthly whole-backlog nudge + optional per-idea custom date)
+  through the existing notifications inbox. Client-level document storage moved
+  to flat **Household Files** (`/household-files`, no owner id needed). Cut
+  customer-facing invoice generation (50/40/10) and the job-transactions
+  QuickBooks export, since there's no customer to invoice — the plain
+  income/expense ledger on each job's Billing tab stays. Home (`/`) merged into
+  `/dashboard` (one view, two routes) since there's no more client roster to
+  land on. See `HANDOFF.md` for the remaining reorg pieces (jobs→projects,
+  employees→household_members, etc.).
 
 - **v0.1** — reset the footer build counter from the solar-business "Piece N.N" scheme
   to plain semantic versioning, starting at `0.1`, coinciding with the rebrand to

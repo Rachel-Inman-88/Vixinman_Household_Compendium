@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_widgets.html" import job_progress %}
-{% block title %}Job #{{ job["id"] }} — {{ job["client_name"] }}{% endblock %}
+{% block title %}Job #{{ job["id"] }} — {{ job["job_name"] or "Job #" ~ job["id"] }}{% endblock %}
 {% block content %}
 {# Piece 28.3: the pipeline stage shows as plain text with an ✎ that reveals the
    stage dropdown in place — used in the stage panel (and the Complete/Lost card). #}
@@ -19,7 +19,7 @@
   </form>
 </span>
 {% endmacro %}
-<h1 style="margin-bottom:0.7rem;">{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
+<h1 style="margin-bottom:0.7rem;">{{ job["job_name"] or "Job #" ~ job["id"] }}</h1>
 
 <div class="card" style="padding:0.9rem 1.1rem;">
   {{ job_progress(progress) }}
@@ -30,8 +30,8 @@
      title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
   <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
   <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
-  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary"
-     style="margin-left:auto;">← Client profile</a>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"
+     style="margin-left:auto;">← Dashboard</a>
 </div>
 
 {% if job["status"] == "Lost" %}
@@ -548,20 +548,6 @@
 
 <div class="tab-panel" id="tab-estimate">
 {% if can_see_pricing %}
-{# Piece 31.8: customer payment-schedule callout — Sales/Finance only, and only
-   before the contract is signed. Walk the customer through 50/40/10 before they
-   sign; it clears once a contract total (their agreed terms) is set. #}
-{% if pay_scheme_callout %}
-<div class="card" style="border-left:4px solid var(--brand); background:#f3faf5; display:flex; gap:0.6rem; align-items:flex-start;">
-  <span style="font-size:1.3rem; line-height:1;">💬</span>
-  <div>
-    <div style="font-weight:700; margin-bottom:0.15rem;">Customer payment schedule — 50 / 40 / 10</div>
-    <p class="muted" style="margin:0; font-size:0.9rem;">{{ payment_scheme | safe }}</p>
-    <p class="muted" style="margin:0.4rem 0 0; font-size:0.8rem;">Go over this with the
-      customer before they sign — it clears here once a contract total is set.</p>
-  </div>
-</div>
-{% endif %}
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.5rem;">
     <h2 style="margin:0; font-size:1.1rem;">📐 Job estimate</h2>
@@ -661,15 +647,6 @@
       <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
     </form>
   </div>
-  {% if county_grt is not none %}
-  <p class="muted" style="margin:-0.3rem 0 0.7rem; font-size:0.83rem;">
-    County on file (<strong>{{ job["county"] }}</strong>) GRT rate:
-    <strong>{{ ('%.4f'|format(county_grt)).rstrip('0').rstrip('.') }}%</strong>
-    <a href="#" onclick="document.getElementById('grt-input').value='{{ ('%.4f'|format(county_grt)).rstrip('0').rstrip('.') }}';return false;">use this rate</a>
-    · leave GRT at 0 if the solar deduction applies.
-  </p>
-  {% endif %}
-
   {# Piece 29.6/29.7: internal pricing breakdown — Finance, Sales & Design only,
      never shown to the customer. #}
   {% if can_see_pricing %}
@@ -708,63 +685,6 @@
       {{ dt }}s: {{ billing.docs[dt].count }} · ${{ (billing.docs[dt].amount)|money0 }}</span>
     {% endfor %}
   </p>
-
-  {# Piece 27.2: QuickBooks exports for THIS job (moved here from the Finance dashboard). #}
-  <p style="margin:0 0 0.8rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
-    <span class="muted" style="font-size:0.85rem;">Export to QuickBooks:</span>
-    <a href="{{ url_for('quickbooks_export', job=job['id']) }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
-       title="Download this job's transactions as a QuickBooks-importable CSV">⬇ All (CSV)</a>
-    <span class="muted" style="font-size:0.82rem;">or by document:</span>
-    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Receipt') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
-       title="Only receipts">🧾 Receipts</a>
-    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Invoice') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
-       title="Only invoices (A/R)">📄 Invoices</a>
-    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Bill') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
-       title="Only bills (A/P)">📑 Bills</a>
-  </p>
-
-  {# Piece 27.3: 50/40/10 customer invoices generated from the contract + BOM. #}
-  <div style="border:1px solid var(--border); border-radius:10px; padding:0.85rem; margin:0 0 1rem; background:#f3faf5;">
-    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem; flex-wrap:wrap;">
-      <strong>🧾 Customer invoices · 50 / 40 / 10</strong>
-      <span class="muted" style="font-size:0.82rem;">Contract total ${{ (invoices.contract)|money0 }}</span>
-    </div>
-    <p class="muted" style="margin:0.3rem 0 0.7rem; font-size:0.84rem;">{{ payment_scheme | safe }}</p>
-    {% if invoices.contract <= 0 %}
-    <p class="muted" style="margin:0;">Set a <strong>Contract total</strong> above, then generate the 50% deposit invoice here.</p>
-    {% else %}
-    <div style="overflow-x:auto;">
-    <table style="background:var(--card);">
-      <thead><tr><th>Milestone</th><th>Invoice #</th><th style="text-align:right;">Amount</th><th>Due</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        {% for m in invoices.rows %}
-        <tr>
-          <td><strong>{{ m.pct }}%</strong> {{ m.name }}<br><span class="muted" style="font-size:0.77rem;">{{ m.hint }}</span></td>
-          {% if m.txn %}
-          <td>{{ m.txn["invoice_number"] }}</td>
-          <td style="text-align:right; font-weight:600;">${{ (m.txn["amount"] or 0)|money }}
-            {% if m.txn["extras_amount"] and m.txn["extras_amount"]|float > 0 %}<br><span class="muted" style="font-size:0.74rem;">incl. ${{ (m.txn["extras_amount"]|float)|money0 }} materials</span>{% endif %}</td>
-          <td class="muted">{{ m.txn["due_date"] or "—" }}</td>
-          <td>{% if m.txn["status"] == "Paid" %}<span class="badge">Paid</span>{% else %}<span class="badge warn">Outstanding</span>{% endif %}</td>
-          <td style="white-space:nowrap;"><a href="{{ url_for('view_invoice', job_id=job['id'], txn_id=m.txn['id']) }}" target="_blank" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;">🧾 Customer copy</a></td>
-          {% elif m.is_next %}
-          <td colspan="4" class="muted">Next — bills <strong>${{ (invoices.next_amount)|money }}</strong>{% if invoices.next_extras and m.name != 'Deposit' %} (incl. ${{ (invoices.next_extras)|money0 }} added materials){% endif %}</td>
-          <td>
-            <form method="post" action="{{ url_for('generate_invoice', job_id=job['id']) }}" style="margin:0;">
-              <input type="hidden" name="milestone" value="{{ m.name }}">
-              <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Generate {{ m.pct }}%</button>
-            </form>
-          </td>
-          {% else %}
-          <td colspan="4" class="muted">— generate the previous invoice first —</td><td></td>
-          {% endif %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% endif %}
-  </div>
 
   {% if billing.txns %}
   <div style="overflow-x:auto;">
@@ -841,8 +761,6 @@
     </div>
     <div class="actions"><button type="submit" class="btn">＋ Record transaction</button></div>
   </form>
-  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Export all jobs'
-  transactions for QuickBooks from your <a href="{{ url_for('dashboard', mode='Finance') }}">Finance dashboard</a>.</p>
 </div>
 <script>
   const INCOME_CATS = {{ income_categories|tojson }};

@@ -4,7 +4,7 @@
 {% block content %}
 {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
 <div class="toolbar">
-  <h1>👋 {{ user["name"].split(" ")[0] }}'s dashboard</h1>
+  <h1>👋 {% if user %}{{ user["name"].split(" ")[0] }}'s dashboard{% else %}Dashboard{% endif %}</h1>
 </div>
 
 {% if depts|length > 1 %}
@@ -69,12 +69,11 @@
     {% if gm.stalled %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Stalled job</th><th>Client</th><th>Stage</th><th>Last activity</th></tr></thead>
+      <thead><tr><th>Stalled job</th><th>Stage</th><th>Last activity</th></tr></thead>
       <tbody>
         {% for s in gm.stalled %}
         <tr>
           <td><a href="{{ url_for('job_detail', job_id=s['id']) }}">{{ s["job_name"] or "Job #" ~ s["id"] }}</a></td>
-          <td class="muted" style="font-size:0.82rem;">{{ s["client_name"] }}</td>
           <td><span class="badge {{ job_status_class.get(s['status'], 'neutral') }}">{{ s["status"] }}</span></td>
           <td class="muted" style="font-size:0.82rem;">{{ s["last"][:10] }}</td>
         </tr>
@@ -91,12 +90,11 @@
     {% if gm.ready_design %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Job</th><th>Client</th><th>Loads</th><th></th></tr></thead>
+      <thead><tr><th>Job</th><th>Loads</th><th></th></tr></thead>
       <tbody>
         {% for j in gm.ready_design %}
         <tr>
           <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
           <td><span class="badge">✅ on file</span></td>
           <td><a href="{{ url_for('job_loads', job_id=j['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.8rem;">Loads &amp; Sizing →</a></td>
         </tr>
@@ -115,13 +113,12 @@
     {% if gm.installs_week %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Install date</th><th>Job</th><th>Client</th><th>Stage</th></tr></thead>
+      <thead><tr><th>Install date</th><th>Job</th><th>Stage</th></tr></thead>
       <tbody>
         {% for j in gm.installs_week %}
         <tr>
           <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] }}</td>
           <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
           <td><span class="badge {{ job_status_class.get(j['status'], 'neutral') }}">{{ j["status"] }}</span></td>
         </tr>
         {% endfor %}
@@ -139,12 +136,11 @@
     {% if gm.closing %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Job</th><th>Client</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
+      <thead><tr><th>Job</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
       <tbody>
         {% for c in gm.closing %}
         <tr>
           <td><a href="{{ url_for('job_detail', job_id=c.job['id'], _anchor='billing') }}">{{ c.job["job_name"] or "Job #" ~ c.job["id"] }}</a></td>
-          <td class="muted" style="font-size:0.82rem;">{{ c.job["client_name"] }}</td>
           <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ (c.balance)|money0 }}</td>
           <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
@@ -164,13 +160,12 @@
 {% if show_payments %}
 <details class="card sect" open>
   <summary>💵 Payments <span class="sect-count">{{ payments|length }} job{{ "s" if payments|length != 1 }}</span></summary>
-  <p class="muted" style="margin:0 0 0.5rem; font-size:0.82rem;">QuickBooks exports now
-    live on each job's <strong>💵 Billing</strong> tab — open a job below to export its
-    receipts, invoices, or bills.</p>
+  <p class="muted" style="margin:0 0 0.5rem; font-size:0.82rem;">Open a job's
+    <strong>💵 Billing</strong> tab to record deposits, invoices and expenses.</p>
   {% if payments %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th><th>Stage</th>
+    <thead><tr><th>Job</th><th>Stage</th>
       <th style="text-align:right;">Contract</th><th style="text-align:right;">Collected</th>
       <th style="text-align:right;">Outstanding</th><th style="text-align:right;">Expenses</th>
       <th style="text-align:right;">Net</th></tr></thead>
@@ -178,7 +173,6 @@
       {% for p in payments %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=p.job['id'], _anchor='billing') }}">{{ p.job["job_name"] or "Job #" ~ p.job["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ p.job["client_name"] }}</td>
         <td><span class="badge {{ job_status_class.get(p.job['status'], 'neutral') }}">{{ p.job["status"] }}</span></td>
         <td style="text-align:right;">${{ (p.b.contract)|money0 }}</td>
         <td style="text-align:right; color:var(--brand);">${{ (p.b.collected)|money0 }}</td>
@@ -190,7 +184,7 @@
     </tbody>
     <tfoot>
       <tr style="font-weight:700; border-top:2px solid var(--border);">
-        <td colspan="3">Totals</td>
+        <td colspan="2">Totals</td>
         <td style="text-align:right;">${{ (pay_totals.contract)|money0 }}</td>
         <td style="text-align:right; color:var(--brand);">${{ (pay_totals.collected)|money0 }}</td>
         <td style="text-align:right; color:#8a5a00;">${{ (pay_totals.outstanding)|money0 }}</td>
@@ -216,14 +210,13 @@
   {% if procurement %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th>
+    <thead><tr><th>Job</th>
       {% for s in material_statuses %}<th style="text-align:right;">{{ s }}</th>{% endfor %}
       <th style="text-align:right;">Total</th></tr></thead>
     <tbody>
       {% for p in procurement %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=p.job['id'], _anchor='materials') }}">{{ p.job["job_name"] or "Job #" ~ p.job["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ p.job["client_name"] }}</td>
         {% for s in material_statuses %}
         <td style="text-align:right;{% if s in ['Needed','Quoted','Backordered'] and p.counts[s] %} color:#8a5a00; font-weight:600;{% endif %}">{{ p.counts[s] or "—" }}</td>
         {% endfor %}
@@ -244,7 +237,7 @@
 {% endif %}
 
 {# ---- Jobs in your stages (per department). A Proposal-only section reads as
-       "Active Proposals". Columns: Progress · Client · Job · Install date.
+       "Active Proposals". Columns: Progress · Job · Install date.
        The Executive viewport skips this flat list — its Company overview above
        already covers the pipeline, this week's installs, and Closing. ---- #}
 {% for s in sections %}
@@ -263,12 +256,11 @@
   {% if closing_jobs %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
+    <thead><tr><th>Job</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
     <tbody>
       {% for c in closing_jobs %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=c.job['id'], _anchor='billing') }}">{{ c.job["job_name"] or "Job #" ~ c.job["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ c.job["client_name"] }}</td>
         <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ (c.balance)|money0 }}</td>
         <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
@@ -291,12 +283,11 @@
     {% if bucket.jobs %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Install date</th><th>Client</th><th>Job</th><th style="min-width:200px;">Progress</th></tr></thead>
+      <thead><tr><th>Install date</th><th>Job</th><th style="min-width:200px;">Progress</th></tr></thead>
       <tbody>
         {% for j in bucket.jobs %}
         <tr>
           <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] or "—" }}{% if j["install_date"] and j["install_date"] < today and bucket.key != 'other' %} <span class="badge danger">past</span>{% endif %}</td>
-          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
           <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
           <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
         </tr>
@@ -317,9 +308,9 @@
   <table>
     <thead><tr>
       {% if proposals %}
-      <th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th><th title="Electric loads recorded from the walkthrough">Loads</th><th>Install date</th>
+      <th style="min-width:200px;">Progress</th><th>Job</th><th title="Electric loads recorded from the walkthrough">Loads</th><th>Install date</th>
       {% else %}
-      <th>Client</th><th>Job</th>{% if is_permits %}<th title="Permit documents filed / required">Permits</th>{% endif %}<th>Install date</th><th style="min-width:200px;">Progress</th>
+      <th>Job</th>{% if is_permits %}<th title="Permit documents filed / required">Permits</th>{% endif %}<th>Install date</th><th style="min-width:200px;">Progress</th>
       {% endif %}
     </tr></thead>
     <tbody>
@@ -327,12 +318,10 @@
       <tr>
         {% if proposals %}
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
-        <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
         <td title="{{ 'Loads recorded' if loads_by_job[j['id']] else 'Loads not recorded yet' }}">{{ "✅" if loads_by_job[j['id']] else "⬜" }}</td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
         {% else %}
-        <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
         {% if is_permits %}
         {% set pc = permits_by_job[j['id']] %}
@@ -374,34 +363,24 @@
 </div>
 {% endif %}
 
-{# ---- Leads (above My tasks) — active prospects not yet converted ---- #}
+{# ---- Backlog worklist (above My tasks) — household ideas not yet started ---- #}
 {% if show_leads %}
 <details class="card sect" open style="border-left:4px solid #f5a623;">
-  <summary>🔔 Leads <span class="sect-count">{{ leads|length }}</span></summary>
-  {% if leads %}
+  <summary>🗂 Backlog <span class="sect-count">{{ backlog_worklist|length }}</span></summary>
+  {% if backlog_worklist %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th>Sales rep</th><th></th></tr></thead>
+    <thead><tr><th>Idea</th><th>Proposed by</th><th>Target</th><th></th></tr></thead>
     <tbody>
-      {% for l in leads %}
+      {% for i in backlog_worklist %}
       <tr>
-        <td><a href="{{ url_for('client_detail', client_id=l['client_id']) }}">{{ l["client_name"] }}</a>
-          {% if l["client_phone"] %}<br><span class="muted" style="font-size:0.8rem;">{{ l["client_phone"] }}</span>{% endif %}</td>
-        <td>{% if l["milestone"] %}<span class="badge neutral">{{ l["milestone"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>{% if l["due_date"] %}{{ l["due_date"] }}{% if l["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>{{ l["rep_name"] or "— unassigned —" }}</td>
+        <td><a href="{{ url_for('backlog_detail', idea_id=i['id']) }}">{{ i["name"] }}</a></td>
+        <td>{{ i["proposed_by_name"] or "—" }}</td>
+        <td>{% if i["target_date"] %}{{ i["target_date"] }}{% if i["reminder_date"] and i["reminder_date"] < today %} <span class="badge danger">reminder due</span>{% endif %}{% else %}<span class="muted">— someday —</span>{% endif %}</td>
         <td style="white-space:nowrap;">
-          <a href="{{ url_for('new_job', client_id=l['client_id']) }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Enter job details</a>
-          {% if l["followup_id"] %}
-          <form method="post" action="{{ url_for('followup_done', followup_id=l['followup_id']) }}" style="display:inline; margin:0;">
-            <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
-            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Log that you followed up">✓ Logged</button>
-          </form>
-          {% endif %}
-          <form method="post" action="{{ url_for('mark_cold', client_id=l['client_id']) }}" style="display:inline; margin:0;"
-                onsubmit="return confirm('Move this lead to cold leads? It leaves the active list.');">
-            <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
-            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">❄ Cold</button>
+          <form method="post" action="{{ url_for('backlog_start', idea_id=i['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Start this as a project?');">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">🚀 Start</button>
           </form>
         </td>
       </tr>
@@ -410,7 +389,7 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No active leads right now. 🎉</p>
+  <p class="empty">Nothing in the backlog right now. 🎉</p>
   {% endif %}
 </details>
 {% endif %}
@@ -472,7 +451,6 @@
     {# Job banner #}
     <div style="background:var(--bg); border-bottom:1px solid var(--border); padding:0.5rem 0.8rem; display:flex; align-items:baseline; gap:0.5rem; flex-wrap:wrap;">
       <a href="{{ url_for('job_detail', job_id=g.job_id) }}#tasks" style="font-weight:700;">{{ g.job_name or "Job #" ~ g.job_id }}</a>
-      {% if g.client_name %}<span class="muted" style="font-size:0.82rem;">{{ g.client_name }}</span>{% endif %}
       <span class="sect-count" style="margin-left:auto;">{{ g.tasks|length }} task{{ "s" if g.tasks|length != 1 }}</span>
     </div>
     {# Tasks as bullet points #}

@@ -5,8 +5,7 @@
   <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">← All jobs</a>
 </div>
 <div class="toolbar">
-  <h1 style="margin:0;">🏠 {{ job["job_name"] or "Job #" ~ job["id"] }}
-    <span class="muted" style="font-size:1rem; font-weight:400;">· {{ client_name }}</span></h1>
+  <h1 style="margin:0;">🏠 {{ job["job_name"] or "Job #" ~ job["id"] }}</h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
     <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary">🚚 Load truck</a>
     <span id="net" class="badge">…</span>

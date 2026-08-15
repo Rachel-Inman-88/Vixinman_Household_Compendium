@@ -14,13 +14,12 @@ needed) and <strong>completed</strong> jobs. Nothing here is deleted.</p>
   {% if cancelled %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th><th>Reason</th><th>Cancelled</th><th style="text-align:right;">Contract</th><th></th></tr></thead>
+    <thead><tr><th>Job</th><th>Reason</th><th>Cancelled</th><th style="text-align:right;">Contract</th><th></th></tr></thead>
     <tbody>
       {% for j in cancelled %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a>
           {% if j["pre_lost_status"] %}<br><span class="muted" style="font-size:0.8rem;">was at {{ j["pre_lost_status"] }}</span>{% endif %}</td>
-        <td>{{ j["client_name"] }}</td>
         <td>{{ j["cancel_reason"] or "—" }}</td>
         <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
           {% if j["cancelled_by"] %}{{ j["cancelled_by"] }}{% endif %}
@@ -47,12 +46,11 @@ needed) and <strong>completed</strong> jobs. Nothing here is deleted.</p>
   {% if completed %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th><th>Install date</th><th style="text-align:right;">Contract</th></tr></thead>
+    <thead><tr><th>Job</th><th>Install date</th><th style="text-align:right;">Contract</th></tr></thead>
     <tbody>
       {% for j in completed %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        <td>{{ j["client_name"] }}</td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
         <td style="text-align:right;">{% if j["contract_amount"] %}${{ (j["contract_amount"])|money0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>

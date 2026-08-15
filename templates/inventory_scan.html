@@ -59,7 +59,7 @@
       <label>On job (optional)</label>
       <select name="job_id">
         <option value="">— none —</option>
-        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }} — {{ j['client_name'] }}</option>{% endfor %}
+        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
       </select>
     </div>
     <div class="field" style="margin:0;"><button type="submit" class="btn">− Record used</button></div>
@@ -79,7 +79,7 @@
       <label>Check out to job (optional)</label>
       <select name="job_id">
         <option value="">— none —</option>
-        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }} — {{ j['client_name'] }}</option>{% endfor %}
+        {% for j in jobs %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
       </select>
     </div>
     <div class="field" style="margin:0;"><button type="submit" class="btn">→ Check out</button></div>

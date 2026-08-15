@@ -1,10 +1,12 @@
-"""Job Creator — internal tool for Vixinman Designs.
+"""Compendium — household task/project manager for the Vixinman household.
 
 Piece 1: Flask skeleton backed by SQLite; home page lists client profiles.
 Piece 2: "New client" form and individual client profile pages.
 Piece 3: job profiles stored under each client.
 Piece 4: rules engine — job selections resolve to required licenses,
 permits, and compliance items; service tickets; exportable job report.
+Piece 33: the multi-client model (Pieces 1-3 above) was removed — jobs
+belong to the household directly now; the home page is the dashboard.
 
 Run it:
     python -m pip install -r requirements.txt
@@ -59,122 +61,52 @@ DATA_DIR = Path(os.environ.get("COMPENDIUM_DATA_DIR", BASE_DIR))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE = DATA_DIR / "job_creator.db"
 
-# The columns a user can fill in on the client form, in display order.
-# Piece 15: addresses are entered as separate parts (fewer typos). The parts
-# are stored, and the full mailing_address / billing_address strings are
-# composed from them so search, the roster, and job pre-fill keep working.
-MAILING_PARTS = ["mailing_street", "mailing_city", "mailing_state", "mailing_zip"]
-BILLING_PARTS = ["billing_street", "billing_city", "billing_state", "billing_zip"]
-CLIENT_SIMPLE_FIELDS = ["name", "phone", "email", "referral_source", "notes",
-                        "assigned_rep_id"]
-# What the form posts (everything the user types).
-CLIENT_FORM_FIELDS = CLIENT_SIMPLE_FIELDS + MAILING_PARTS + BILLING_PARTS
-# Every stored column, including the two composed full-address strings.
-CLIENT_FIELDS = CLIENT_FORM_FIELDS + ["mailing_address", "billing_address"]
-
-# Human labels for change-history and error messages.
-CLIENT_FIELD_LABELS = {
-    "name": "Client name", "phone": "Phone number", "email": "Email address",
-    "referral_source": "Referral source", "notes": "Notes",
-    "assigned_rep_id": "Assigned sales rep",
-    "mailing_street": "Mailing street", "mailing_city": "Mailing city",
-    "mailing_state": "Mailing state", "mailing_zip": "Mailing ZIP",
-    "billing_street": "Billing street", "billing_city": "Billing city",
-    "billing_state": "Billing state", "billing_zip": "Billing ZIP",
-    "mailing_address": "Mailing address", "billing_address": "Billing address",
-}
-
-# Fields that must not be blank, with the labels shown in error messages.
-REQUIRED_CLIENT_FIELDS = {
-    "name": "Client name",
-    "phone": "Phone number",
-    "mailing_street": "Mailing street address",
-    "mailing_city": "Mailing city",
-    "mailing_state": "Mailing state",
-    "mailing_zip": "Mailing ZIP code",
-    "billing_street": "Billing street address",
-    "billing_city": "Billing city",
-    "billing_state": "Billing state",
-    "billing_zip": "Billing ZIP code",
-}
-
-
-def compose_address(street, city, state, zip_code):
-    """Build a single-line address from its parts, skipping blank pieces."""
-    region = " ".join(p for p in (state, zip_code) if p)
-    return ", ".join(p for p in (street, city, region) if p)
-
-
-def read_client_form():
-    """Pull the posted client fields and compose the full address strings."""
-    values = {f: request.form.get(f, "").strip() for f in CLIENT_FORM_FIELDS}
-    values["mailing_address"] = compose_address(
-        values["mailing_street"], values["mailing_city"],
-        values["mailing_state"], values["mailing_zip"])
-    values["billing_address"] = compose_address(
-        values["billing_street"], values["billing_city"],
-        values["billing_state"], values["billing_zip"])
-    return values
-
-
-# ------------------------------------------------------------ lead lifecycle
-def ensure_lead_followups(db):
-    """Create any follow-up rows that have come due for active leads (7 days /
-    2 weeks / 1 month after the client was created). Idempotent."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    leads = db.execute(
-        "SELECT id, assigned_rep_id, created_at FROM clients"
-        " WHERE lead_status = 'Lead'").fetchall()
+# ------------------------------------------------------- household idea backlog
+def ensure_backlog_reminders(db):
+    """Piece 33: reminders for the household idea backlog, replacing the old
+    lead follow-up cadence. Two independent, idempotent nudges through the
+    existing notifications inbox: (1) once a month, a single "review your
+    backlog" notice if anything is still sitting in Backlog; (2) per-idea, an
+    optional custom reminder_date fires once. Called both on dashboard load
+    and from the background scheduler (run_maintenance) — the latter has no
+    request/app context, so this builds plain link paths, not url_for."""
+    recipients = [r["id"] for r in db.execute(
+        "SELECT id FROM employees WHERE COALESCE(username,'') != ''").fetchall()]
+    if not recipients:
+        return
     made = False
-    for lead in leads:
-        base = (lead["created_at"] or "")[:10]
-        if not base:
-            continue
-        try:
-            base_date = datetime.strptime(base, "%Y-%m-%d")
-        except ValueError:
-            continue
-        existing = {r["milestone"] for r in db.execute(
-            "SELECT milestone FROM lead_followups WHERE client_id = ?",
-            (lead["id"],))}
-        for days, milestone in LEAD_FOLLOWUP_SCHEDULE:
-            due = (base_date + timedelta(days=days)).strftime("%Y-%m-%d")
-            if due <= today and milestone not in existing:
-                db.execute(
-                    "INSERT INTO lead_followups (client_id, rep_id, milestone,"
-                    " due_date, status) VALUES (?, ?, ?, ?, 'Open')",
-                    (lead["id"], lead["assigned_rep_id"], milestone, due))
-                made = True
+    today = datetime.now().strftime("%Y-%m-%d")
+    this_month = today[:7]
+    backlog_count = db.execute(
+        "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'").fetchone()[0]
+    if backlog_count:
+        last_sent = db.execute(
+            "SELECT value FROM meta WHERE key = 'backlog_review_last_sent'").fetchone()
+        if not last_sent or last_sent["value"] != this_month:
+            notify_employees(
+                db, recipients,
+                f"🗂 Time to review the household idea backlog"
+                f" ({backlog_count} waiting).",
+                link="/backlog", kind="backlog_review")
+            db.execute(
+                "INSERT INTO meta (key, value) VALUES"
+                " ('backlog_review_last_sent', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (this_month,))
+            made = True
+    for idea in db.execute(
+            "SELECT id, name FROM household_ideas WHERE status = 'Backlog'"
+            " AND reminder_date != '' AND reminder_date <= ?"
+            " AND COALESCE(reminder_sent, '') != '1'", (today,)).fetchall():
+        notify_employees(
+            db, recipients, f"💡 Reminder: {idea['name']}",
+            link=f"/backlog/{idea['id']}", kind="backlog_idea")
+        db.execute("UPDATE household_ideas SET reminder_sent = '1' WHERE id = ?",
+                   (idea["id"],))
+        made = True
     if made:
         db.commit()
 
-
-def due_followups(db):
-    """Open, due-or-overdue follow-ups with client + rep names (for the home
-    page and task board)."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    return db.execute(
-        "SELECT f.*, c.name AS client_name, c.phone AS client_phone,"
-        " e.name AS rep_name FROM lead_followups f"
-        " JOIN clients c ON c.id = f.client_id"
-        " LEFT JOIN employees e ON e.id = f.rep_id"
-        " WHERE f.status = 'Open' AND f.due_date <= ?"
-        " AND c.lead_status = 'Lead'"
-        " ORDER BY f.due_date, c.name", (today,)).fetchall()
-
-
-COLD_LEAD_FIELDS = [
-    "name", "phone", "email", "referral_source", "notes",
-    "mailing_street", "mailing_city", "mailing_state", "mailing_zip",
-    "billing_street", "billing_city", "billing_state", "billing_zip",
-    "mailing_address", "billing_address", "assigned_rep_id",
-]
-
-
-def crew_list():
-    """Employees for the assigned-rep picker on the client form."""
-    return get_db().execute(
-        "SELECT id, name FROM employees ORDER BY name").fetchall()
 
 # Job profile columns (products is stored as a comma-separated list).
 JOB_FIELDS = [
@@ -226,8 +158,6 @@ PERMISSIONS = {
     "employees.manage": "Manage employees & accounts",
     "approvals": "Approve field work",
     "audit.view": "View the audit log",
-    "leads.manage": "Manage cold leads",
-    "clients.history": "View client change history",
     "delete": "Delete data (sends it to the trash)",
 }
 # Piece 24.6: department/role-scoped access. Holding a role confers its module
@@ -244,12 +174,9 @@ ROLE_PERMISSIONS = {
     "Purchasing Agent": {"inventory.manage"},
     "Warehouse Assistant": {"inventory.manage"},
     "Designer": {"inventory.manage"},          # actions the stale-stock queue
-    "Sales & Marketing Manager": {"leads.manage", "clients.history"},
-    "Outside Sales Rep": {"leads.manage"},
-    "Inside Sales Rep": {"leads.manage"},
     "Administration Manager": {"employees.manage"},
     "Human Resources Manager": {"employees.manage"},
-    "Finance Manager": {"approvals", "clients.history"},
+    "Finance Manager": {"approvals"},
     "Research & Development Manager": {"rules.manage", "catalog.manage"},
     "Process Developer": {"rules.manage", "catalog.manage"},
     "Software Developer": {"rules.manage", "catalog.manage"},
@@ -575,41 +502,11 @@ PAYMENT_TERMS = ["Pay in full", "Financing"]
 # A blank doc type is a plain ledger note with no paperwork behind it.
 DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 
-# Piece 27.3: progress-billing ("50 / 40 / 10") schedule used to generate customer
-# invoices from a job's contract + BOM. (name, percent-of-contract, plain-language
-# hint). Materials added to the BOM AFTER the deposit invoice are billed to the
-# customer on top of the contract, split 80/20 across the Progress and Final
-# invoices (the Final trues up so the total billed = contract + all added materials).
-INVOICE_MILESTONES = [
-    ("Deposit", 50, "Collected upfront at contract signing."),
-    ("Progress", 40, "Billed once materials are ordered and the project is underway."),
-    ("Final", 10, "Billed on completion / at commissioning."),
-]
-# Plain-language description of the pay scheme — shown as a callout to Sales and
-# Finance (and on the customer invoice) so everyone explains it the same way.
-PAYMENT_SCHEME_NOTE = (
-    "Vixinman bills every install on a 50 / 40 / 10 schedule: <strong>50%</strong> due at "
-    "contract signing, <strong>40%</strong> once the project is underway, and the final "
-    "<strong>10%</strong> at completion. Any materials added after the deposit (change "
-    "orders) are added to the remaining balance and split across the 40% and 10% invoices."
-)
-# Remit-to block printed on customer invoices. Fill in Vixinman's real details here.
-COMPANY_INFO = {
-    "name": "Vixinman Designs",
-    "address": "1212 Railroad Ave",
-    "city_state_zip": "Las Vegas, NM 87701",
-    "phone": "(505) 454-0614",
-    "email": "rachel@vixinmandesigns.com",
-    "terms_days": 15,   # net terms for the Progress / Final invoices
-}
-# New Mexico gross-receipts tax on the customer invoice. The rate is per job
-# (it varies by the install location), defaulting to 0% because Vixinman's solar
-# systems are GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance
-# sets a rate on the Billing tab where any receipts are taxable. The exemption
-# citation prints on every invoice per NMSA 7-9-112, as Vixinman's own rule requires.
+# New Mexico gross-receipts tax. The rate is per job (it varies by the install
+# location), defaulting to 0% because Vixinman's solar systems are
+# GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance sets a
+# rate on the Billing tab where any receipts are taxable.
 GRT_DEFAULT_RATE = 0.0
-GRT_EXEMPTION_CITE = ("NMSA 7-9-112 (3.2.247 NMAC) — NM solar-energy-system "
-                      "gross-receipts deduction")
 # Piece 29.6: the 33 New Mexico counties, seeded (at 0%) into county_tax_rates
 # so Finance can enter each county's current GRT rate. A job's GRT rate
 # auto-fills from its install county. Rates change biannually — enter the
@@ -1123,7 +1020,7 @@ PRODUCTS = [
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.1"
+VERSION = "0.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1153,12 +1050,12 @@ def _is_photo_step(title):
     return any(k in t for k in PHOTO_STEP_KEYWORDS)
 MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
                      "Received", "On hand", "Installed"]
-# Piece 12: categories for client-level documents (distinct from a job's
-# requirement categories — these describe the client relationship).
-CLIENT_FILE_CATEGORIES = ["Contracts", "Correspondence", "Intake", "Photos", "Other"]
+# Piece 12 (revised Piece 33): categories for household-wide documents
+# (distinct from a job's requirement categories — these aren't tied to a
+# specific project).
+HOUSEHOLD_FILE_CATEGORIES = ["Insurance", "Warranty", "Correspondence", "Other"]
 # Piece 16: job pipeline stages, redefined to match Vixinman's process phases.
-# (Leads/Cold are a client-level state — see lead_status — because a lead has
-# no job yet; a job exists from Proposal onward.)
+# (Renaming these stages to fit the household model is a separate future piece.)
 JOB_STATUSES = ["Proposal", "Job Prep", "Installation", "Inspections",
                 "Closing", "Complete", "Lost"]
 JOB_STATUS_CLASS = {
@@ -1292,10 +1189,6 @@ OLD_TO_NEW_STATUS = {
     "Permitting": "Job Prep", "Scheduled": "Installation",
     "Installed": "Inspections", "Closed": "Complete",
 }
-# Piece 16: lead follow-up cadence (days after the client is created) and the
-# age at which a cold lead is flagged for an admin to purge.
-LEAD_FOLLOWUP_SCHEDULE = [(7, "7-day"), (14, "2-week"), (30, "1-month")]
-COLD_LEAD_STALE_DAYS = 182  # ~6 months
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # Piece 10.2 / 24.5: map each BPMN lane (now a functional department) to the
@@ -1481,8 +1374,10 @@ def close_db(exc):
 # the view function name (e.g. delete_component_catalog -> "Delete component
 # catalog"), so new routes are logged readably without extra wiring.
 ACTION_LABELS = {
-    "new_client": "Create client", "new_job": "Create job",
+    "new_job": "Create job",
     "edit_job": "Edit job", "add_rule": "Add rule", "delete_rule": "Delete rule",
+    "backlog_new": "Add backlog idea", "backlog_edit": "Edit backlog idea",
+    "backlog_start": "Start idea as a project", "backlog_delete": "Delete backlog idea",
     "new_employee": "Add employee", "edit_employee": "Edit employee",
     "delete_employee": "Delete employee", "upload_file": "Upload job document",
     "generate_tasks": "Generate tasks from process",
@@ -1653,8 +1548,8 @@ def supervisors_or_gm_ids(db, exclude_id=None):
 
 def job_involved_ids(db, job, exclude_id=None):
     """Piece 30.3: employees involved in a job so far — anyone assigned a task on
-    it, anyone who logged time to it, and the client's assigned sales rep. Only
-    those with a login (who can read an inbox); the given id is dropped."""
+    it, or anyone who logged time to it. Only those with a login (who can read
+    an inbox); the given id is dropped."""
     ids = set()
     for r in db.execute("SELECT DISTINCT employee_id FROM job_tasks"
                         " WHERE job_id = ? AND employee_id IS NOT NULL",
@@ -1664,10 +1559,6 @@ def job_involved_ids(db, job, exclude_id=None):
                         " WHERE job_id = ? AND employee_id IS NOT NULL",
                         (job["id"],)).fetchall():
         ids.add(r["employee_id"])
-    rep = db.execute("SELECT assigned_rep_id FROM clients WHERE id = ?",
-                     (job["client_id"],)).fetchone()
-    if rep and rep["assigned_rep_id"]:
-        ids.add(rep["assigned_rep_id"])
     ids.discard(None)
     ids.discard(exclude_id)
     if not ids:
@@ -1719,14 +1610,11 @@ def notify_stage_turnover(db, job, new_status, exclude_id=None):
     recipients = [i for i in department_employee_ids(db, depts) if i != exclude_id]
     if not recipients:
         return
-    client = db.execute("SELECT name FROM clients WHERE id = ?",
-                        (job["client_id"],)).fetchone()
-    cname = client["name"] if client else ""
     jobname = job["job_name"] or f"Job #{job['id']}"
     labels = ", ".join(dict.fromkeys(label for label, _dept in team))
     notify_employees(
         db, recipients,
-        f"📋 {jobname}{(' · ' + cname) if cname else ''} turned over to "
+        f"📋 {jobname} turned over to "
         f"{new_status}{(' — ' + labels + ' up next') if labels else ''}.",
         link=url_for("job_detail", job_id=job["id"]), kind="stage")
 
@@ -1820,10 +1708,6 @@ def has_permission(perm):
 # Which permission each admin-gated view needs (Piece 17). Views not listed
 # fall back to the generic Admin/GM gate (perm=None).
 VIEW_PERMISSION = {
-    "client_history": "clients.history",
-    "cold_leads_page": "leads.manage",
-    "restore_cold_lead": "leads.manage",
-    "purge_cold_lead": "leads.manage",
     "add_appliance_catalog": "catalog.manage",
     "delete_appliance_catalog": "catalog.manage",
     "add_component_catalog": "catalog.manage",
@@ -1928,18 +1812,6 @@ def _can_see_pricing():
     if is_gm() or _is_admin():
         return True
     return bool({"Finance", "Sales", "Design"} & set(user_departments(user)))
-
-
-def _can_see_pay_scheme():
-    """Piece 31.8: who sees the estimate's customer payment-schedule callout —
-    the people who walk a customer through it before signing: Sales and Finance
-    (plus GM/Admin). Narrower than pricing (no Design)."""
-    user = current_user()
-    if user is None:
-        return True
-    if is_gm() or _is_admin():
-        return True
-    return bool({"Finance", "Sales"} & set(user_departments(user)))
 
 
 def _can_edit_pay_rates():
@@ -2091,11 +1963,6 @@ def _job_name(db, jid):
     return (r["job_name"] if r and r["job_name"] else f"Job #{jid}")
 
 
-def _client_name(db, cid):
-    r = db.execute("SELECT name FROM clients WHERE id = ?", (cid,)).fetchone()
-    return r["name"] if r else f"Client #{cid}"
-
-
 def _emp_name(db, eid):
     r = db.execute("SELECT name FROM employees WHERE id = ?", (eid,)).fetchone()
     return r["name"] if r else f"Employee #{eid}"
@@ -2118,9 +1985,6 @@ def _employee_uses(db, eid):
     n = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (eid,))
     if n:
         uses.append(f"{n} assigned task(s)")
-    n = _count(db, "SELECT COUNT(*) FROM clients WHERE assigned_rep_id = ?", (eid,))
-    if n:
-        uses.append(f"{n} client(s) where they're the sales rep")
     n = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (eid,))
     if n:
         uses.append(f"{n} field-work submission(s)")
@@ -2164,10 +2028,13 @@ TRASH_REGISTRY = {
                  "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Documents",
                  "in_use": lambda db, r: [],
                  "file": lambda r: UPLOADS_DIR / f"job_{r['job_id']}" / r["stored_name"]},
-    "client_file": {"table": "client_files", "label": lambda r: r["original_name"],
-                    "found_in": lambda db, r: f"{_client_name(db, r['client_id'])} — Documents",
-                    "in_use": lambda db, r: [],
-                    "file": lambda r: UPLOADS_DIR / f"client_{r['client_id']}" / r["stored_name"]},
+    "household_file": {"table": "household_files", "label": lambda r: r["original_name"],
+                       "found_in": lambda db, r: "Household Files",
+                       "in_use": lambda db, r: [],
+                       "file": lambda r: UPLOADS_DIR / "household" / r["stored_name"]},
+    "household_idea": {"table": "household_ideas", "label": lambda r: r["name"],
+                       "found_in": lambda db, r: "Backlog",
+                       "in_use": lambda db, r: []},
     "credential": {"table": "employee_credentials", "label": lambda r: r["name"],
                    "found_in": lambda db, r: f"{_emp_name(db, r['employee_id'])} — Credentials",
                    "in_use": lambda db, r: []},
@@ -2362,8 +2229,8 @@ def login():
             flash(f"Signed in as {user['name']}.")
             session.pop("dash_mode", None)  # start on their saved default
             # Honor a deep link (e.g. a specific job someone opened while
-            # logged out), but never treat the bare root "/" (Client Profiles)
-            # as the landing — everyone should land on their own dashboard.
+            # logged out). "/" and "/dashboard" are the same view now, so the
+            # nxt != "/" exclusion below is just a no-op landing normalization.
             nxt = request.form.get("next") or ""
             if nxt.startswith("/") and not nxt.startswith("//") and nxt != "/":
                 return redirect(nxt)
@@ -2915,19 +2782,22 @@ def cleanup_inventory(db):
 
 
 def init_db():
-    """Create tables if missing, upgrade older databases, and add three
-    sample clients (one job each) the first time so the app isn't empty."""
+    """Create tables if missing and upgrade older databases."""
     db = sqlite3.connect(DATABASE)
     db.executescript((BASE_DIR / "schema.sql").read_text())
-    # Field renamed after Piece 3.1: carry existing data over.
-    client_cols = {row[1] for row in db.execute("PRAGMA table_info(clients)")}
-    if "street_address" in client_cols and "mailing_address" not in client_cols:
-        db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
-    ensure_columns(db, "clients", CLIENT_FIELDS)
-    # Piece 16: lead-lifecycle columns that aren't part of the intake form.
-    ensure_columns(db, "clients", ["lead_status", "assigned_rep_id", "converted_at"])
-    db.execute("UPDATE clients SET lead_status = 'Lead'"
-               " WHERE COALESCE(lead_status, '') = ''")
+    # Piece 33: the multi-client model is gone (household_ideas/household_files
+    # replace clients/cold_leads/lead_followups/client_versions/client_files).
+    # One-time cleanup for any local DB from before this piece; a no-op on a
+    # genuinely fresh database.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'clients_removed_v1'").fetchone():
+        for legacy_table in ("clients", "cold_leads", "lead_followups",
+                              "client_versions", "client_files"):
+            db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
+        job_cols = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+        if "client_id" in job_cols:
+            db.execute("ALTER TABLE jobs DROP COLUMN client_id")
+        db.execute("INSERT INTO meta (key, value) VALUES ('clients_removed_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     ensure_columns(db, "jobs", JOB_FIELDS + ["status", "install_date"])
     # Piece 21: contract total for the Finance viewport (dollar amounts).
     ensure_columns(db, "jobs", ["contract_amount"])
@@ -2959,10 +2829,6 @@ def init_db():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
     db.execute(f"UPDATE jobs SET status = '{DEFAULT_JOB_STATUS}'"
                f" WHERE COALESCE(status, '') = ''")
-    # A client with any job is 'Converted' (a lead has no job yet).
-    db.execute("UPDATE clients SET lead_status = 'Converted'"
-               " WHERE lead_status = 'Lead'"
-               " AND id IN (SELECT DISTINCT client_id FROM jobs)")
     # Piece 14: change-tracking for task sync; seed blanks from created_at.
     ensure_columns(db, "job_tasks", ["updated_at", "pipeline_status"])
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
@@ -3567,7 +3433,7 @@ def _notify_board_assignee(db, board_id, title, assignee_id, actor):
 
 @app.route("/boards")
 def boards_page():
-    """The Boards list — standalone to-dos not tied to a job or client.
+    """The Boards list — standalone to-dos not tied to a job.
     Filter by assignee (mine / unassigned / a person / all) and open vs. all."""
     db = get_db()
     me = current_user()
@@ -3773,30 +3639,13 @@ def board_delete(board_id):
     return redirect(url_for("boards_page"))
 
 
-@app.route("/")
-def home():
-    db = get_db()
-    ensure_lead_followups(db)
-    clients = db.execute(
-        "SELECT c.*, e.name AS rep_name FROM clients c"
-        " LEFT JOIN employees e ON e.id = c.assigned_rep_id ORDER BY c.name"
-    ).fetchall()
-    followups = due_followups(db)
-    cold_count = db.execute("SELECT COUNT(*) FROM cold_leads").fetchone()[0]
-    return render_template("index.html", clients=clients,
-                           followups=followups, cold_count=cold_count,
-                           today=datetime.now().strftime("%Y-%m-%d"),
-                           job_status_class_json=json.dumps(JOB_STATUS_CLASS))
-
-
 def _closing_worklist(db):
     """Jobs in the Closing stage with balance due and remaining close-out steps —
     the Executive overview's Closing worklist, also the Sales 'Closing' mode."""
     out = []
     for j in db.execute(
-            "SELECT j.*, c.name AS client_name FROM jobs j"
-            " JOIN clients c ON c.id = j.client_id"
-            " WHERE j.status = 'Closing' ORDER BY j.id").fetchall():
+            "SELECT * FROM jobs"
+            " WHERE status = 'Closing' ORDER BY id").fetchall():
         b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
         steps = db.execute(
             "SELECT title, status FROM job_tasks WHERE job_id = ?"
@@ -3811,20 +3660,25 @@ def _closing_worklist(db):
 
 
 @app.route("/dashboard")
+@app.route("/", endpoint="home")
 def dashboard():
-    """Piece 19: role-based My Dashboard — the sign-in landing. Stacks a
-    section per department the person belongs to; a mode switch focuses on one.
+    """Piece 19 (revised Piece 33): role-based My Dashboard — the sign-in
+    landing, and (since the household model has no separate client-roster
+    home page) the bare "/" root too, both served by this one view. Stacks a
+    section per department the person belongs to; a mode switch focuses on
+    one. In open mode (no accounts set up yet) user is None — everything
+    role-based below just renders empty, same as the rest of the app's open
+    mode handling.
     """
     user = current_user()
-    if user is None:
-        return redirect(url_for("home"))
     db = get_db()
-    ensure_lead_followups(db)
+    ensure_backlog_reminders(db)
     depts = _viewer_modes(user)   # Piece 30.5: Sales sees 'Closing', not 'Installation'
     # Mode: ?mode= sets it for the session; else the saved default; else All.
     if request.args.get("mode"):
         session["dash_mode"] = request.args.get("mode")
-    saved = user["dashboard_mode"] if "dashboard_mode" in user.keys() else ""
+    saved = (user["dashboard_mode"] if user is not None
+             and "dashboard_mode" in user.keys() else "")
     # No "All" view (Piece 20.8) — always focused on one role at a time.
     mode = session.get("dash_mode") or saved or (depts[0] if depts else "")
     # A Sales-role viewer's saved/linked 'Installation' resolves to 'Closing'.
@@ -3834,12 +3688,13 @@ def dashboard():
         mode = depts[0] if depts else ""
     shown = [mode] if mode else []
 
-    my_tasks = db.execute(
-        "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
-        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-        " JOIN clients c ON c.id = j.client_id"
-        " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
-        " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
+    my_tasks = []
+    if user is not None:
+        my_tasks = db.execute(
+            "SELECT t.*, j.job_name, j.id AS job_id"
+            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
+            " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
     # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
     # punch list — trim it to on-site field work, dropping office/scheduling
     # steps (e.g. Set Installation Date) that live on other dashboards.
@@ -3856,8 +3711,7 @@ def dashboard():
         if jid not in _tg_index:
             _tg_index[jid] = len(task_groups)
             task_groups.append({
-                "job_id": jid, "job_name": t["job_name"],
-                "client_name": t["client_name"], "tasks": []})
+                "job_id": jid, "job_name": t["job_name"], "tasks": []})
         task_groups[_tg_index[jid]]["tasks"].append(t)
 
     sections = []
@@ -3867,11 +3721,9 @@ def dashboard():
         if cfg["stages"]:
             placeholders = ", ".join("?" * len(cfg["stages"]))
             jobs = db.execute(
-                f"SELECT j.id, j.job_name, j.status, j.install_date,"
-                f" j.electric_loads, c.name AS client_name FROM jobs j"
-                f" JOIN clients c ON c.id = j.client_id"
-                f" WHERE j.status IN ({placeholders})"
-                f" ORDER BY j.status, j.id", cfg["stages"]).fetchall()
+                f"SELECT id, job_name, status, install_date, electric_loads"
+                f" FROM jobs WHERE status IN ({placeholders})"
+                f" ORDER BY status, id", cfg["stages"]).fetchall()
         sections.append({"name": d, "icon": cfg["icon"], "jobs": jobs,
                          "stages": cfg["stages"]})
 
@@ -3984,19 +3836,17 @@ def dashboard():
         # are excluded).
         cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         stalled = db.execute(
-            "SELECT j.id, j.job_name, j.status, c.name AS client_name,"
+            "SELECT j.id, j.job_name, j.status,"
             " MAX(t.updated_at) AS last FROM jobs j"
-            " JOIN clients c ON c.id = j.client_id"
             " JOIN job_tasks t ON t.job_id = j.id"
             " WHERE j.status NOT IN ('Lost', 'Complete')"
             " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
             " ORDER BY last", (cutoff,)).fetchall()
         wk_end = (datetime.now().date() + timedelta(days=7)).strftime("%Y-%m-%d")
         installs_week = db.execute(
-            "SELECT j.id, j.job_name, j.status, j.install_date,"
-            " c.name AS client_name FROM jobs j JOIN clients c ON c.id = j.client_id"
-            " WHERE j.install_date != '' AND j.install_date BETWEEN ? AND ?"
-            " AND j.status != 'Lost' ORDER BY j.install_date",
+            "SELECT id, job_name, status, install_date FROM jobs"
+            " WHERE install_date != '' AND install_date BETWEEN ? AND ?"
+            " AND status != 'Lost' ORDER BY install_date",
             (today_s, wk_end)).fetchall()
         closing = _closing_worklist(db)
         # Ready for design: Proposal jobs whose load survey is captured (the
@@ -4004,9 +3854,8 @@ def dashboard():
         # Sales → Designer hand-off queue.
         ready_design = []
         for j in db.execute(
-                "SELECT j.id, j.job_name, j.electric_loads, c.name AS client_name"
-                " FROM jobs j JOIN clients c ON c.id = j.client_id"
-                " WHERE j.status = 'Proposal' ORDER BY j.id").fetchall():
+                "SELECT id, job_name, electric_loads FROM jobs"
+                " WHERE status = 'Proposal' ORDER BY id").fetchall():
             if not _loads_recorded(db, j):
                 continue
             designed = db.execute(
@@ -4033,28 +3882,26 @@ def dashboard():
                   "expense": 0.0, "net": 0.0}
     if show_payments:
         for j in db.execute(
-                "SELECT j.id, j.job_name, j.status, j.contract_amount,"
-                " c.name AS client_name FROM jobs j"
-                " JOIN clients c ON c.id = j.client_id"
-                " WHERE j.status != 'Lost' ORDER BY j.status, j.id").fetchall():
+                "SELECT id, job_name, status, contract_amount FROM jobs"
+                " WHERE status != 'Lost' ORDER BY status, id").fetchall():
             b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
             payments.append({"job": j, "b": b})
             for k in pay_totals:
                 pay_totals[k] += b[k]
 
+    # Piece 33: the old client-lead worklist is now the household idea
+    # backlog. TODO(household-reorg): this viewport still carries the old
+    # 'Sales' mode name — renaming/relabeling the viewport itself is
+    # next-piece (org-chart) territory, so it just shows backlog data here.
     show_leads = "Sales" in shown
-    leads = []
+    backlog_worklist = []
     if show_leads:
-        leads = db.execute(
-            "SELECT c.id AS client_id, c.name AS client_name, c.phone AS client_phone,"
-            " e.name AS rep_name, f.id AS followup_id, f.milestone AS milestone,"
-            " f.due_date AS due_date FROM clients c"
-            " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
-            " LEFT JOIN lead_followups f ON f.id = ("
-            "   SELECT id FROM lead_followups x WHERE x.client_id = c.id"
-            "   AND x.status = 'Open' ORDER BY x.due_date LIMIT 1)"
-            " WHERE c.lead_status = 'Lead'"
-            " ORDER BY (f.due_date IS NULL), f.due_date, c.name").fetchall()
+        backlog_worklist = db.execute(
+            "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
+            " LEFT JOIN employees e ON e.id = i.proposed_by"
+            " WHERE i.status = 'Backlog'"
+            " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
+        ).fetchall()
     pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
                                " WHERE status = 'Pending'").fetchone()[0]
                     if "Executive" in shown else 0)
@@ -4072,7 +3919,8 @@ def dashboard():
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
         stale_stock=stale_stock, task_groups=task_groups,
         payroll_reminder=payroll_reminder,
-        sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
+        sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
+        show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in MODE_CONFIG.items()},
@@ -4149,7 +3997,7 @@ def _task_events(rows):
     events = []
     for t in rows:
         job = t["job_name"] or f"Job #{t['job_id']}"
-        desc = f"Client: {t['client_name']}\nStatus: {t['status']}"
+        desc = f"Status: {t['status']}"
         if t["pipeline_status"]:
             desc += f"\nStage: {t['pipeline_status']}"
         events.append({"uid": f"compendium-task-{t['id']}@vixinmandesigns",
@@ -4164,23 +4012,22 @@ def my_calendar_ics():
     as an importable calendar. In open mode (no login) exports everything."""
     db = get_db()
     user = current_user()
-    tsql = ("SELECT t.*, j.job_name, c.name AS client_name FROM job_tasks t"
-            " JOIN jobs j ON j.id = t.job_id JOIN clients c ON c.id = j.client_id"
+    tsql = ("SELECT t.*, j.job_name FROM job_tasks t"
+            " JOIN jobs j ON j.id = t.job_id"
             " WHERE COALESCE(t.due_date, '') != ''")
-    jsql = ("SELECT DISTINCT j.id, j.job_name, j.install_date,"
-            " c.name AS client_name FROM jobs j JOIN clients c ON c.id = j.client_id"
-            " WHERE COALESCE(j.install_date, '') != ''")
+    jsql = ("SELECT DISTINCT id, job_name, install_date FROM jobs"
+            " WHERE COALESCE(install_date, '') != ''")
     params = []
     if user:
         tsql += " AND t.employee_id = ?"
-        jsql += " AND j.id IN (SELECT job_id FROM job_tasks WHERE employee_id = ?)"
+        jsql += " AND id IN (SELECT job_id FROM job_tasks WHERE employee_id = ?)"
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
         events.append({"uid": f"compendium-install-{j['id']}@vixinmandesigns",
                        "date": j["install_date"],
                        "summary": f"🔧 Install: {j['job_name'] or 'Job #' + str(j['id'])}",
-                       "description": f"Client: {j['client_name']}"})
+                       "description": ""})
     name = f"Compendium — {user['name']}" if user else "Compendium — due dates"
     return _ics_response(name, events, "compendium-my-dates.ics")
 
@@ -4191,435 +4038,291 @@ def job_calendar_ics(job_id):
     job = fetch_job(job_id)
     db = get_db()
     rows = db.execute(
-        "SELECT t.*, ? AS job_name, ? AS client_name FROM job_tasks t"
+        "SELECT t.*, ? AS job_name FROM job_tasks t"
         " WHERE t.job_id = ? AND COALESCE(t.due_date, '') != ''",
-        (job["job_name"], job["client_name"], job_id)).fetchall()
+        (job["job_name"], job_id)).fetchall()
     events = _task_events(rows)
     if job["install_date"]:
         events.append({"uid": f"compendium-install-{job_id}@vixinmandesigns",
                        "date": job["install_date"],
                        "summary": f"🔧 Install: {job['job_name'] or 'Job #' + str(job_id)}",
-                       "description": f"Client: {job['client_name']}"})
+                       "description": ""})
     label = job["job_name"] or f"Job #{job_id}"
     return _ics_response(f"Compendium — {label}", events, f"compendium-job-{job_id}.ics")
 
 
 @app.route("/search")
 def search():
-    """Quick lookup across clients and jobs by name/address/phone/email/
-    county."""
+    """Quick lookup across jobs (site/county/products) and the household idea
+    backlog (name/notes)."""
     q = (request.args.get("q") or "").strip()
-    clients, jobs = [], []
+    jobs, ideas = [], []
     if q:
         like = f"%{q}%"
         db = get_db()
-        clients = db.execute(
-            "SELECT * FROM clients"
-            " WHERE name LIKE ? OR mailing_address LIKE ? OR billing_address LIKE ?"
-            " OR phone LIKE ? OR email LIKE ? ORDER BY name",
-            (like, like, like, like, like)).fetchall()
         jobs = db.execute(
-            "SELECT j.*, c.name AS client_name FROM jobs j"
-            " JOIN clients c ON c.id = j.client_id"
-            " WHERE j.job_name LIKE ? OR j.site_location LIKE ? OR j.county LIKE ?"
-            " OR j.products LIKE ? OR c.name LIKE ? ORDER BY j.created_at DESC",
-            (like, like, like, like, like)).fetchall()
-    return render_template("search.html", q=q, clients=clients, jobs=jobs,
+            "SELECT * FROM jobs"
+            " WHERE job_name LIKE ? OR site_location LIKE ? OR county LIKE ?"
+            " OR products LIKE ? ORDER BY created_at DESC",
+            (like, like, like, like)).fetchall()
+        ideas = db.execute(
+            "SELECT * FROM household_ideas"
+            " WHERE name LIKE ? OR notes LIKE ? ORDER BY created_at DESC",
+            (like, like)).fetchall()
+    return render_template("search.html", q=q, jobs=jobs, ideas=ideas,
                            job_status_class=JOB_STATUS_CLASS)
 
 
 @app.route("/api/quick-search")
 def api_quick_search():
-    """Piece 28.4: autocomplete for the nav search — client and job NAMES only.
-    Each job result carries its client name so the crew can tell jobs apart."""
+    """Piece 28.4 (revised 33): autocomplete for the nav search — job and
+    household-idea NAMES only."""
     q = (request.args.get("q") or "").strip()
     results = []
     if q:
         like = f"%{q}%"
         db = get_db()
-        for c in db.execute(
-                "SELECT id, name FROM clients WHERE name LIKE ? ORDER BY name LIMIT 6",
-                (like,)).fetchall():
-            results.append({"type": "client", "label": c["name"], "sub": "",
-                            "url": url_for("client_detail", client_id=c["id"])})
         for j in db.execute(
-                "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-                " JOIN clients c ON c.id = j.client_id"
-                " WHERE j.job_name LIKE ? OR c.name LIKE ?"
-                " ORDER BY j.created_at DESC LIMIT 8", (like, like)).fetchall():
+                "SELECT id, job_name FROM jobs WHERE job_name LIKE ?"
+                " ORDER BY created_at DESC LIMIT 8", (like,)).fetchall():
             results.append({"type": "job",
                             "label": j["job_name"] or f"Job #{j['id']}",
-                            "sub": j["client_name"],
+                            "sub": "",
                             "url": url_for("job_detail", job_id=j["id"])})
+        for i in db.execute(
+                "SELECT id, name FROM household_ideas WHERE name LIKE ?"
+                " ORDER BY created_at DESC LIMIT 6", (like,)).fetchall():
+            results.append({"type": "idea", "label": i["name"], "sub": "",
+                            "url": url_for("backlog_detail", idea_id=i["id"])})
     return jsonify({"results": results})
 
 
-@app.route("/clients/new", methods=["GET", "POST"])
-def new_client():
-    if request.method == "POST":
-        values = read_client_form()
-        missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
-                   if not values[field]]
-        if missing:
-            flash(f"Required: {', '.join(missing)}.", "error")
-            return render_template("client_form.html", values=values,
-                                   crew=crew_list()), 400
-        db = get_db()
-        cur = db.execute(
-            f"INSERT INTO clients ({', '.join(CLIENT_FIELDS)})"
-            f" VALUES ({', '.join('?' * len(CLIENT_FIELDS))})",
-            [values[f] for f in CLIENT_FIELDS],
-        )
-        db.commit()
-        flash(f"Client profile created: {values['name']}")
-        return redirect(url_for("client_detail", client_id=cur.lastrowid))
-    return render_template("client_form.html", values={}, crew=crew_list())
+BACKLOG_STATUSES = ["Backlog", "Started", "Abandoned"]
 
 
-@app.route("/clients/<int:client_id>/edit", methods=["GET", "POST"])
-def edit_client(client_id):
+@app.route("/backlog")
+def backlog_page():
+    """The household idea backlog — someday/maybe projects. Filter by status
+    (open = Backlog, defaults to that; or all)."""
     db = get_db()
-    client = db.execute(
-        "SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
-    if client is None:
-        abort(404)
-    if request.method == "POST":
-        values = read_client_form()
-        missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
-                   if not values[field]]
-        if missing:
-            flash(f"Required: {', '.join(missing)}.", "error")
-            return render_template("client_form.html", values=values,
-                                   client_id=client_id, crew=crew_list()), 400
-        # Record what changed before overwriting, so the old data is kept
-        # (hidden on the profile; admins can open the history).
-        changed = [CLIENT_FIELD_LABELS.get(f, f) for f in CLIENT_FORM_FIELDS
-                   if (client[f] or "") != values[f]]
-        if changed:
-            snapshot = {f: client[f] for f in CLIENT_FIELDS}
-            version = db.execute(
-                "SELECT COALESCE(MAX(version), 0) + 1 FROM client_versions"
-                " WHERE client_id = ?", (client_id,)).fetchone()[0]
-            editor = current_user()
-            db.execute(
-                "INSERT INTO client_versions"
-                " (client_id, version, data, changed_fields, edited_by)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (client_id, version, json.dumps(snapshot),
-                 json.dumps(changed), editor["name"] if editor else ""),
-            )
-        db.execute(
-            f"UPDATE clients SET {', '.join(f + ' = ?' for f in CLIENT_FIELDS)}"
-            " WHERE id = ?",
-            [values[f] for f in CLIENT_FIELDS] + [client_id],
-        )
-        db.commit()
-        flash(f"Client profile updated: {values['name']}")
-        return redirect(url_for("client_detail", client_id=client_id))
-    values = {f: client[f] for f in CLIENT_FORM_FIELDS}
-    # Legacy fallback: clients created before the split have only the composed
-    # address. Drop it into the street line so nothing is lost when editing.
-    if not any(values[p] for p in MAILING_PARTS) and client["mailing_address"]:
-        values["mailing_street"] = client["mailing_address"]
-    if not any(values[p] for p in BILLING_PARTS) and client["billing_address"]:
-        values["billing_street"] = client["billing_address"]
-    return render_template("client_form.html", values=values,
-                           client_id=client_id, crew=crew_list())
-
-
-@app.route("/clients/<int:client_id>")
-def client_detail(client_id):
-    db = get_db()
-    client = db.execute(
-        "SELECT * FROM clients WHERE id = ?", (client_id,)
-    ).fetchone()
-    if client is None:
-        abort(404)
-    jobs = db.execute(
-        "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
-        (client_id,),
-    ).fetchall()
-    files = db.execute(
-        "SELECT * FROM client_files WHERE client_id = ? ORDER BY id", (client_id,)
-    ).fetchall()
-    edit_count = db.execute(
-        "SELECT COUNT(*) FROM client_versions WHERE client_id = ?", (client_id,)
+    show = request.args.get("show", "open")
+    sql = ("SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
+           " LEFT JOIN employees e ON e.id = i.proposed_by WHERE 1 = 1")
+    if show == "open":
+        sql += " AND i.status = 'Backlog'"
+    sql += " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at DESC"
+    ideas = db.execute(sql).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM employees ORDER BY name").fetchall()
+    open_count = db.execute(
+        "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'"
     ).fetchone()[0]
-    last_edit = db.execute(
-        "SELECT edited_by, saved_at FROM client_versions"
-        " WHERE client_id = ? ORDER BY version DESC LIMIT 1", (client_id,)
-    ).fetchone()
-    rep = None
-    if client["assigned_rep_id"]:
-        rep = db.execute("SELECT name FROM employees WHERE id = ?",
-                         (client["assigned_rep_id"],)).fetchone()
-    followups = db.execute(
-        "SELECT * FROM lead_followups WHERE client_id = ?"
-        " ORDER BY due_date", (client_id,)).fetchall()
-    progress_by_job = {j["id"]: build_job_progress(db, j) for j in jobs}
-    return render_template("client_detail.html", client=client, jobs=jobs,
-                           files=files, file_categories=CLIENT_FILE_CATEGORIES,
-                           job_status_class=JOB_STATUS_CLASS,
-                           edit_count=edit_count, last_edit=last_edit,
-                           rep=rep, followups=followups,
-                           progress_by_job=progress_by_job,
+    return render_template("backlog.html", ideas=ideas, employees=employees,
+                           show=show, statuses=BACKLOG_STATUSES,
+                           open_count=open_count,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
-@app.route("/clients/<int:client_id>/history")
-@admin_required
-def client_history(client_id):
-    """Admin-only: the hidden older versions of a client profile."""
+@app.route("/backlog/new", methods=["POST"])
+def backlog_new():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("An idea needs a name.", "error")
+        return redirect(url_for("backlog_page"))
     db = get_db()
-    client = db.execute(
-        "SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
-    if client is None:
-        abort(404)
-    rows = db.execute(
-        "SELECT * FROM client_versions WHERE client_id = ?"
-        " ORDER BY version DESC", (client_id,)).fetchall()
-    versions = []
-    for r in rows:
-        versions.append({
-            "version": r["version"],
-            "edited_by": r["edited_by"],
-            "saved_at": r["saved_at"],
-            "changed": json.loads(r["changed_fields"] or "[]"),
-            "data": json.loads(r["data"] or "{}"),
-        })
-    return render_template("client_history.html", client=client,
-                           versions=versions, labels=CLIENT_FIELD_LABELS)
-
-
-@app.route("/api/search")
-def api_search():
-    """Live type-ahead preview for the clients landing page: a few matching
-    clients and jobs as JSON."""
-    q = (request.args.get("q") or "").strip()
-    result = {"clients": [], "jobs": []}
-    if len(q) >= 1:
-        like = f"%{q}%"
-        db = get_db()
-        for c in db.execute(
-                "SELECT id, name, phone, mailing_address FROM clients"
-                " WHERE name LIKE ? OR mailing_address LIKE ? OR billing_address"
-                " LIKE ? OR phone LIKE ? OR email LIKE ? ORDER BY name LIMIT 6",
-                (like, like, like, like, like)).fetchall():
-            result["clients"].append({
-                "id": c["id"], "name": c["name"], "phone": c["phone"],
-                "address": c["mailing_address"]})
-        for j in db.execute(
-                "SELECT j.id, j.job_name, j.status, c.name AS client_name"
-                " FROM jobs j JOIN clients c ON c.id = j.client_id"
-                " WHERE j.job_name LIKE ? OR j.site_location LIKE ?"
-                " OR j.county LIKE ? OR j.products LIKE ? OR c.name LIKE ?"
-                " ORDER BY j.created_at DESC LIMIT 6",
-                (like, like, like, like, like)).fetchall():
-            result["jobs"].append({
-                "id": j["id"], "name": j["job_name"] or f"Job #{j['id']}",
-                "status": j["status"] or DEFAULT_JOB_STATUS,
-                "client_name": j["client_name"]})
-    return jsonify(result)
-
-
-# ---------------------------------------------------------- lead follow-ups
-@app.route("/followups/<int:followup_id>/done", methods=["POST"])
-def followup_done(followup_id):
-    """Log that a follow-up was made; the next scheduled one still stands."""
-    db = get_db()
-    db.execute("UPDATE lead_followups SET status = 'Done',"
-               " done_at = datetime('now') WHERE id = ?", (followup_id,))
+    proposer = request.form.get("proposed_by", "")
+    proposer_id = int(proposer) if proposer.isdigit() else None
+    cur = db.execute(
+        "INSERT INTO household_ideas (name, notes, target_date, proposed_by,"
+        " budget_estimate, reminder_date) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, request.form.get("notes", "").strip(),
+         request.form.get("target_date", "").strip(), proposer_id,
+         _to_float(request.form.get("budget_estimate")) or 0,
+         request.form.get("reminder_date", "").strip()))
     db.commit()
-    flash("Follow-up logged.")
-    return redirect(request.form.get("next") or url_for("home"))
+    flash(f"Added to the backlog: {name}")
+    return redirect(url_for("backlog_detail", idea_id=cur.lastrowid))
 
 
-@app.route("/clients/<int:client_id>/mark-cold", methods=["POST"])
-def mark_cold(client_id):
-    """Move a lead out of the active list into the cold_leads table. Only
-    leads (no jobs) can go cold."""
+@app.route("/backlog/<int:idea_id>")
+def backlog_detail(idea_id):
     db = get_db()
-    client = db.execute("SELECT * FROM clients WHERE id = ?",
-                        (client_id,)).fetchone()
-    if client is None:
+    idea = db.execute(
+        "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
+        " LEFT JOIN employees e ON e.id = i.proposed_by WHERE i.id = ?",
+        (idea_id,)).fetchone()
+    if idea is None:
         abort(404)
-    if db.execute("SELECT COUNT(*) FROM jobs WHERE client_id = ?",
-                  (client_id,)).fetchone()[0] > 0:
-        flash("This client has jobs, so it isn't a lead — it can't be marked cold.",
-              "error")
-        return redirect(url_for("client_detail", client_id=client_id))
-    reason = request.form.get("reason", "").strip()
+    employees = db.execute(
+        "SELECT id, name FROM employees ORDER BY name").fetchall()
+    return render_template("backlog_detail.html", idea=idea,
+                           employees=employees, statuses=BACKLOG_STATUSES)
+
+
+@app.route("/backlog/<int:idea_id>/edit", methods=["POST"])
+def backlog_edit(idea_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM household_ideas WHERE id = ?",
+                  (idea_id,)).fetchone() is None:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("An idea needs a name.", "error")
+        return redirect(url_for("backlog_detail", idea_id=idea_id))
+    proposer = request.form.get("proposed_by", "")
+    proposer_id = int(proposer) if proposer.isdigit() else None
     db.execute(
-        f"INSERT INTO cold_leads ({', '.join(COLD_LEAD_FIELDS)},"
-        " cold_reason, original_created_at)"
-        f" VALUES ({', '.join('?' * len(COLD_LEAD_FIELDS))}, ?, ?)",
-        [client[f] for f in COLD_LEAD_FIELDS] + [reason, client["created_at"]],
-    )
-    db.execute("DELETE FROM lead_followups WHERE client_id = ?", (client_id,))
-    db.execute("DELETE FROM client_versions WHERE client_id = ?", (client_id,))
-    db.execute("DELETE FROM client_files WHERE client_id = ?", (client_id,))
-    db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        "UPDATE household_ideas SET name = ?, notes = ?, target_date = ?,"
+        " proposed_by = ?, budget_estimate = ?, reminder_date = ?,"
+        " reminder_sent = '' WHERE id = ?",
+        (name, request.form.get("notes", "").strip(),
+         request.form.get("target_date", "").strip(), proposer_id,
+         _to_float(request.form.get("budget_estimate")) or 0,
+         request.form.get("reminder_date", "").strip(), idea_id))
     db.commit()
-    flash(f"{client['name']} moved to cold leads.")
-    nxt = request.form.get("next", "")
-    if nxt.startswith("/") and not nxt.startswith("//"):
-        return redirect(nxt)
-    return redirect(url_for("home"))
+    flash("Idea updated.")
+    return redirect(url_for("backlog_detail", idea_id=idea_id))
 
 
-@app.route("/cold-leads")
-@admin_required
-def cold_leads_page():
+@app.route("/backlog/<int:idea_id>/status", methods=["POST"])
+def backlog_status(idea_id):
+    status = request.form.get("status", "")
+    if status not in BACKLOG_STATUSES:
+        return redirect(url_for("backlog_detail", idea_id=idea_id))
     db = get_db()
-    rows = db.execute(
-        "SELECT cl.*, e.name AS rep_name FROM cold_leads cl"
-        " LEFT JOIN employees e ON e.id = cl.assigned_rep_id"
-        " ORDER BY cl.cold_at DESC").fetchall()
-    stale_before = (datetime.now() - timedelta(days=COLD_LEAD_STALE_DAYS)
-                    ).strftime("%Y-%m-%d %H:%M:%S")
-    return render_template("cold_leads.html", leads=rows,
-                           stale_before=stale_before,
-                           stale_days=COLD_LEAD_STALE_DAYS)
+    if status == "Abandoned":
+        db.execute("UPDATE household_ideas SET status = ?, abandoned_at = ?"
+                   " WHERE id = ?",
+                   (status, datetime.now().isoformat(timespec="seconds"), idea_id))
+    else:
+        db.execute("UPDATE household_ideas SET status = ?, abandoned_at = ''"
+                   " WHERE id = ?", (status, idea_id))
+    db.commit()
+    flash(f"Marked {status}.")
+    return redirect(url_for("backlog_detail", idea_id=idea_id))
 
 
-@app.route("/cold-leads/<int:cold_id>/restore", methods=["POST"])
-@admin_required
-def restore_cold_lead(cold_id):
+@app.route("/backlog/<int:idea_id>/start", methods=["POST"])
+def backlog_start(idea_id):
+    """Turn an idea into a real job/project — a bare row the user fills in
+    via the normal job form."""
     db = get_db()
-    cl = db.execute("SELECT * FROM cold_leads WHERE id = ?", (cold_id,)).fetchone()
-    if cl is None:
+    idea = db.execute("SELECT * FROM household_ideas WHERE id = ?",
+                      (idea_id,)).fetchone()
+    if idea is None:
         abort(404)
+    cur = db.execute(
+        "INSERT INTO jobs (job_name, site_location) VALUES (?, ?)",
+        (idea["name"], ""))
     db.execute(
-        f"INSERT INTO clients ({', '.join(COLD_LEAD_FIELDS)}, lead_status)"
-        f" VALUES ({', '.join('?' * len(COLD_LEAD_FIELDS))}, 'Lead')",
-        [cl[f] for f in COLD_LEAD_FIELDS],
-    )
-    db.execute("DELETE FROM cold_leads WHERE id = ?", (cold_id,))
+        "UPDATE household_ideas SET status = 'Started', started_job_id = ?,"
+        " started_at = ? WHERE id = ?",
+        (cur.lastrowid, datetime.now().isoformat(timespec="seconds"), idea_id))
     db.commit()
-    flash(f"{cl['name']} restored to active leads.")
-    return redirect(url_for("cold_leads_page"))
+    flash(f"Started: {idea['name']} — fill in the rest below.")
+    return redirect(url_for("edit_job", job_id=cur.lastrowid))
 
 
-@app.route("/cold-leads/<int:cold_id>/delete", methods=["POST"])
+@app.route("/backlog/<int:idea_id>/delete", methods=["POST"])
 @delete_required
-def purge_cold_lead(cold_id):
-    db = get_db()
-    cl = db.execute("SELECT name FROM cold_leads WHERE id = ?",
-                    (cold_id,)).fetchone()
-    if cl is None:
-        abort(404)
-    db.execute("DELETE FROM cold_leads WHERE id = ?", (cold_id,))
-    db.commit()
-    flash(f"Deleted cold lead: {cl['name']}.")
-    return redirect(url_for("cold_leads_page"))
+def backlog_delete(idea_id):
+    ok, msg = trash_item("household_idea", idea_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("backlog_page"))
 
 
-# ---- client-level documents (contracts, correspondence, intake, photos) ---
-def client_upload_dir(client_id):
-    directory = UPLOADS_DIR / f"client_{client_id}"
+# ------------------------------------------------- household-wide documents
+def household_upload_dir():
+    directory = UPLOADS_DIR / "household"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
-@app.route("/clients/<int:client_id>/files/upload", methods=["POST"])
-def upload_client_file(client_id):
-    if get_db().execute("SELECT id FROM clients WHERE id = ?",
-                        (client_id,)).fetchone() is None:
-        abort(404)
+@app.route("/household-files")
+def household_files_page():
+    files = get_db().execute(
+        "SELECT * FROM household_files ORDER BY id DESC").fetchall()
+    return render_template("household_files.html", files=files,
+                           file_categories=HOUSEHOLD_FILE_CATEGORIES)
+
+
+@app.route("/household-files/upload", methods=["POST"])
+def upload_household_file():
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
-        return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+        return redirect(url_for("household_files_page"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if extension not in ALLOWED_EXTENSIONS:
         flash(f"File type .{extension} is not allowed.", "error")
-        return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+        return redirect(url_for("household_files_page"))
     category = request.form.get("category", "").strip()
-    if category not in CLIENT_FILE_CATEGORIES:
+    if category not in HOUSEHOLD_FILE_CATEGORIES:
         category = ""
     db = get_db()
-    # Piece 25.4: auto-rename to Client_Category_Date.ext for recordkeeping.
-    cname = db.execute("SELECT name FROM clients WHERE id = ?",
-                       (client_id,)).fetchone()
     friendly = friendly_filename(
-        [cname["name"] if cname else "", category or "Document"], extension,
-        taken=_taken_names(db, "client_files", "original_name", "client_id", client_id))
+        [category or "Document"], extension,
+        taken={r["original_name"] for r in db.execute(
+            "SELECT original_name FROM household_files").fetchall()
+            if r["original_name"]})
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-    upload.save(client_upload_dir(client_id) / stored)
+    upload.save(household_upload_dir() / stored)
     db.execute(
-        "INSERT INTO client_files (client_id, category, stored_name, original_name)"
-        " VALUES (?, ?, ?, ?)",
-        (client_id, category, stored, friendly),
-    )
+        "INSERT INTO household_files (category, stored_name, original_name)"
+        " VALUES (?, ?, ?)", (category, stored, friendly))
     db.commit()
     flash(f"Uploaded: {friendly}")
-    return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+    return redirect(url_for("household_files_page"))
 
 
-@app.route("/clients/<int:client_id>/files/<int:file_id>/download")
-def download_client_file(client_id, file_id):
+@app.route("/household-files/<int:file_id>/download")
+def download_household_file(file_id):
     record = get_db().execute(
-        "SELECT * FROM client_files WHERE id = ? AND client_id = ?",
-        (file_id, client_id)).fetchone()
+        "SELECT * FROM household_files WHERE id = ?", (file_id,)).fetchone()
     if record is None:
         abort(404)
     return send_from_directory(
-        client_upload_dir(client_id), record["stored_name"],
+        household_upload_dir(), record["stored_name"],
         as_attachment=True, download_name=record["original_name"])
 
 
-@app.route("/clients/<int:client_id>/files/<int:file_id>/delete", methods=["POST"])
+@app.route("/household-files/<int:file_id>/delete", methods=["POST"])
 @delete_required
-def delete_client_file(client_id, file_id):
-    ok, msg = trash_item("client_file", file_id)
+def delete_household_file(file_id):
+    ok, msg = trash_item("household_file", file_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+    return redirect(url_for("household_files_page"))
 
 
-@app.route("/clients/<int:client_id>/jobs/new", methods=["GET", "POST"])
-def new_job(client_id):
+@app.route("/jobs/new", methods=["GET", "POST"])
+def new_job():
     db = get_db()
-    client = db.execute(
-        "SELECT * FROM clients WHERE id = ?", (client_id,)
-    ).fetchone()
-    if client is None:
-        abort(404)
     if request.method == "POST":
         values, selected, errors = read_job_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_job_form(client, values, selected,
-                                   existing_jobs=True), 400
+            return render_job_form(values, selected, existing_jobs=True), 400
         cur = db.execute(
-            f"INSERT INTO jobs (client_id, {', '.join(JOB_FIELDS)})"
-            f" VALUES (?, {', '.join('?' * len(JOB_FIELDS))})",
-            [client_id] + [values[f] for f in JOB_FIELDS],
+            f"INSERT INTO jobs ({', '.join(JOB_FIELDS)})"
+            f" VALUES ({', '.join('?' * len(JOB_FIELDS))})",
+            [values[f] for f in JOB_FIELDS],
         )
-        # Piece 16: entering job details converts a lead — stop its follow-ups.
-        if client["lead_status"] == "Lead":
-            db.execute("UPDATE clients SET lead_status = 'Converted',"
-                       " converted_at = datetime('now') WHERE id = ?", (client_id,))
-            db.execute("UPDATE lead_followups SET status = 'Converted'"
-                       " WHERE client_id = ? AND status = 'Open'", (client_id,))
         # Piece 29.4: a new job turns over to Proposal — alert Sales & Design.
-        new_job_row = {"id": cur.lastrowid, "client_id": client_id,
-                       "job_name": values["job_name"]}
+        new_job_row = {"id": cur.lastrowid, "job_name": values["job_name"]}
         actor = current_user()
         notify_stage_turnover(db, new_job_row,
                               values.get("status") or DEFAULT_JOB_STATUS,
                               exclude_id=actor["id"] if actor else None)
         db.commit()
-        flash(f"Job created under {client['name']}: {values['job_name']}")
+        flash(f"Job created: {values['job_name']}")
         return redirect(url_for("job_detail", job_id=cur.lastrowid))
-    # For service tickets: optionally pre-fill from a job already on the
-    # books for this client.
-    values = {"site_location": client["mailing_address"]}
+    # For service tickets: optionally pre-fill from a job already on the books.
+    values = {"site_location": ""}
     selected = []
     prefill_id = request.args.get("prefill", type=int)
     if prefill_id:
         source = db.execute(
-            "SELECT * FROM jobs WHERE id = ? AND client_id = ?",
-            (prefill_id, client_id),
+            "SELECT * FROM jobs WHERE id = ?", (prefill_id,),
         ).fetchone()
         if source:
             values = {f: source[f] for f in JOB_FIELDS}
@@ -4629,7 +4332,7 @@ def new_job(client_id):
             selected = [p.strip() for p in source["products"].split(",") if p.strip()]
             if "Technician Service" not in selected:
                 selected.append("Technician Service")
-    return render_job_form(client, values, selected, existing_jobs=True)
+    return render_job_form(values, selected, existing_jobs=True)
 
 
 def read_job_form():
@@ -4666,15 +4369,14 @@ def read_job_form():
     return values, selected, errors
 
 
-def render_job_form(client, values, selected, existing_jobs=False,
+def render_job_form(values, selected, existing_jobs=False,
                     editing_job_id=None):
     jobs_on_books = []
     if existing_jobs and not editing_job_id:
         jobs_on_books = get_db().execute(
-            "SELECT id, job_name FROM jobs WHERE client_id = ?",
-            (client["id"],)).fetchall()
+            "SELECT id, job_name FROM jobs ORDER BY created_at DESC").fetchall()
     return render_template(
-        "job_form.html", client=client, values=values, selected=selected,
+        "job_form.html", values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         payment_terms=PAYMENT_TERMS,                       # Piece 31.8
@@ -4689,14 +4391,11 @@ def render_job_form(client, values, selected, existing_jobs=False,
 def edit_job(job_id):
     db = get_db()
     job = fetch_job(job_id)
-    client = db.execute(
-        "SELECT * FROM clients WHERE id = ?", (job["client_id"],)
-    ).fetchone()
     if request.method == "POST":
         values, selected, errors = read_job_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_job_form(client, values, selected,
+            return render_job_form(values, selected,
                                    editing_job_id=job_id), 400
         # Keep the outgoing state for recordkeeping before overwriting.
         snapshot = {f: job[f] for f in JOB_FIELDS}
@@ -4719,7 +4418,7 @@ def edit_job(job_id):
     values["utility_connection"] = next(
         (job[f] for f in GRID_CONNECTION_FIELDS.values() if job[f]), "")
     selected = [p.strip() for p in job["products"].split(",") if p.strip()]
-    return render_job_form(client, values, selected, editing_job_id=job_id)
+    return render_job_form(values, selected, editing_job_id=job_id)
 
 
 @app.route("/jobs/<int:job_id>/versions/<int:version>")
@@ -4742,9 +4441,7 @@ def job_version(job_id, version):
 
 def fetch_job(job_id):
     job = get_db().execute(
-        "SELECT jobs.*, clients.name AS client_name"
-        " FROM jobs JOIN clients ON clients.id = jobs.client_id"
-        " WHERE jobs.id = ?",
+        "SELECT * FROM jobs WHERE id = ?",
         (job_id,),
     ).fetchone()
     if job is None:
@@ -4852,10 +4549,6 @@ def job_detail(job_id):
         (job_id,)).fetchall()
 
     pricing = job_pricing(db, job)
-    # Piece 31.8: the estimate's customer payment-schedule callout — shown to
-    # Sales/Finance only, and only before the contract is signed (contract_amount
-    # still 0), so it disappears once terms are agreed and set.
-    pay_scheme_callout = _can_see_pay_scheme() and (pricing["contract"] or 0) <= 0
 
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
@@ -4873,10 +4566,7 @@ def job_detail(job_id):
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
-        invoices=invoice_schedule_view(db, job), payment_scheme=PAYMENT_SCHEME_NOTE,
         pricing=pricing,                                   # Piece 29.6
-        pay_scheme_callout=pay_scheme_callout,             # Piece 31.8
-        county_grt=county_grt_rate(db, job["county"] if "county" in job.keys() else ""),
         can_see_pricing=_can_see_pricing(),                # Piece 29.7
         estimate_sections=ESTIMATE_SECTIONS,               # Piece 29.9
     )
@@ -5135,11 +4825,10 @@ def add_transaction(job_id):
         ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
         if ext in (PHOTO_EXTENSIONS | {"pdf"}):
             info = db.execute(
-                "SELECT j.job_name, c.name AS client_name FROM jobs j"
-                " JOIN clients c ON c.id = j.client_id WHERE j.id = ?", (job_id,)).fetchone()
+                "SELECT job_name FROM jobs WHERE id = ?", (job_id,)).fetchone()
             label = doc_type or "Billing"
             friendly = friendly_filename(
-                [info["client_name"], info["job_name"], label], ext,
+                [info["job_name"], label], ext,
                 taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
             stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
             upload.save(job_upload_dir(job_id) / stored)
@@ -5183,17 +4872,6 @@ def _norm_county(name):
     if n.lower().endswith(" county"):
         n = n[:-7].strip()
     return n.lower()
-
-
-def county_grt_rate(db, county):
-    """The GRT rate on file for a job's install county, or None if unknown."""
-    key = _norm_county(county)
-    if not key:
-        return None
-    for r in db.execute("SELECT county, grt_rate FROM county_tax_rates").fetchall():
-        if _norm_county(r["county"]) == key:
-            return float(r["grt_rate"] or 0)
-    return None
 
 
 def markup_map(db):
@@ -5344,213 +5022,6 @@ def estimate_pricing(db, job_id):
     by_section = {k: round(v, 2) for k, v in by_section.items()}
     return {"by_section": by_section, "total": round(sum(by_section.values()), 2),
             "lines": lines}
-
-
-def _post_deposit_bom_total(db, job_id, cutoff_id):
-    """Marked-up customer price of BOM lines added AFTER the deposit invoice —
-    rows whose id is greater than the cutoff captured when the deposit was
-    generated. These change-order materials are billed at the customer price
-    (cost + markup, Piece 29.6), not raw cost."""
-    try:
-        cutoff_id = int(cutoff_id or 0)
-    except (ValueError, TypeError):
-        cutoff_id = 0
-    return bom_pricing(db, job_id, markup_map(db), after_id=cutoff_id)["price_total"]
-
-
-def _milestone_pct(name):
-    for n, pct, _hint in INVOICE_MILESTONES:
-        if n == name:
-            return pct
-    return 0
-
-
-def _generated_invoices(db, job_id):
-    """Generated milestone invoices for a job, keyed by milestone name."""
-    return {t["milestone"]: t for t in db.execute(
-        "SELECT * FROM job_transactions WHERE job_id = ?"
-        "   AND COALESCE(milestone,'') != '' ORDER BY id", (job_id,)).fetchall()}
-
-
-def _job_cutoff(job):
-    try:
-        return int(job["deposit_bom_cutoff_id"]) if ("deposit_bom_cutoff_id" in job.keys()
-                   and job["deposit_bom_cutoff_id"]) else 0
-    except (ValueError, TypeError):
-        return 0
-
-
-def projected_invoice(db, job):
-    """The next ungenerated milestone and the amount it would bill right now.
-    Deposit = 50% of contract; Progress = 40% + 80% of post-deposit BOM extras;
-    Final = a true-up so the total billed equals contract + all added materials.
-    Returns (milestone_name, amount, extras) or (None, 0, 0)."""
-    job_id = job["id"]
-    contract = _to_float(job["contract_amount"] if "contract_amount" in job.keys() else 0) or 0.0
-    gen = _generated_invoices(db, job_id)
-    nxt = next((n for n, _p, _h in INVOICE_MILESTONES if n not in gen), None)
-    if nxt is None or contract <= 0:
-        return None, 0.0, 0.0
-    if nxt == "Deposit":
-        return "Deposit", round(0.5 * contract, 2), 0.0
-    extras = _post_deposit_bom_total(db, job_id, _job_cutoff(job))
-    if nxt == "Progress":
-        return "Progress", round(0.4 * contract + 0.8 * extras, 2), extras
-    dep = _to_float(gen["Deposit"]["amount"]) if "Deposit" in gen else 0.0
-    prog = _to_float(gen["Progress"]["amount"]) if "Progress" in gen else 0.0
-    return "Final", round((contract + extras) - dep - prog, 2), extras
-
-
-def invoice_schedule_view(db, job):
-    """Per-milestone state for the Billing tab: the generated invoice (or None)
-    for each of the three milestones, plus which one is next and its amount."""
-    gen = _generated_invoices(db, job["id"])
-    nxt, amount, extras = projected_invoice(db, job)
-    rows = [{"name": n, "pct": p, "hint": h, "txn": gen.get(n), "is_next": n == nxt}
-            for n, p, h in INVOICE_MILESTONES]
-    return {"rows": rows, "next": nxt, "next_amount": amount, "next_extras": extras,
-            "contract": _to_float(job["contract_amount"] if "contract_amount" in job.keys() else 0) or 0.0}
-
-
-@app.route("/jobs/<int:job_id>/invoice/generate", methods=["POST"])
-def generate_invoice(job_id):
-    """Generate the next 50/40/10 customer invoice from the contract + BOM."""
-    job = fetch_job(job_id)
-    db = get_db()
-    nxt, amount, extras = projected_invoice(db, job)
-    if nxt is None:
-        flash("Set a contract total first (all invoices may already be generated).", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
-    if request.form.get("milestone") != nxt:
-        flash(f"The {nxt} invoice is next in the schedule.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
-    pct = _milestone_pct(nxt)
-    contract = _to_float(job["contract_amount"]) or 0.0
-    base = round(pct / 100.0 * contract, 2)
-    number = f"INV-{int(_meta_get(db, 'invoice_seq', '0') or '0') + 1:05d}"
-    _meta_set(db, "invoice_seq", int(_meta_get(db, "invoice_seq", "0") or "0") + 1)
-    today = datetime.now().date()
-    due = today if nxt == "Deposit" else today + timedelta(days=COMPANY_INFO["terms_days"])
-    bom_rows = db.execute(
-        "SELECT component_name, qty FROM job_bom WHERE job_id = ? ORDER BY id",
-        (job_id,)).fetchall()
-    bom_snapshot = json.dumps([{"name": b["component_name"], "qty": b["qty"]}
-                               for b in bom_rows])
-    desc = f"{nxt} invoice — {pct}% of contract"
-    if extras and nxt != "Deposit":
-        desc += f" + ${extras:,.2f} added materials"
-    # Piece 27.4: snapshot the job's GRT rate + the tax on this invoice's subtotal.
-    grt_rate = max(_to_float(job["grt_rate"] if "grt_rate" in job.keys() else 0) or 0.0, 0.0)
-    grt_amount = round(grt_rate / 100.0 * amount, 2)
-    who = current_user()
-    db.execute(
-        "INSERT INTO job_transactions"
-        " (job_id, kind, category, description, amount, txn_date, status, party,"
-        "  reference, method, doc_type, created_by, invoice_number, milestone,"
-        "  due_date, contract_snapshot, base_amount, extras_amount, bom_snapshot,"
-        "  grt_rate, grt_amount)"
-        " VALUES (?, 'Income', ?, ?, ?, ?, 'Outstanding', '', ?, '', 'Invoice', ?,"
-        "         ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (job_id, f"{pct}% {nxt}", desc, amount, today.strftime("%Y-%m-%d"),
-         number, who["name"] if who else "", number, nxt,
-         due.strftime("%Y-%m-%d"), contract, base, round(amount - base, 2), bom_snapshot,
-         str(grt_rate), grt_amount))
-    if nxt == "Deposit":
-        maxid = db.execute("SELECT COALESCE(MAX(id), 0) AS m FROM job_bom"
-                           " WHERE job_id = ?", (job_id,)).fetchone()["m"]
-        db.execute("UPDATE jobs SET deposit_bom_cutoff_id = ? WHERE id = ?",
-                   (str(maxid), job_id))
-    db.commit()
-    flash(f"{nxt} invoice {number} generated — ${amount:,.2f}.")
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
-
-
-@app.route("/jobs/<int:job_id>/invoice/<int:txn_id>")
-def view_invoice(job_id, txn_id):
-    """Printable customer copy of a generated milestone invoice: the overall
-    contract, the amount due for this milestone, and the equipment (BOM) list —
-    no per-line pricing (the itemized expenses stay on the internal Billing tab)."""
-    job = fetch_job(job_id)
-    db = get_db()
-    inv = db.execute(
-        "SELECT * FROM job_transactions WHERE id = ? AND job_id = ?"
-        "   AND COALESCE(milestone,'') != ''", (txn_id, job_id)).fetchone()
-    if inv is None:
-        abort(404)
-    client = db.execute("SELECT * FROM clients WHERE id = ?",
-                        (job["client_id"],)).fetchone()
-    try:
-        bom = json.loads(inv["bom_snapshot"] or "[]")
-    except (ValueError, TypeError):
-        bom = []
-    gen = _generated_invoices(db, job_id)
-    schedule = []
-    for name, pct, hint in INVOICE_MILESTONES:
-        t = gen.get(name)
-        schedule.append({"name": name, "pct": pct, "hint": hint,
-                         "amount": _to_float(t["amount"]) if t else None,
-                         "status": t["status"] if t else None,
-                         "current": t is not None and t["id"] == inv["id"]})
-    grt_rate = _to_float(inv["grt_rate"] if "grt_rate" in inv.keys() else 0) or 0.0
-    grt_amount = _to_float(inv["grt_amount"] if "grt_amount" in inv.keys() else 0) or 0.0
-    return render_template(
-        "invoice.html", job=job, client=client, inv=inv, bom=bom,
-        schedule=schedule, company=COMPANY_INFO, payment_scheme=PAYMENT_SCHEME_NOTE,
-        contract=_to_float(inv["contract_snapshot"]) or 0.0,
-        grt_rate=grt_rate, grt_amount=grt_amount, grt_cite=GRT_EXEMPTION_CITE)
-
-
-@app.route("/finance/quickbooks.csv")
-def quickbooks_export():
-    """Export every job transaction as a QuickBooks-importable CSV. The first
-    three columns (Date, Description, Amount) map directly onto QuickBooks
-    Online's bank/transaction import; the remaining columns carry the detail.
-    Pass ?doc=Invoice|Bill|Receipt to export only that paperwork type — handy
-    because QuickBooks imports invoices (A/R), bills (A/P) and receipts through
-    separate flows."""
-    import csv
-    import io
-    db = get_db()
-    doc_filter = request.args.get("doc", "").strip()
-    doc_filter = doc_filter if doc_filter in DOC_TYPES else ""
-    # Piece 27.2: the export lives on each job's Billing tab now, so scope to one
-    # job when ?job= is passed; with no job it still exports every job (company-wide).
-    job_filter = request.args.get("job", type=int)
-    sql = ("SELECT t.*, j.job_name, j.id AS jid, c.name AS client_name"
-           " FROM job_transactions t JOIN jobs j ON j.id = t.job_id"
-           " JOIN clients c ON c.id = j.client_id")
-    where, params = [], []
-    if doc_filter:
-        where.append("t.doc_type = ?")
-        params.append(doc_filter)
-    if job_filter:
-        where.append("t.job_id = ?")
-        params.append(job_filter)
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY t.txn_date, t.id"
-    rows = db.execute(sql, tuple(params)).fetchall()
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Date", "Description", "Amount", "Type", "Document", "Customer",
-                "Job", "Category", "Status", "Reference", "Method"])
-    for r in rows:
-        job_label = r["job_name"] or f"Job #{r['jid']}"
-        signed = (r["amount"] or 0.0) if r["kind"] == "Income" else -(r["amount"] or 0.0)
-        doc_type = r["doc_type"] if "doc_type" in r.keys() else ""
-        desc = " · ".join(p for p in (r["client_name"], job_label,
-                                      r["category"], r["description"]) if p)
-        w.writerow([r["txn_date"], desc, f"{signed:.2f}", r["kind"], doc_type,
-                    r["client_name"], job_label, r["category"], r["status"],
-                    r["reference"], r["method"]])
-    parts = []
-    if job_filter:
-        parts.append(f"job{job_filter}")
-    if doc_filter:
-        parts.append(f"{doc_filter.lower()}s")
-    suffix = ("_" + "_".join(parts)) if parts else ""
-    return Response(buf.getvalue(), mimetype="text/csv", headers={
-        "Content-Disposition": f"attachment; filename=compendium_quickbooks{suffix}.csv"})
 
 
 def _pay_period():
@@ -5925,8 +5396,7 @@ def add_receipt():
         flash("Pick a job for the receipt.", "error")
         return _workbag_redirect(anchor="receipts")
     job = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id WHERE j.id = ?",
+        "SELECT id, job_name FROM jobs WHERE id = ?",
         (int(job_raw),)).fetchone()
     if job is None:
         flash("That job wasn't found.", "error")
@@ -5958,7 +5428,7 @@ def add_receipt():
     txn_id = cur.lastrowid
     # 2) File the photo against the job + that transaction (auto-renamed).
     friendly = friendly_filename(
-        [job["client_name"], job["job_name"], "Receipt", vendor], ext,
+        [job["job_name"], "Receipt", vendor], ext,
         taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
     upload.save(job_upload_dir(job_id) / stored)
@@ -6807,9 +6277,8 @@ def inventory_item_edit(item_id):
         " FROM inventory_txns t LEFT JOIN jobs j ON j.id = t.job_id"
         " WHERE t.item_id = ? ORDER BY t.id DESC LIMIT 10", (item_id,)).fetchall()
     jobs = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id WHERE j.status != 'Lost'"
-        " ORDER BY j.id DESC").fetchall()
+        "SELECT id, job_name FROM jobs WHERE status != 'Lost'"
+        " ORDER BY id DESC").fetchall()
     return render_template(
         "inventory_item_form.html", item=item, category=item["category"],
         spec_fields=inventory_category_specs().get(item["category"], []),
@@ -7255,9 +6724,8 @@ def inventory_scan():
     asset = _resolve_serial(db, code) if code else None
     not_found = bool(code) and asset is None
     jobs = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id"
-        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+        "SELECT id, job_name FROM jobs"
+        " WHERE status NOT IN ('Complete', 'Lost') ORDER BY id DESC").fetchall()
     return render_template("inventory_scan.html", code=code, asset=asset,
                            not_found=not_found, jobs=jobs)
 
@@ -7573,13 +7041,11 @@ def inventory_load():
     db = get_db()
     job_id = request.args.get("job_id", type=int)
     jobs = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id"
-        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+        "SELECT id, job_name FROM jobs"
+        " WHERE status NOT IN ('Complete', 'Lost') ORDER BY id DESC").fetchall()
     job = None
     if job_id:
-        job = db.execute("SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-                         " JOIN clients c ON c.id = j.client_id WHERE j.id = ?",
+        job = db.execute("SELECT id, job_name FROM jobs WHERE id = ?",
                          (job_id,)).fetchone()
     return render_template("inventory_load.html", jobs=jobs, job=job)
 
@@ -7851,14 +7317,10 @@ def cancel_job(job_id):
     # Piece 30.3: tell everyone who was involved in the job up to this point.
     recipients = job_involved_ids(db, job, exclude_id=who["id"] if who else None)
     if recipients:
-        client = db.execute("SELECT name FROM clients WHERE id = ?",
-                            (job["client_id"],)).fetchone()
-        cname = client["name"] if client else ""
         jobname = job["job_name"] or f"Job #{job['id']}"
         notify_employees(
             db, recipients,
-            f"🚫 {jobname}{(' · ' + cname) if cname else ''} was cancelled "
-            f"(Lost). Reason: “{reason}”.",
+            f"🚫 {jobname} was cancelled (Lost). Reason: “{reason}”.",
             link=url_for("job_detail", job_id=job["id"]), kind="job_cancelled")
     db.commit()
     flash(f"Job cancelled (Lost). Reason recorded: “{reason}”."
@@ -7893,13 +7355,11 @@ def closed_jobs_page():
     are reviewed. Gated to Admin / GM."""
     db = get_db()
     cancelled = db.execute(
-        "SELECT j.*, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id WHERE j.status = 'Lost'"
-        " ORDER BY (j.cancelled_at = ''), j.cancelled_at DESC, j.id DESC").fetchall()
+        "SELECT * FROM jobs WHERE status = 'Lost'"
+        " ORDER BY (cancelled_at = ''), cancelled_at DESC, id DESC").fetchall()
     completed = db.execute(
-        "SELECT j.*, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id WHERE j.status = 'Complete'"
-        " ORDER BY j.id DESC").fetchall()
+        "SELECT * FROM jobs WHERE status = 'Complete'"
+        " ORDER BY id DESC").fetchall()
     return render_template("closed_jobs.html", cancelled=cancelled,
                            completed=completed)
 
@@ -8607,14 +8067,11 @@ def tasks_dashboard():
     'what am I supposed to be doing' across every job."""
     db = get_db()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
-    ensure_lead_followups(db)
-    followups = due_followups(db)
     who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
     show = request.args.get("show", "open")  # open / all
-    sql = ("SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name,"
+    sql = ("SELECT t.*, j.job_name, j.id AS job_id,"
            " e.name AS assignee_name FROM job_tasks t"
            " JOIN jobs j ON j.id = t.job_id"
-           " JOIN clients c ON c.id = j.client_id"
            " LEFT JOIN employees e ON e.id = t.employee_id"
            " WHERE j.status != 'Lost'")   # Piece 30.2: hide cancelled-job tasks
     params = []
@@ -8644,8 +8101,7 @@ def tasks_dashboard():
         if g is None:
             g = grouped[t["job_id"]] = {
                 "job_id": t["job_id"], "job_name": t["job_name"],
-                "client_name": t["client_name"], "tasks": [],
-                "open": 0, "overdue": 0}
+                "tasks": [], "open": 0, "overdue": 0}
         g["tasks"].append(t)
         if t["status"] != "Done":
             g["open"] += 1
@@ -8662,7 +8118,7 @@ def tasks_dashboard():
     return render_template(
         "tasks.html", groups=groups, task_total=len(tasks), employees=employees,
         who=who, show=show, task_statuses=TASK_STATUSES, counts=counts,
-        overdue=overdue, today=today, followups=followups)
+        overdue=overdue, today=today)
 
 
 # ------------------------------------------- Piece 14: Work Bag (offline sync)
@@ -8671,10 +8127,8 @@ def _my_tasks_rows(db, employee_id):
     # can group tasks by job (with the install date) and show only field work.
     return db.execute(
         "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
-        " t.pipeline_status, j.id AS job_id, j.job_name, j.install_date,"
-        " c.name AS client_name"
+        " t.pipeline_status, j.id AS job_id, j.job_name, j.install_date"
         " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-        " JOIN clients c ON c.id = j.client_id"
         " WHERE t.employee_id = ? AND j.status != 'Lost'"   # Piece 30.2
         " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
         " j.id, (t.due_date = ''), t.due_date, t.id",
@@ -8706,8 +8160,6 @@ def work_bag_job(job_id):
     job = fetch_job(job_id)
     user = current_user()
     pay_types = payroll_pay_types(db)
-    client = db.execute("SELECT name FROM clients WHERE id = ?",
-                        (job["client_id"],)).fetchone()
     my_entries = my_notes = my_receipts = []
     if user is not None:
         my_entries = db.execute(
@@ -8726,7 +8178,6 @@ def work_bag_job(job_id):
             " ORDER BY t.id DESC LIMIT 10", (user["name"], job_id)).fetchall()
     return render_template(
         "work_bag_job.html", job=job,
-        client_name=client["name"] if client else "",
         task_statuses=TASK_STATUSES, today=datetime.now().strftime("%Y-%m-%d"),
         pay_types=pay_types,
         pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types],
@@ -9000,13 +8451,11 @@ def upload_file(job_id):
         flash(f"{where} only: {', '.join('.' + e for e in sorted(allowed))}. "
               f"You picked .{extension or '(no extension)'}.", "error")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
-    # Piece 25.4: auto-rename to Client_Job_Slot_Date.ext for recordkeeping.
+    # Piece 25.4 (revised 33): auto-rename to Job_Slot_Date.ext for recordkeeping.
     who = db.execute(
-        "SELECT j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id WHERE j.id = ?", (job_id,)).fetchone()
+        "SELECT job_name FROM jobs WHERE id = ?", (job_id,)).fetchone()
     friendly = friendly_filename(
-        [who["client_name"] if who else "", who["job_name"] if who else "",
-         label or "Document"], extension,
+        [who["job_name"] if who else "", label or "Document"], extension,
         taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
     upload.save(job_upload_dir(job_id) / stored)
@@ -9064,16 +8513,16 @@ def task_photos(task_id):
     the job record."""
     db = get_db()
     task = db.execute(
-        "SELECT t.id, t.title, j.id AS job_id, j.job_name, j.install_date,"
-        " c.name AS client_name FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-        " JOIN clients c ON c.id = j.client_id WHERE t.id = ?", (task_id,)).fetchone()
+        "SELECT t.id, t.title, j.id AS job_id, j.job_name, j.install_date"
+        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id WHERE t.id = ?",
+        (task_id,)).fetchone()
     if task is None:
         abort(404)
     job_id = task["job_id"]
     if request.method == "POST":
         saved = 0
-        # Piece 25.4: auto-rename photos to Client_Job_Task_Date.ext (a numeric
-        # suffix keeps a burst of shots on one day distinct).
+        # Piece 25.4 (revised 33): auto-rename photos to Job_Task_Date.ext (a
+        # numeric suffix keeps a burst of shots on one day distinct).
         taken = _taken_names(db, "job_files", "original_name", "job_id", job_id)
         for up in request.files.getlist("photos"):
             if not up or not up.filename:
@@ -9082,7 +8531,7 @@ def task_photos(task_id):
             if ext not in PHOTO_EXTENSIONS:
                 continue
             friendly = friendly_filename(
-                [task["client_name"], task["job_name"], task["title"] or "Photo"],
+                [task["job_name"], task["title"] or "Photo"],
                 ext, taken=taken)
             taken.add(friendly)
             stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
@@ -9190,7 +8639,6 @@ def job_report(job_id):
 
     lines = [
         f"JOB REPORT — {job['job_name'] or 'Job #' + str(job['id'])}",
-        f"Client: {job['client_name']}",
         f"Created: {job['created_at']}   Report generated: {datetime.now():%Y-%m-%d %H:%M}",
         "=" * 64,
         "",
@@ -9819,10 +9267,9 @@ def employee_detail(employee_id):
     # Piece 10: everything assigned to this person, across all jobs. Open
     # (not-Done) tasks first, then by due date, so what's pending is on top.
     assigned_tasks = db.execute(
-        "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
+        "SELECT t.*, j.job_name, j.id AS job_id"
         " FROM job_tasks t"
         " JOIN jobs j ON j.id = t.job_id"
-        " JOIN clients c ON c.id = j.client_id"
         " WHERE t.employee_id = ?"
         " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
@@ -10113,14 +9560,13 @@ def delete_employee(employee_id):
     if emp is None:
         abort(404)
     task_count = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (employee_id,))
-    rep_count = _count(db, "SELECT COUNT(*) FROM clients WHERE assigned_rep_id = ?", (employee_id,))
     sub_count = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (employee_id,))
     if request.method == "POST":
         reason = request.form.get("reason", "").strip()
         if not reason:
             flash("A reason is required to remove an employee.", "error")
             return render_template("employee_remove.html", employee=emp,
-                                   task_count=task_count, rep_count=rep_count,
+                                   task_count=task_count,
                                    sub_count=sub_count), 400
         if sub_count:
             flash("This employee has field-work submissions on record (approved "
@@ -10129,8 +9575,6 @@ def delete_employee(employee_id):
         db.execute("UPDATE job_tasks SET employee_id = NULL,"
                    " updated_at = strftime('%Y-%m-%d %H:%M:%f','now')"
                    " WHERE employee_id = ?", (employee_id,))
-        db.execute("UPDATE clients SET assigned_rep_id = NULL WHERE assigned_rep_id = ?", (employee_id,))
-        db.execute("UPDATE lead_followups SET rep_id = NULL WHERE rep_id = ?", (employee_id,))
         db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
         db.execute("DELETE FROM password_requests WHERE employee_id = ?", (employee_id,))
         db.execute("DELETE FROM security_answers WHERE employee_id = ?", (employee_id,))
@@ -10149,7 +9593,7 @@ def delete_employee(employee_id):
         return redirect(url_for("employees_page") if ok
                         else url_for("employee_detail", employee_id=employee_id))
     return render_template("employee_remove.html", employee=emp,
-                           task_count=task_count, rep_count=rep_count,
+                           task_count=task_count,
                            sub_count=sub_count)
 
 
@@ -10332,7 +9776,7 @@ def run_maintenance():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     try:
-        ensure_lead_followups(conn)
+        ensure_backlog_reminders(conn)
     finally:
         conn.close()
 
@@ -10376,13 +9820,13 @@ def _lazy_start_scheduler():
 # Online-only: the model is called live, so it degrades gracefully offline.
 # ============================================================================
 ASSISTANT_SYSTEM_PROMPT = (
-    "You are the Compendium Assistant, a helpful internal aide for Vixinman Designs, a "
-    "residential & commercial solar installer in New Mexico. You answer staff "
-    "questions about the company's jobs, clients, tasks and schedule.\n\n"
+    "You are the Compendium Assistant, a helpful internal aide for the Vixinman "
+    "household. You answer questions about the household's projects, tasks, "
+    "the idea backlog, and schedule.\n\n"
     "You are given a COMPENDIUM DATA snapshot for quick orientation, plus a set of "
     "read-only tools to look things up live. Use the tools whenever the answer "
-    "needs specifics beyond the snapshot (a particular job, filtered lists, a "
-    "client's history, someone's tasks). Prefer tools over guessing, and you may "
+    "needs specifics beyond the snapshot (a particular project, filtered lists, "
+    "someone's tasks). Prefer tools over guessing, and you may "
     "call several in a row to narrow things down.\n\n"
     "Everything you can see — snapshot and tools alike — is already limited to "
     "what THIS signed-in user is permitted to see. Never invent jobs, names, "
@@ -10447,35 +9891,30 @@ def build_assistant_snapshot(db, user):
 
     # Active (non-terminal) jobs, capped for token budget.
     active = db.execute(
-        "SELECT j.job_name, j.status, j.install_date, c.name AS client,"
-        "  COALESCE(e.name,'') AS rep"
-        " FROM jobs j JOIN clients c ON c.id = j.client_id"
-        " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
-        " WHERE j.status NOT IN ('Complete','Lost')"
-        " ORDER BY (j.install_date = ''), j.install_date, j.id LIMIT 40"
+        "SELECT job_name, status, install_date FROM jobs"
+        " WHERE status NOT IN ('Complete','Lost')"
+        " ORDER BY (install_date = ''), install_date, id LIMIT 40"
     ).fetchall()
     if active:
-        lines.append("Active jobs (job — client — stage — install date — rep):")
+        lines.append("Active jobs (job — stage — install date):")
         for r in active:
             lines.append(
-                f"  • {r['job_name'] or 'Job'} — {r['client']} — {r['status']}"
-                f" — install {r['install_date'] or 'TBD'}"
-                f"{(' — ' + r['rep']) if r['rep'] else ''}")
+                f"  • {r['job_name'] or 'Job'} — {r['status']}"
+                f" — install {r['install_date'] or 'TBD'}")
 
     # This user's own open tasks.
     if user:
         mine = db.execute(
-            "SELECT t.title, t.status, t.due_date, j.job_name, c.name AS client"
+            "SELECT t.title, t.status, t.due_date, j.job_name"
             " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-            " JOIN clients c ON c.id = j.client_id"
             " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
             " ORDER BY (t.due_date = ''), t.due_date LIMIT 25", (user["id"],)
         ).fetchall()
         if mine:
-            lines.append(f"{name}'s open tasks (task — job — client — due):")
+            lines.append(f"{name}'s open tasks (task — job — due):")
             for r in mine:
                 lines.append(
-                    f"  • {r['title']} — {r['job_name'] or 'Job'} — {r['client']}"
+                    f"  • {r['title']} — {r['job_name'] or 'Job'}"
                     f" — due {r['due_date'] or 'no date'} [{r['status']}]")
         else:
             lines.append(f"{name} has no open tasks assigned.")
@@ -10532,7 +9971,6 @@ def build_assistant_tools(db, user):
         text = (args.get("text") or "").strip()
         stage = (args.get("stage") or "").strip()
         county = (args.get("county") or "").strip()
-        rep = (args.get("assigned_rep") or "").strip()
         overdue_only = bool(args.get("overdue_only"))
         try:
             limit = min(int(args.get("limit") or 25), 50)
@@ -10540,14 +9978,11 @@ def build_assistant_tools(db, user):
             limit = 25
         where, params = ["1=1"], []
         if text:
-            where.append("(j.job_name LIKE ? OR c.name LIKE ?)")
-            params += [f"%{text}%", f"%{text}%"]
+            where.append("j.job_name LIKE ?"); params.append(f"%{text}%")
         if stage:
             where.append("j.status = ?"); params.append(stage)
         if county:
             where.append("j.county LIKE ?"); params.append(f"%{county}%")
-        if rep:
-            where.append("e.name LIKE ?"); params.append(f"%{rep}%")
         # min_contract only applies for pricing-cleared viewers; silently ignored
         # otherwise so the filter can't be used to probe hidden figures.
         if can_price and args.get("min_contract") not in (None, ""):
@@ -10564,22 +9999,19 @@ def build_assistant_tools(db, user):
                 " AND t.due_date < ?)")
             params.append(today)
         rows = db.execute(
-            "SELECT j.id, j.job_name, j.status, j.install_date, j.county,"
-            "  COALESCE(j.contract_amount,0) AS amt, c.name AS client,"
-            "  COALESCE(e.name,'') AS rep"
-            " FROM jobs j JOIN clients c ON c.id = j.client_id"
-            " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+            "SELECT id, job_name, status, install_date, county,"
+            "  COALESCE(contract_amount,0) AS amt"
+            " FROM jobs j"
             f" WHERE {' AND '.join(where)}"
-            " ORDER BY (j.install_date = ''), j.install_date, j.id LIMIT ?",
+            " ORDER BY (install_date = ''), install_date, id LIMIT ?",
             params + [limit]).fetchall()
         if not rows:
             return "No jobs match those filters."
         out = [f"{len(rows)} job(s):"]
         for r in rows:
-            line = (f"#{r['id']} {r['job_name'] or 'Job'} — {r['client']} — "
+            line = (f"#{r['id']} {r['job_name'] or 'Job'} — "
                     f"{r['status']} — install {r['install_date'] or 'TBD'}"
-                    f"{' — ' + r['county'] if r['county'] else ''}"
-                    f"{' — rep ' + r['rep'] if r['rep'] else ''}")
+                    f"{' — ' + r['county'] if r['county'] else ''}")
             if can_price and r["amt"]:
                 line += f" — contract {_assist_money(r['amt'])}"
             out.append("• " + line)
@@ -10592,25 +10024,19 @@ def build_assistant_tools(db, user):
         row = None
         if ident.lstrip("#").isdigit():
             row = db.execute(
-                "SELECT j.*, c.name AS client, COALESCE(e.name,'') AS rep"
-                " FROM jobs j JOIN clients c ON c.id = j.client_id"
-                " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
-                " WHERE j.id = ?", (int(ident.lstrip("#")),)).fetchone()
+                "SELECT * FROM jobs WHERE id = ?",
+                (int(ident.lstrip("#")),)).fetchone()
         if row is None:
             row = db.execute(
-                "SELECT j.*, c.name AS client, COALESCE(e.name,'') AS rep"
-                " FROM jobs j JOIN clients c ON c.id = j.client_id"
-                " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
-                " WHERE j.job_name LIKE ? ORDER BY j.id LIMIT 1",
+                "SELECT * FROM jobs WHERE job_name LIKE ? ORDER BY id LIMIT 1",
                 (f"%{ident}%",)).fetchone()
         if row is None:
             return f"No job found matching '{ident}'."
-        out = [f"Job #{row['id']}: {row['job_name'] or 'Job'} — client {row['client']}",
+        out = [f"Job #{row['id']}: {row['job_name'] or 'Job'}",
                f"Stage: {row['status']}",
                f"Install date: {row['install_date'] or 'TBD'}",
                f"County: {row['county'] or '—'}",
-               f"Payment: {row['cost_method'] or '—'}",
-               f"Assigned rep: {row['rep'] or '—'}"]
+               f"Payment: {row['cost_method'] or '—'}"]
         if can_price and (row["contract_amount"] or 0):
             out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
         if (row["status"] or "") == "Lost" and (row["cancel_reason"] or ""):
@@ -10641,35 +10067,6 @@ def build_assistant_tools(db, user):
                 out.append(f"  • {(n['created_at'] or '')[:10]}: {n['note']}")
         return "\n".join(out)
 
-    def find_clients(args):
-        text = (args.get("text") or "").strip()
-        status = (args.get("status") or "").strip()
-        try:
-            limit = min(int(args.get("limit") or 25), 50)
-        except (TypeError, ValueError):
-            limit = 25
-        where, params = ["1=1"], []
-        if text:
-            where.append("c.name LIKE ?"); params.append(f"%{text}%")
-        if status:
-            where.append("c.lead_status LIKE ?"); params.append(f"%{status}%")
-        rows = db.execute(
-            "SELECT c.id, c.name, COALESCE(c.lead_status,'') AS status,"
-            "  COALESCE(c.phone,'') AS phone, COALESCE(e.name,'') AS rep,"
-            "  (SELECT COUNT(*) FROM jobs j WHERE j.client_id = c.id) AS jobs"
-            " FROM clients c LEFT JOIN employees e ON e.id = c.assigned_rep_id"
-            f" WHERE {' AND '.join(where)} ORDER BY c.name LIMIT ?",
-            params + [limit]).fetchall()
-        if not rows:
-            return "No clients match."
-        out = [f"{len(rows)} client(s):"]
-        for r in rows:
-            out.append(f"• {r['name']} — {r['status'] or 'no status'}"
-                       f"{' — rep ' + r['rep'] if r['rep'] else ''}"
-                       f"{' — ' + r['phone'] if r['phone'] else ''}"
-                       f" — {r['jobs']} job(s)")
-        return "\n".join(out)
-
     def list_tasks(args):
         assignee = (args.get("assignee") or "").strip()
         overdue_only = bool(args.get("overdue_only"))
@@ -10692,9 +10089,8 @@ def build_assistant_tools(db, user):
             params.append(today)
         rows = db.execute(
             "SELECT t.title, t.status, t.due_date, j.job_name,"
-            "  c.name AS client, COALESCE(e.name,'') AS who"
+            "  COALESCE(e.name,'') AS who"
             " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
-            " JOIN clients c ON c.id = j.client_id"
             " LEFT JOIN employees e ON e.id = t.employee_id"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY (t.due_date=''), t.due_date LIMIT ?",
@@ -10703,7 +10099,7 @@ def build_assistant_tools(db, user):
             return "No matching open tasks."
         out = [f"{len(rows)} task(s):"]
         for r in rows:
-            out.append(f"• {r['title']} — {r['job_name'] or 'Job'} ({r['client']})"
+            out.append(f"• {r['title']} — {r['job_name'] or 'Job'}"
                        f" — due {r['due_date'] or 'no date'}"
                        f"{' — ' + r['who'] if r['who'] else ' — unassigned'}")
         return "\n".join(out)
@@ -10725,31 +10121,23 @@ def build_assistant_tools(db, user):
         {"name": "find_jobs",
          "description": ("Search jobs with optional filters. Use for questions like "
                          "'jobs in Job Prep', 'jobs in Bernalillo county', 'overdue "
-                         "jobs', or a client/job name search."),
+                         "jobs', or a job name search."),
          "parameters": {"type": "object", "properties": {
-             "text": {"type": "string", "description": "match job or client name"},
+             "text": {"type": "string", "description": "match job name"},
              "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
              "county": {"type": "string", "description": "NM county name"},
-             "assigned_rep": {"type": "string", "description": "assigned sales rep name"},
              "overdue_only": {"type": "boolean", "description": "only jobs with an overdue task"},
              "min_contract": {"type": "number", "description": "minimum contract total (only honored for pricing-cleared users)"},
              "limit": {"type": "integer", "description": "max rows (default 25)"}}},
          "run": find_jobs},
         {"name": "job_details",
          "description": ("Full detail for one job by name or #id: stage, install "
-                         "date, rep, payment, open tasks, materials, recent notes "
+                         "date, payment, open tasks, materials, recent notes "
                          "(and contract total if you may see pricing)."),
          "parameters": {"type": "object", "properties": {
              "job": {"type": "string", "description": "job name or #id"}},
              "required": ["job"]},
          "run": job_details},
-        {"name": "find_clients",
-         "description": "Search clients by name/status. Returns rep, phone, job count.",
-         "parameters": {"type": "object", "properties": {
-             "text": {"type": "string", "description": "match client name"},
-             "status": {"type": "string", "description": "client status filter"},
-             "limit": {"type": "integer", "description": "max rows (default 25)"}}},
-         "run": find_clients},
         {"name": "list_tasks",
          "description": ("List open tasks. assignee 'me' for the current user, or a "
                          "name; optional overdue_only and stage filters."),

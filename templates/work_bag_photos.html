@@ -9,7 +9,7 @@
 {# Job context, styled like the Work Bag's job banner so it reads as the same place. #}
 <div style="padding:0.55rem 0.75rem; background:#e7f4ec; border-left:4px solid var(--brand); border-radius:6px; margin-bottom:0.8rem;">
   <div style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 {{ task["job_name"] or "Job #" ~ task["job_id"] }}</div>
-  <div class="muted" style="font-size:0.85rem;">{{ task["client_name"] }}{% if task["install_date"] %} · 🔧 install {{ task["install_date"] }}{% endif %}</div>
+  {% if task["install_date"] %}<div class="muted" style="font-size:0.85rem;">🔧 install {{ task["install_date"] }}</div>{% endif %}
   <div style="margin-top:0.2rem; font-weight:600;">Step: {{ task["title"] }}</div>
 </div>
 
