@@ -52,23 +52,24 @@ something new from scratch.
 | Old | New | Notes |
 |---|---|---|
 | `clients` table | **removed** | No separate customer entity. Projects/tasks belong to the household directly — drop the FK, not just the label. |
-| `jobs` table + pipeline | **`projects`** | Keep the shape (versioning, per-job BPMN chart, standardized pipeline with gated stages). Drop `client_id` FK. Rename pipeline stages: `Proposal → Job Prep → Installation → Inspections → Closing → Complete` (+ `Lost`) becomes something like `Planning → Prep → In Progress → Verify → Wrap-up → Done` (+ `Abandoned`). Verify covers permit sign-off / inspections / certification exams — open question whether it stays its own stage or folds into another; see Open Questions. |
+| `jobs` table + pipeline | **`projects`** | Keep the shape (versioning, per-job BPMN chart, standardized pipeline with gated stages). Drop `client_id` FK. Rename pipeline stages: `Proposal → Job Prep → Installation → Inspections → Closing → Complete` (+ `Lost`) becomes `Planning → Prep → In Progress → Wrap-up → Done` (+ `Abandoned`) — permit sign-off / inspections / certification exams are steps within Wrap-up, not their own stage (resolved, see Open Questions). |
 | `employees` table + org chart | **`household_members`** | Same table shape (name/nickname dup-guard, licenses & certs per person, per-person dashboard) survives. The 28-role org-chart (`reports_to` hierarchy, Sales/Design/Warehouse/Install departments) shrinks to a small role set — see below. |
 | Task generation (single stream, job-driven) | **split into `routine_tasks` vs `project_tasks`** | User explicitly wants routine (recurring chores) separate from tasks that are steps within a specific project. Project tasks keep today's job-generated/auto-assigned-by-role behavior, just renamed. Routine tasks are a new, lighter table — recurrence rule, assigned household member, no pipeline stage. |
 
-### Roles — from 28 solar org-chart roles down to something like:
+### Roles — from 28 solar org-chart roles down to:
 - Adult / Parent
 - Kid / Dependent
-- (optional) External helper — a contractor, tutor, or coach who touches a project but
-  isn't a household member (may or may not warrant a real table vs. just a free-text
-  field on the project)
+- **External helper** — a contractor, tutor, or coach who touches a project but isn't a
+  household member. **Resolved: real table** (structured contact info, reusable across
+  projects), not a free-text field — see Open Questions.
 
-**Cut as a consequence of the smaller role set** (flag for confirmation, don't just
-silently drop): emergency access lockout, the new-member onboarding checklist workflow,
-payroll pay-type multipliers/overtime rules, and most of the GM/Admin permission-grant
-system with expiration dates. None of these have an obvious household analog unless the
-user wants household-level access control (e.g., "lock a kid's account," "who can edit
-the budget") — worth a direct question rather than an assumption.
+**Cut as a consequence of the smaller role set**: the new-member onboarding checklist
+workflow, payroll pay-type multipliers/overtime rules, and the GM/Admin tiered
+permission-grant system with expiration dates. **Resolved (see Open Questions):**
+household-level access control survives in a lightweight form — a simple `is_admin`
+flag on `household_members` (Parent/Adult = full access by default) plus the ability to
+individually grant a specific permission to one non-admin member case-by-case. No
+expiration dates, no multi-tier hierarchy beyond that.
 
 ### Requirements Engine (was Rules Editor / L/P/C Directory)
 **Keeps its shape almost exactly** — this is one of the strongest carryovers. The
@@ -78,19 +79,20 @@ the budget") — worth a direct question rather than an assumption.
 surfaces prerequisite coursework). Verbatim source-text field, verify/unverified
 callouts, and the consolidation-of-shared-requirements behavior all still make sense.
 
-### Inventory / BOM / barcode asset registry
-**Keeps its shape** — on-hand/needed/ordered status, stock ledger, barcode
-scan-in/scan-out, stale-stock notice. Swap the 439-item solar catalog
-(`inventory_seed.py`) for either an empty household catalog or a small starter set
-(tools, hardware, common supplies). Whether barcode scanning survives at all for a
-household inventory is an open question — flagged below.
+### Inventory / BOM asset registry
+**Keeps its shape minus barcode scanning** — on-hand/needed/ordered status, stock
+ledger, stale-stock notice all carry over. **Resolved (see Open Questions): barcode
+generate/print/scan is cut** — built for a multi-person crew truck-loading parts, doesn't
+fit household scale. Swap the 439-item solar catalog (`inventory_seed.py`) for an
+**empty household catalog** (resolved: ship empty, no starter set — items get added as
+actually needed).
 
 ### Cut entirely — no household equivalent
 - Payroll, pay types, overtime, pay periods, payroll reminder
 - NM statewide reference data — 33 counties' AHJ contacts, utility interconnection
-  contacts (`nm_directory.py`). Either drop, or repurpose as a generic
-  **contractor/vendor directory** (plumber, electrician, warranty phone numbers) —
-  open question.
+  contacts (`nm_directory.py`). **Resolved (see Open Questions): repurpose** its shape
+  as a generic **contractor/vendor directory** (plumber, electrician, warranty phone
+  numbers) rather than dropping it.
 - Customer-facing invoice generation (50/40/10 progress billing), QuickBooks export, NM
   gross-receipts-tax line
 - Work Bag field-crew mode — built for a multi-person install crew in the field. Unless
@@ -109,17 +111,30 @@ export, and the NM tax logic that goes with it (see "cut entirely" above).
 
 ---
 
-## Open questions to resolve with the user before/while implementing
+## Open questions — resolved 2026-08-15
 
-1. **Verify stage:** own pipeline stage, or folded into Prep/Wrap-up?
-2. **External helpers** (contractor, tutor, coach touching a project): real table, or
-   just a free-text field on the project?
-3. **Household-level access control:** worth keeping any permission tiers (e.g.
-   kid-account restrictions, budget-edit access), or drop all of it?
-4. **Vendor/contractor directory:** repurpose `nm_directory.py`'s shape for this, or cut
-   outright?
-5. **Barcode/asset scanning:** worth keeping for household inventory, or overkill?
-6. **Inventory starter catalog:** ship empty, or seed with a small household starter set?
+1. **Verify stage:** ~~own pipeline stage, or folded into Prep/Wrap-up?~~ **Folded into
+   Wrap-up.** Pipeline becomes `Planning → Prep → In Progress → Wrap-up → Done` (+
+   `Abandoned`) — permit sign-off/inspections/cert exams are steps within Wrap-up, not
+   their own stage.
+2. **External helpers** (contractor, tutor, coach touching a project): ~~real table, or
+   just a free-text field?~~ **Real table.** Structured contact info, reusable across
+   multiple projects — not just a free-text field.
+3. **Household-level access control:** ~~worth keeping any permission tiers, or drop all
+   of it?~~ **Keep a lightweight version:** a simple `is_admin`-style flag on
+   `household_members` (Parent/Adult = full access by default), *plus* the ability to
+   individually grant a specific permission to a single non-admin member on a case-by-case
+   basis (e.g. letting one kid edit the budget without making them a full admin). Explicitly
+   **not** the old GM/Admin tiered system with expiring grants — no expiration dates, no
+   multi-tier hierarchy beyond admin/non-admin + individual overrides.
+4. **Vendor/contractor directory:** ~~repurpose `nm_directory.py`'s shape, or cut
+   outright?~~ **Repurpose.** Reuse its shape for a household vendor/contractor directory
+   (plumber, electrician, warranty numbers) instead of building new.
+5. **Barcode/asset scanning:** ~~worth keeping, or overkill?~~ **Cut.** Built for a
+   multi-person install crew truck-loading parts — doesn't fit household scale. Plain
+   on-hand/needed/ordered inventory tracking survives without it.
+6. **Inventory starter catalog:** ~~ship empty, or seed a starter set?~~ **Ship empty.**
+   No pre-seeded household catalog — items get added as actually needed.
 
 ---
 
