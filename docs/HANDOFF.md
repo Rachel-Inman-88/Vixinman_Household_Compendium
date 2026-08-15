@@ -1,7 +1,7 @@
 # 🧰 Compendium — Project Handoff (historical — see root HANDOFF.md for current status)
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
-**For:** Vixinman Designs (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
+**For:** Vixinman Designs (Rachel) — solar installer, statewide New Mexico
 **Current build:** **v0.3** (footer shows it plainly as "Version 0.3" — the "did my pull work?" check).
 This file predates the household reorg (was last updated at Piece 28.5) and everything
 below still describes the app in its old solar-business shape (clients, jobs) — it's kept
