@@ -631,9 +631,10 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   to plain semantic versioning, starting at `0.1`, coinciding with the rebrand to
   **Vixinman's Home Compendium** and the repo's move to
   [Rachel-Inman-88/Vixinman_Household_Compendium](https://github.com/Rachel-Inman-88/Vixinman_Household_Compendium).
-  Everything below this line is inherited build history from the prior **Solbiz** (ECC
-  Solar) codebase this app was rebranded from — kept for context on how the software
-  got to its current structure, not describing the household product.
+  Everything below this line is inherited build history from the prior **Solbiz**
+  (an unnamed solar installation company) codebase this app was rebranded from —
+  kept for context on how the software got to its current structure, not
+  describing the household product.
 
 - **Piece 32.1** — the **Compendium Assistant can now look data up live** via read-only
   tools (function-calling), instead of relying only on the snapshot. The model may call

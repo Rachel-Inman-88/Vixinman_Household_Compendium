@@ -1,7 +1,7 @@
 # 🧰 Compendium — Project Handoff (historical — see root HANDOFF.md for current status)
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
-**For:** Vixinman Designs (Rachel) — solar installer, statewide New Mexico
+**For:** Vixinman Designs (Rachel, redfox.inman@gmail.com) — solar installer, statewide New Mexico
 **Current build:** **v0.3** (footer shows it plainly as "Version 0.3" — the "did my pull work?" check).
 This file predates the household reorg (was last updated at Piece 28.5) and everything
 below still describes the app in its old solar-business shape (clients, jobs) — it's kept
@@ -126,9 +126,10 @@ Verified with the test client (routes render, redirects) + a headless run (landi
 job cards and no task list; clicking opens the per-job page with its tasks). **NOTE:** the
 user will refine this per-job screen next.
 
-**Piece 27.6 — Dropped the email from the customer invoice.** Removed `rachel@eccsolar.com`
-from both the invoice header remit-to block and the footer remit line (the personal
-email shouldn't go out on customer copies). Address + phone still print;
+**Piece 27.6 — Dropped the email from the customer invoice.** Removed the old
+company-domain personal email from both the invoice header remit-to block and
+the footer remit line (the personal email shouldn't go out on customer
+copies). Address + phone still print;
 `COMPANY_INFO["email"]` is left in place (unused on the invoice now).
 
 **Piece 27.5 — Vixinman remit-to details on invoices.** Filled in `COMPANY_INFO` with

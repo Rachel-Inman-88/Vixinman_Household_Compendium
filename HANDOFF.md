@@ -1,23 +1,24 @@
 # Handoff: Vixinman Household Compendium
 
 Context for whoever (whichever Claude) picks this up next. This repo started life as
-**Solbiz** — an internal ops tool for **ECC Solar** (NM solar installer): clients, jobs,
-licenses/permits/compliance, inventory, payroll, the works. It's being converted into a
-**household** version: routine tasks + ongoing projects (repairs, builds, certifications)
-for one household, not a multi-client business.
+**Solbiz** — an internal ops tool for an **unnamed solar installation company** (NM solar
+installer): clients, jobs, licenses/permits/compliance, inventory, payroll, the works. It's
+being converted into a **household** version: routine tasks + ongoing projects (repairs,
+builds, certifications) for one household, not a multi-client business.
 
 ---
 
 ## Status: what's already done
 
 The **text/branding rebrand pass is complete and verified.** Confirmed via repo-wide
-search (zero remaining matches for `ECC` / `Solbiz`, case-insensitive, across
-`.py`/`.html`/`.sql`/`.md`/`.js`/`.txt`, excluding `dist`/`build`/`.git`/screenshots):
+search (zero remaining matches for the old company name / `Solbiz`, case-insensitive,
+across `.py`/`.html`/`.sql`/`.md`/`.js`/`.txt`, excluding `dist`/`build`/`.git`/screenshots):
 
 - **Product name:** "Solbiz" → **"Compendium"** (short form used in nav/titles/cache
   keys) / **"Vixinman's Home Compendium"** (full display name)
-- **Company name:** "ECC Solar" / "ECC" → **"Vixinman Designs"** — copyright notice,
-  `LICENSE`, code comments, invoice remit-to block, `schema.sql` comments, all templates
+- **Company name:** the old unnamed solar installation company's name →
+  **"Vixinman Designs"** — copyright notice, `LICENSE`, code comments, invoice
+  remit-to block, `schema.sql` comments, all templates
 - **Desktop packaging paths:**
   - `~/Solbiz` → `~/Compendium` (data dir)
   - `Solbiz.exe` → `Compendium.exe`
