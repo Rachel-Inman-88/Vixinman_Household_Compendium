@@ -1,18 +1,18 @@
-"""Per-job BPMN 2.0 export for Compendium.
+"""Per-project BPMN 2.0 export for Compendium.
 
 Takes the shape of Vixinman's master process ("The Uber Diagram", kept at
-docs/The_Uber_Diagram.bpmn) and instantiates it for one job:
+docs/The_Uber_Diagram.bpmn) and instantiates it for one project:
 
 - the "Interconnection approval and permitting" box expands into the
-  job's actual resolved permit steps, in dependency order (utility
+  project's actual resolved permit steps, in dependency order (utility
   pre-screening first, zoning clearance before building permit,
   interconnection application last);
 - state inspections live in an "Authorities (CID)" lane, utility work
   (meter set, JMEC Letter of Compliance) in the Utility Company lane;
-- off-grid jobs drop the interconnection and meter-set steps;
-- labels are stamped with the job's county and utility;
+- off-grid projects drop the interconnection and meter-set steps;
+- labels are stamped with the project's county and utility;
 - payment milestones default to the 50/40/10 schedule, annotated with
-  the job's cost method (variants to be defined later);
+  the project's cost method (variants to be defined later);
 - service tickets get a visible caveat that the install pipeline is
   provisional for them.
 
@@ -48,24 +48,24 @@ CONNECTION_FIELDS = (
 # tagged by stage (standardized department step-lists) and stage transitions
 # can be gated on their own steps being done.
 STEP_STATUS = {
-    # Proposal now ends at the signed contract + deposit (Piece 20.6).
-    "start": "Proposal", "collect": "Proposal", "sitevisit": "Proposal",
-    "loads": "Proposal", "draft": "Proposal", "finalize": "Proposal",
-    "contract": "Proposal", "dep50": "Proposal",
-    "compendium": "Job Prep", "order": "Job Prep", "finance": "Job Prep",
-    "setdate": "Job Prep",
-    "install": "Installation", "walkthrough": "Installation",
-    "doctube": "Installation", "dep40": "Installation", "monitoring": "Installation",
-    "meterset": "Inspections", "cid": "Inspections", "fix": "Inspections",
-    "jmecloc": "Inspections", "sticker": "Inspections",
-    "inv10": "Closing", "saleswalk": "Closing", "review": "Closing", "end": "Closing",
+    # Planning now ends at the signed contract + deposit (Piece 20.6).
+    "start": "Planning", "collect": "Planning", "sitevisit": "Planning",
+    "loads": "Planning", "draft": "Planning", "finalize": "Planning",
+    "contract": "Planning", "dep50": "Planning",
+    "compendium": "Prep", "order": "Prep", "finance": "Prep",
+    "setdate": "Prep",
+    "install": "In Progress", "walkthrough": "In Progress",
+    "doctube": "In Progress", "dep40": "In Progress", "monitoring": "In Progress",
+    "meterset": "Wrap-up", "cid": "Wrap-up", "fix": "Wrap-up",
+    "jmecloc": "Wrap-up", "sticker": "Wrap-up",
+    "inv10": "Wrap-up", "saleswalk": "Wrap-up", "review": "Wrap-up", "end": "Wrap-up",
 }
 
 
 def _step_status(nid):
-    """Pipeline stage for a node id (the dynamic permit steps are Job Prep)."""
+    """Pipeline stage for a node id (the dynamic permit steps are Prep)."""
     if nid.startswith("permit"):
-        return "Job Prep"
+        return "Prep"
     return STEP_STATUS.get(nid, "")
 
 
@@ -76,7 +76,7 @@ def _rule_item(rule):
 
 
 def _permit_chain(matched, grid_tied):
-    """Order the job's resolved permitting steps. Returns a list of
+    """Order the project's resolved permitting steps. Returns a list of
     (task label, [rule detail items]) pairs."""
     seen = set()
     permits = [r for r in matched if r["category"] == "Permit"]
@@ -110,12 +110,12 @@ def _permit_chain(matched, grid_tied):
     return steps or [("Permitting review", [])]
 
 
-def build_job_bpmn(job, matched, materials_note="", docs_note=""):
-    grid_tied = any((job[f] or "") in ("Grid-tie", "Backup system")
+def build_project_bpmn(project, matched, materials_note="", docs_note=""):
+    grid_tied = any((project[f] or "") in ("Grid-tie", "Backup system")
                     for f in CONNECTION_FIELDS)
-    county = (job["county"] or "").strip()
-    utility = (job["utility_provider"] or "").strip()
-    service_job = "Technician Service" in (job["products"] or "")
+    county = (project["county"] or "").strip()
+    utility = (project["utility_provider"] or "").strip()
+    service_project = "Technician Service" in (project["products"] or "")
     jmec_loc = any(r["label"].startswith("JMEC Letter of Compliance")
                    for r in matched)
 
@@ -133,12 +133,12 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
         flows.append((a, b, label))
 
     # Product/finance-driven conditionals (Piece 20.6).
-    products = job["products"] or ""
+    products = project["products"] or ""
     has_monitoring = ("PV Systems" in products) or ("Battery Banks" in products)
-    cost = (job["cost_method"] or "").strip()
+    cost = (project["cost_method"] or "").strip()
     needs_finance_step = (
         "finance" in cost.lower()                                   # financed
-        or (job["tax_credit"] or "").strip().lower() == "yes"        # rebate/ITC paperwork
+        or (project["tax_credit"] or "").strip().lower() == "yes"        # rebate/ITC paperwork
         or grid_tied)                                               # interconnection paperwork
 
     # --- Proposal: intake → walkthrough → loads → design → contract → deposit
@@ -151,7 +151,7 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     add("finalize", "userTask", "Finalize and approve Design", "Design", c); c += 1
     add("contract", "task", "Client Signs Contract", "Sales", c); c += 1
     add("dep50", "task", "50% Deposit Received", "Finance", c); c += 1
-    # Job Prep begins: the software generates the task list (chart-only — no
+    # Prep begins: the software generates the task list (chart-only — no
     # to-do is created for it), then the parallel prep work fans out.
     add("compendium", "serviceTask", "Compendium generates tasks, lists & this chart",
         "Compendium System", c); c += 1
@@ -163,8 +163,8 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
                  ("dep50", "compendium"), ("compendium", "split")]:
         link(a, b)
 
-    # Parallel Job-Prep branches off the split: procurement, the finance/rebate
-    # milestone (when relevant), and the job-specific permitting chain.
+    # Parallel Prep branches off the split: procurement, the finance/rebate
+    # milestone (when relevant), and the project-specific permitting chain.
     chain = _permit_chain(matched, grid_tied)
     add("order", "userTask", "Order all components and materials", "Purchasing", c)
     if needs_finance_step:
@@ -242,11 +242,11 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
         link(a, b)
 
     # Annotations
-    cost = (job["cost_method"] or "").strip()
+    cost = (project["cost_method"] or "").strip()
     annotations.append(("ann_pay", "dep50",
                         f"Payment schedule: default 50/40/10"
                         + (f" (cost method: {cost})" if cost else "")))
-    if service_job:
+    if service_project:
         annotations.append(("ann_service", "start",
                             "Service ticket: simplified service process "
                             "pending — install pipeline shown provisionally"))
@@ -255,10 +255,10 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     if docs_note:
         annotations.append(("ann_docs", "compendium", docs_note))
 
-    return _render_xml(job, nodes, flows, annotations), details
+    return _render_xml(project, nodes, flows, annotations), details
 
 
-def _render_xml(job, nodes, flows, annotations):
+def _render_xml(project, nodes, flows, annotations):
     by_id = {n["id"]: n for n in nodes}
     incoming = {n["id"]: [] for n in nodes}
     outgoing = {n["id"]: [] for n in nodes}
@@ -295,7 +295,7 @@ def _render_xml(job, nodes, flows, annotations):
         ' id="compendium_defs" targetNamespace="http://compendium.vixinmandesigns/bpmn"'
         ' exporter="Compendium">')
     x.append('<bpmn:collaboration id="collab"><bpmn:participant id="pool"'
-             f' name="Vixinman Designs — {escape(job["job_name"] or "Job")}"'
+             f' name="Vixinman Designs — {escape(project["job_name"] or "Project")}"'
              ' processRef="proc"/></bpmn:collaboration>')
     x.append('<bpmn:process id="proc" isExecutable="false">')
 

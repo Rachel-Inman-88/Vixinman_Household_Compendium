@@ -35,7 +35,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from bpmn_export import build_job_bpmn
+from bpmn_export import build_project_bpmn
 from nm_directory import (
     COUNTIES_ALL, CORRECTIONS_V10, CORRECTIONS_V11, COUNTY_UTILITIES,
     NEW_RULES_V10, UTILITIES_ALL,
@@ -7950,7 +7950,7 @@ def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
     Returns (added, assigned, scheduled). Does not commit."""
     project_id = project["id"]
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
-    _xml, details = build_job_bpmn(project, match_rules(project, rules))
+    _xml, details = build_project_bpmn(project, match_rules(project, rules))
     employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
 
     # Actionable workflow steps in order (no start/end events, gateways, or
@@ -8785,7 +8785,7 @@ def project_bpmn(project_id):
     project = fetch_project(project_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
     materials, files, materials_note, docs_note = project_progress_extras(project_id)
-    xml, _details = build_job_bpmn(project, match_rules(project, rules),
+    xml, _details = build_project_bpmn(project, match_rules(project, rules),
                                    materials_note, docs_note)
     return Response(
         xml, mimetype="application/xml",
@@ -8824,7 +8824,7 @@ def project_bpmn_view(project_id):
     project = fetch_project(project_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
     materials, files, materials_note, docs_note = project_progress_extras(project_id)
-    _xml, details = build_job_bpmn(project, match_rules(project, rules),
+    _xml, details = build_project_bpmn(project, match_rules(project, rules),
                                    materials_note, docs_note)
     steps = sorted(details.values(), key=lambda d: d["order"])
     files_by_label = {}
