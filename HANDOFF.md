@@ -53,6 +53,29 @@ click-tested against a fresh DB and against a simulated pre-reorg DB (the
 `clients_removed_v1` meta-guarded migration in `init_db()` cleans up an existing
 local database the same way).
 
+**The `jobs`→`projects` rename + pipeline-stage relabel (second piece of the
+structural reorg, Piece 34 / v0.3) is done.** `jobs` and its 11 `job_*` child
+tables/14 `job_id` FK columns are now `projects`/`project_*` throughout
+`schema.sql`, `app.py`, every template, and `bpmn_export.py`. Pipeline stages:
+`Proposal → Job Prep → Installation → Inspections → Closing → Complete` (+ `Lost`)
+became `Planning → Prep → In Progress → Wrap-up → Done` (+ `Abandoned`) —
+Inspections and Closing merged into one Wrap-up stage. A meta-guarded
+`projects_rename_v1` migration in `init_db()` upgrades an existing pre-rename
+database the same way (table/column renames run *before* `schema.sql`'s
+`executescript()` to avoid a naming collision with its `CREATE TABLE IF NOT
+EXISTS projects`; the stage-value remap, including `pre_lost_status`, runs after).
+`job_name` (the column) and the on-disk `uploads/job_<id>/` folder naming are
+deliberately unchanged — internal detail, not user-facing — as are the
+department/dashboard-mode/BPMN-lane names that happen to share stage text (e.g.
+`"Installation"` as a department key); disambiguating those is
+`employees`→`household_members` territory, not this piece's. Adds a `/projects`
+list page (Databases nav) since there was no way to browse every project after
+Piece 33 removed the client→job-list path. Verified via a live server
+click-through (project creation, all 5 stage transitions, cancel/reopen
+exercising `pre_lost_status`, task generation, BPMN view/export, dashboard, task
+board, Work Bag, help page) with zero server errors, plus the same fresh-DB +
+simulated-pre-rename-DB migration test used for Piece 33.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -61,11 +84,11 @@ local database the same way).
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   after the schema/feature reorg below is done.
-- **The rest of the structural/domain reorg** — `jobs`→`projects` + pipeline-stage
-  relabeling, `employees`→`household_members`, the `routine_tasks`/`project_tasks`
-  split, the Requirements Engine relabel, inventory (barcode cut + empty starter
-  catalog), and the vendor/contractor directory repurpose of `nm_directory.py`. See
-  below — the open questions on all of these are already resolved.
+- **The rest of the structural/domain reorg** — `employees`→`household_members`,
+  the `routine_tasks`/`project_tasks` split, the Requirements Engine relabel,
+  inventory (barcode cut + empty starter catalog), and the vendor/contractor
+  directory repurpose of `nm_directory.py`. See below — the open questions on all
+  of these are already resolved.
 
 ---
 

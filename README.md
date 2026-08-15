@@ -1,9 +1,9 @@
 # ☀️ Compendium
 
-**Compendium** — the Vixinman household's task/project manager. Create job (project)
+**Compendium** — the Vixinman household's task/project manager. Create project
 profiles directly for the household, and automatically surface the right resources
 (licenses, permits, compliance items, links, phone numbers, docs) based on each
-job's fields — then run the whole job through a standardized, role-based pipeline.
+project's fields — then run the whole project through a standardized, role-based pipeline.
 Someday/maybe ideas live in a household idea backlog until you're ready to start them.
 
 **Proprietary software — see [LICENSE](LICENSE). Do not distribute.**
@@ -52,7 +52,7 @@ can confirm a pull/update took effect.
   certifications) with a name, notes, an optional target/someday date, who
   proposed it, and a rough budget estimate, before it's a real project.
 - **Lifecycle**: a single `Backlog` / `Started` / `Abandoned` status per idea —
-  no separate archive table. Starting an idea creates a real job/project you
+  no separate archive table. Starting an idea creates a real project/project you
   fill in from there; abandoning one keeps it on record, not deleted.
 - **Reminders**: a monthly "review your backlog" nudge through the notifications
   inbox if anything's still waiting, plus an optional custom reminder date on a
@@ -60,13 +60,13 @@ can confirm a pull/update took effect.
 - **Household-wide document storage** (`/household-files`) — files not tied to
   one project (insurance, warranties, correspondence), with categories.
 
-### Jobs
-- **Job profiles** belong to the household directly, with full field capture.
-- **Rules engine** — job selections → the licenses, permits, and compliance
+### Projects
+- **Project profiles** belong to the household directly, with full field capture.
+- **Rules engine** — project selections → the licenses, permits, and compliance
   items that apply, across two pages:
   - **Rules Editor** (`/rules`): the editable catalog of resources (links, phone
     numbers, docs, accepted file formats). Grouped by category.
-  - **L/P/C Directory** (`/directory`): a read-only lookup filtered by job type.
+  - **L/P/C Directory** (`/directory`): a read-only lookup filtered by project type.
     Shared requirements are **consolidated** — a requirement needed by more than
     one selection (e.g. EE-98 for PV + Battery) shows **once** with every
     triggering scenario listed beneath, instead of repeating. Compliance rules
@@ -83,21 +83,21 @@ can confirm a pull/update took effect.
 - **NM reference data** (statewide licensing, all 33 counties' AHJ contacts,
   every utility's interconnection contacts) is kept reconciled against the
   verified July 2026 reference set.
-- **County → utility auto-matching**: picking a county on the job form filters
+- **County → utility auto-matching**: picking a county on the project form filters
   the utility-provider dropdown to the providers that serve it (verified doc-03
   table). If one utility serves the county it's auto-selected; if several do,
   they're all listed so you pick the one on the customer's bill. A **Manual
   override** button opens the full statewide list for non-standard cases. The
-  utility field is kept even for off-grid jobs (the meter/account ties to it).
-- **Job edit history / versioning** for recordkeeping.
-- **Per-job BPMN process charts**: an in-app viewer plus `.bpmn` export, with
+  utility field is kept even for off-grid projects (the meter/account ties to it).
+- **Project edit history / versioning** for recordkeeping.
+- **Per-project BPMN process charts**: an in-app viewer plus `.bpmn` export, with
   each step tagged by pipeline status.
-- **Loads & Sizing** (`/jobs/<id>/loads`): electrical loads and system sizing on
-  its own page. Electric loads are **not** entered at job creation (they aren't
+- **Loads & Sizing** (`/projects/<id>/loads`): electrical loads and system sizing on
+  its own page. Electric loads are **not** entered at project creation (they aren't
   known until the walkthrough) — they're recorded here during the proposal, and
-  the **Proposal stage can't advance until loads are recorded**. It's a
-  **Proposal-phase tool**: once the contract is signed (the job moves past
-  Proposal) the editor **locks** — the recorded figures stay visible here and in
+  the **Planning stage can't advance until loads are recorded**. It's a
+  **Planning-phase tool**: once the contract is signed (the project moves past
+  Planning) the editor **locks** — the recorded figures stay visible here and in
   Design, but no one edits them (enforced in the UI and on the server).
   - **Sales / Designer view modes** default per viewer from their department
     (Design → Designer, Sales → Sales) and are togglable per session.
@@ -113,64 +113,63 @@ can confirm a pull/update took effect.
 - **Calculator Catalog** (🗄 Databases → Calculator Catalog): the appliance +
   component reference data that drives the load survey and the BOM/sizing picker;
   editing it applies everywhere immediately.
-- **Materials lists** per job (status: Needed → Quoted → Ordered → Backordered →
+- **Materials lists** per project (status: Needed → Quoted → Ordered → Backordered →
   Received → On hand → Installed) and **document upload/storage** with
-  per-requirement filing coverage. The job's **L/P/C tab** leads with **Permits**
+  per-requirement filing coverage. The project's **L/P/C tab** leads with **Permits**
   — each with an **inline upload slot** so the permit coordinator views the
   requirement and files the document in one place — with licenses and compliance
   collapsed below. The **Permits dashboard** shows a **permits-filed X/Y** column;
   the **Purchasing dashboard** shows a **procurement rollup** of materials by
-  status across Job-Prep jobs.
+  status across Prep-stage projects.
 - **Per-slot upload formats**: a document slot can restrict its accepted file
   types (e.g. a permit slot to PDF), enforced on upload.
 - **Auto-renamed uploads**: every uploaded file is renamed to a self-describing
-  `Name_What_Date` scheme for recordkeeping (job docs, household files, employee
+  `Name_What_Date` scheme for recordkeeping (project docs, household files, employee
   files, and field photos each get their own pattern); the friendly name is what
   shows and downloads, while the on-disk name stays collision-safe.
 - **In-place editing** for the add/delete-only records (rules, appliance &
   component catalog, credentials, load items/rooms, BOM lines) — an ✎ edit
   pre-fills the record to save back over the original.
-- **Exportable job report**.
+- **Exportable project report**.
 
 ### Pipeline, tasks & scheduling
-- **Standardized pipeline**: Proposal → Job Prep → Installation → Inspections →
-  Closing → Complete (plus Lost). Each stage is **owned by a department** with
-  defined exit criteria; Job Prep is gated by prerequisites (all permits filed +
-  an install date set — setting the install date auto-advances the job).
-- **Per-job progress widget** — a segmented progress bar (one per job) that shows
-  at a glance where the job sits in the pipeline, with the **next step called
-  out**. Appears on the dashboard and each job's header.
-- **Pipeline-turnover notifications**: whenever a job advances to a new stage
-  (from Proposal onward — new jobs, manual stage changes, and the install-date
+- **Standardized pipeline**: Planning → Prep → In Progress → Wrap-up → Done (plus Abandoned). Each stage is **owned by a department** with
+  defined exit criteria; Prep is gated by prerequisites (all permits filed +
+  an install date set — setting the install date auto-advances the project).
+- **Per-project progress widget** — a segmented progress bar (one per project) that shows
+  at a glance where the project sits in the pipeline, with the **next step called
+  out**. Appears on the dashboard and each project's header.
+- **Pipeline-turnover notifications**: whenever a project advances to a new stage
+  (from Planning onward — new projects, manual stage changes, and the install-date
   auto-advance), the department(s) that **own the new stage** are notified in
   their in-app inbox. Each recipient's copy **clears the first time they access
-  it** (opening the notification or the job); the person who made the move isn't
+  it** (opening the notification or the project); the person who made the move isn't
   notified, and backward moves don't fire.
-- **Job cancellation (Lost) with a reason**: a "Cancel this job" control marks it
-  **Lost** with a **required reason** recorded in the audit log (who/when), and
-  remembers the stage it was at. A cancelled job's **open tasks are hidden** from
+- **Project cancellation (Abandoned) with a reason**: a "Cancel this project" control marks it
+  **Abandoned** with a **required reason** recorded in the audit log (who/when), and
+  remembers the stage it was at. A cancelled project's **open tasks are hidden** from
   My Tasks, the task board, and the Work Bag so they stop nagging the crew —
   nothing is deleted. **Everyone involved so far** (task assignees, time loggers)
   is notified. A **↩ Reopen** action restores the exact prior
-  stage and its tasks. ("Lost" is removed from the plain stage dropdown so every
+  stage and its tasks. ("Abandoned" is removed from the plain stage dropdown so every
   cancellation captures a reason.)
-- **Closed jobs review** (🗄 Databases → Closed jobs, GM/Admin): a management view
-  of **cancelled** jobs — reason, who/when, prior stage, contract — each
-  with a one-click Reopen, plus a list of **completed** jobs.
-- **Task generation** from a job's process, with each step auto-assigned to the
+- **Closed projects review** (🗄 Databases → Closed projects, GM/Admin): a management view
+  of **cancelled** projects — reason, who/when, prior stage, contract — each
+  with a one-click Reopen, plus a list of **completed** projects.
+- **Task generation** from a project's process, with each step auto-assigned to the
   role-holder responsible for it.
 - **Default task deadlines**: every generated task defaults to **7 days after the
   previous step** (a weekly cadence); when a step is marked Done, the next open
-  step is re-defaulted to 7 days after that completion. Hand-editable per job.
+  step is re-defaulted to 7 days after that completion. Hand-editable per project.
 - **Calendar export (.ics)**: download your task due dates + install dates
-  (`/calendar/my.ics`) or a single job's dates (`/jobs/<id>/calendar.ics`) and
+  (`/calendar/my.ics`) or a single project's dates (`/projects/<id>/calendar.ics`) and
   import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
   updates events instead of duplicating.
 - **Work Bag** for field crews — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
-  dashboards. It opens on a **jobs landing** that lists just the jobs in the
-  crew's bag (name, install date, open-task count); tapping a job opens
-  its **own page** with that job's tasks, plus hours, receipts, and notes pinned
+  dashboards. It opens on a **projects landing** that lists just the projects in the
+  crew's bag (name, install date, open-task count); tapping a project opens
+  its **own page** with that project's tasks, plus hours, receipts, and notes pinned
   to it.
 - **Submit-as-done with time by pay type**: instead of a status dropdown, each
   task has a single **✓ Submit as done** (and a **⚠ Can't finish** → Blocked).
@@ -180,30 +179,30 @@ can confirm a pull/update took effect.
   posting the split hours as **pending payroll** by pay type), then Finance
   approves the hours on the payroll page. All edits are saved on-device and submit
   when back online.
-- **Job photos from the field**: every pipeline step that requires photos — the
+- **Project photos from the field**: every pipeline step that requires photos — the
   site visit, the install itself, the crew walkthrough, doc tube, the meter set,
   and re-inspection of corrections — is completed on its **own dedicated screen**:
   a 3-step **take / review / submit** flow (phone camera, thumbnail review, then
   submit with notes and the time it took). Submitting requires at least one photo,
-  marks the task done for approval, and returns to the job's Work Bag page. Photos
-  save to the job and appear on the job record; crews can remove their own shots.
-- **Packing list**: each job in the Work Bag carries a collapsible **📦 Packing
+  marks the task done for approval, and returns to the project's Work Bag page. Photos
+  save to the project and appear on the project record; crews can remove their own shots.
+- **Packing list**: each project in the Work Bag carries a collapsible **📦 Packing
   list** of its materials (item, qty, status) — colour-coded by readiness (on
   hand / received vs. still-needed vs. backordered) — so installers can pack the
   truck before they leave. (Named "Packing", not "Load", to keep it distinct
   from the electrical **Loads & Sizing** tool.)
-- **Field notes**: a standard **📝 Job notes** box in the Work Bag lets crews jot
-  free-form notes about a job (access details, on-site changes, callbacks). Each
+- **Field notes**: a standard **📝 Project notes** box in the Work Bag lets crews jot
+  free-form notes about a project (access details, on-site changes, callbacks). Each
   note is **individually timestamped** (the same clock as the audit log) with the
-  author, and surfaces on the job's record for the office to read later.
+  author, and surfaces on the project's record for the office to read later.
 - **Field receipts**: crews snap a receipt photo and log the date, total, vendor,
-  reference, and expense category from the Work Bag; it's filed on the job and
+  reference, and expense category from the Work Bag; it's filed on the project and
   recorded as a **paid expense** for bookkeeping.
-- **Grouped task board**: the cross-job task board and the dashboard's **My
-  Tasks** are **grouped under each job** (a banner per job with its tasks as
-  bullets beneath) so everything for a job reads at a glance.
+- **Grouped task board**: the cross-project task board and the dashboard's **My
+  Tasks** are **grouped under each project** (a banner per project with its tasks as
+  bullets beneath) so everything for a project reads at a glance.
 - **Boards** (📋 in the top nav): stand-alone **to-dos not tied to a
-  job** (clean the bathroom, call a vendor, …). Each can be **sent to a
+  project** (clean the bathroom, call a vendor, …). Each can be **sent to a
   teammate** (who's notified), carries a **time log** (hours + notes, with a
   running total) and a **notes log** you add to over time, and has a
   priority / due date / status. Filter by Mine / All / Unassigned.
@@ -221,7 +220,7 @@ can confirm a pull/update took effect.
   where a role sits shows who they report to, and rows with direct reports are
   bold. Multi-select, with an "Other role(s)" free-text field for anything off-chart.
 - **Licenses & certifications** per employee, with expiry tracking that ties into
-  job requirements (a job page can show whether staff hold the licenses it needs
+  project requirements (a project page can show whether staff hold the licenses it needs
   and warn when a credential has lapsed).
 - **New-employee onboarding checklist**: an editable, company-wide step template
   (seeded with sensible defaults; add / edit / reorder / archive), tracked
@@ -240,26 +239,26 @@ can confirm a pull/update took effect.
   locks out themselves, and a Supervisor can't lock out a GM or a fellow
   Supervisor. The roster flags suspended / supervisor at a glance.
 - **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
-  pipeline turnovers, job cancellations, and security auto-locks; each
+  pipeline turnovers, project cancellations, and security auto-locks; each
   notification **clears when the recipient accesses it**.
 - **Role-based "My Dashboard"** — the sign-in landing, one role view at a time
   (mode switch for people who hold multiple roles); each person's **default view
   is remembered** (e.g. the GM defaults to the Executive overview). Every section
-  is **collapsible**. The **Sales** viewport shows **Active Proposals** (jobs in
-  Proposal), a **Leads** worklist (prospects not yet converted, with follow-up
+  is **collapsible**. The **Sales** viewport shows **In Planning** (projects in
+  Planning), a **Leads** worklist (prospects not yet converted, with follow-up
   actions), and My tasks. The **Installation** (Foreman) viewport lists installs
-  **bucketed by date** — This week / Upcoming / In inspection · unscheduled —
+  **bucketed by date** — This week / Upcoming / Wrap-up · unscheduled —
   with the install date leading, and trims **My tasks** to on-site field work.
-  For **Sales-role** users that late-stage mode reads **🏁 Closing** instead —
-  Closing-stage jobs with **balance due** and remaining close-out steps — since
+  For **Sales-role** users that late-stage mode reads **🏁 Wrap-up** instead —
+  Wrap-up-stage projects with **balance due** and remaining close-out steps — since
   Sales owns the walkthrough / final-invoice hand-off, not the install (the GM
   is exempt and keeps the Installation mode).
   The **Executive** (GM) viewport opens with a **Company overview**: pipeline
   counts by stage, money-in-flight tiles (contract / collected / outstanding /
-  expenses across active jobs), an attention row (approvals waiting, overdue
-  tasks, stalled jobs), a **Ready-for-design** queue (Proposal jobs whose load
+  expenses across active projects), an attention row (approvals waiting, overdue
+  tasks, stalled projects), a **Ready-for-design** queue (Planning-stage projects whose load
   survey is captured but design isn't finalized — the Sales→Designer hand-off),
-  this week's installs, and a **Closing worklist** (each job's balance due and
+  this week's installs, and a **Wrap-up worklist** (each project's balance due and
   remaining close-out steps). Each sub-section sits in its own panel.
 - **Inventory database** (🗄 Databases → Inventory): Vixinman's stock of components
   seeded from the inventory workbook — **439 items across 15 categories** (PV,
@@ -281,9 +280,9 @@ can confirm a pull/update took effect.
 - **Barcode / asset registry**: generate and print **Code 128** labels, register
   serial numbers for **consumables** (hardware, components) and **non-consumables**
   (tools, PPE, trucks), and **scan** them in/out — including **phone-camera
-  scanning** — to load a job's truck (two installers can load the same job from
+  scanning** — to load a project's truck (two installers can load the same project from
   their own phones). Only the **Warehouse Manager** can mint new tags; loading a
-  job needs no special permission.
+  project needs no special permission.
 - **Stock audit** (🧮 Audit stock): run a counting session — scan every tag on the
   shelf (camera or keyboard-wedge) and Compendium reconciles the scanned serials against
   the assets the database expects to be **In stock**. Audit **all stock** or scope it
@@ -294,7 +293,7 @@ can confirm a pull/update took effect.
   Every scan is logged per session and past audits are kept for reference.
 - **Nav grouping**: the reference/data pages — **Backlog, Household Files, Rules
   Editor, L/P/C Directory, Inventory, Calculator Catalog**, plus **Cost model & finance**
-  and **Closed jobs** — are consolidated under a single **🗄 Databases** dropdown
+  and **Closed projects** — are consolidated under a single **🗄 Databases** dropdown
   in the header; **Employees + Payroll** sit under a **👥 Team** dropdown; and
   **Log / Trash / Access** sit under a **🔧 Admin** dropdown.
   Each grouped dropdown shows only the items the user may reach and collapses to a
@@ -320,7 +319,7 @@ can confirm a pull/update took effect.
   Supervisor(s) (or the GM if none). Suspended accounts can't reset here.
 
 ### Finance & billing
-- **Per-job billing ledger** (💵 Billing tab): set the contract total and record
+- **Per-project billing ledger** (💵 Billing tab): set the contract total and record
   every **income** (deposits, invoices, rebates) and **expense** (materials,
   permits, labor, subs) with a dollar amount, date, category, party, reference,
   method, and paid/outstanding status.
@@ -331,28 +330,28 @@ can confirm a pull/update took effect.
   Income/Outstanding, Bill → Expense/Outstanding, Receipt → Expense/Paid, all
   still editable). The Billing tab shows a **paperwork-on-file** tally (count +
   total for each type).
-- **Payments table** on the Finance dashboard: every active job with Contract /
+- **Payments table** on the Finance dashboard: every active project with Contract /
   Collected / Outstanding / Expenses / Net and a grand-total row.
-- **NM gross-receipts-tax rate**: an optional per-job GRT rate, settable on the
-  Billing tab, for jobs where receipts are taxable (defaults to 0% for the solar
+- **NM gross-receipts-tax rate**: an optional per-project GRT rate, settable on the
+  Billing tab, for projects where receipts are taxable (defaults to 0% for the solar
   deduction). Not tied to any invoice-generation flow — a plain rate field.
 
-Customer-facing invoice generation and the job-transactions QuickBooks export
+Customer-facing invoice generation and the project-transactions QuickBooks export
 were removed (Piece 33, household reorg) — this app manages one household
 directly, so there's no customer to invoice. The plain income/expense ledger
 above still tracks project budgets; only the customer-invoice presentation
 layer is gone. (Payroll's own QuickBooks export, unrelated, is unchanged —
 see Payroll below.)
 - **Cost Model Defaults** (🗄 Databases → Cost model & finance, Finance/Admin/GM):
-  Vixinman's estimating template behind job pricing — six editable sections
+  Vixinman's estimating template behind project pricing — six editable sections
   (**Equipment Inventory, Equipment Non-Inventory, Labor, Travel, Adders,
   Overhead**), each line **qty × cost × (1 + markup)**, seeded with the finance
   team's real figures and add/edit/delete-able. Equipment-Inventory markups price
-  the job BOM; **Overhead (G&A)** applies on the whole subtotal. The page also
-  holds the **NM county GRT rate table** (all 33 counties; a job auto-fills its
+  the project BOM; **Overhead (G&A)** applies on the whole subtotal. The page also
+  holds the **NM county GRT rate table** (all 33 counties; a project auto-fills its
   GRT from its install county, overridable for the solar deduction) and shows a
-  default "standard job" rollup.
-- **Per-job estimate** (📐 Estimate tab, Finance/Sales/Design): builds a job's
+  default "standard project" rollup.
+- **Per-project estimate** (📐 Estimate tab, Finance/Sales/Design): builds a project's
   price against the cost model — one-click **prefill** pulls the default Labor /
   Travel / Adders / Non-Inventory lines, quantities are set per line, equipment
   comes from the BOM, Overhead applies on top, and a **suggested price** can be
@@ -364,7 +363,7 @@ see Payroll below.)
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
   (a comma appears for amounts ≥ $1,000).
 - **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
-  job, and **pay type** — usually captured right on the task they finished);
+  project, and **pay type** — usually captured right on the task they finished);
   supervisors **review and approve** them before they count. The pay schema is
   configurable — each pay type is a **multiplier** on the employee's base wage
   (roof time…) or a **flat $/hr** (travel time…), **overridable per employee**.
@@ -385,13 +384,13 @@ see Payroll below.)
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
-  data. Ask about jobs, tasks and the schedule and get a grounded answer;
+  data. Ask about projects, tasks and the schedule and get a grounded answer;
   it can explain and summarize but **never changes anything**.
 - **Claude and/or Gemini, selectable.** Add a key for either or both under **AI
   settings** (admin only); when both are set, staff pick the model per question.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
-  your data — the assistant looks things up with read-only tools (find jobs by
-  stage/county/overdue/contract, drill into one job, list
+  your data — the assistant looks things up with read-only tools (find projects by
+  stage/county/overdue/contract, drill into one project, list
   tasks, look up staff) rather than inventing details.
 - **Permission-scoped & private.** It only ever sees what the signed-in user is
   already allowed to see (pricing/contract figures are withheld from those who
@@ -431,8 +430,8 @@ so **you pay the provider per use** (both are inexpensive for this kind of Q&A).
 - Save. Keys are stored **on this machine** (in your Compendium data folder), never in
   the program itself, and are only ever sent to the provider you choose.
 
-**3. Ask a question.** Open **💬 Assistant**, type a question (e.g. *"Which jobs are
-in Job Prep?"*, *"What are my open tasks?"*, *"Bernalillo jobs over $30k with an
+**3. Ask a question.** Open **💬 Assistant**, type a question (e.g. *"Which projects are
+in Project Prep?"*, *"What are my open tasks?"*, *"Bernalillo projects over $30k with an
 overdue permit"*), and — if both providers are set up — pick the model to answer.
 
 **What to know:**
@@ -450,6 +449,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.3** — renamed the app's central entity end-to-end: the `jobs` table and its
+  11 `job_*` child tables/14 `job_id` FK columns become `projects`/`project_*`, every
+  Python identifier and `/jobs/` URL follows suit, and the pipeline stages are
+  relabeled for a household: `Proposal → Job Prep → Installation → Inspections →
+  Closing → Complete` (+ `Lost`) becomes `Planning → Prep → In Progress → Wrap-up →
+  Done` (+ `Abandoned`) — permit sign-off/inspections/cert exams are steps within
+  Wrap-up, not their own stage (the old Inspections and Closing stages merge). A
+  meta-guarded `init_db()` migration upgrades an existing pre-rename database the
+  same way, including the `pre_lost_status` snapshot used by cancel/reopen. Adds a
+  new **`/projects` list page** (there was no way to browse every project since v0.2
+  removed the client→job-list path) and its own nav entry. `job_name` (the database
+  column) and the on-disk `uploads/job_<id>/` folder naming are deliberately left
+  as-is — internal storage detail, not user-facing. See `HANDOFF.md` for the
+  remaining reorg pieces (`employees`→`household_members`, etc.).
 
 - **Pieces 1–7** — Flask + SQLite skeleton; clients & jobs; rules engine;
   resource catalog; job versioning; per-job BPMN; materials & document filing.
@@ -610,8 +624,8 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   QuickBooks export, since there's no customer to invoice — the plain
   income/expense ledger on each job's Billing tab stays. Home (`/`) merged into
   `/dashboard` (one view, two routes) since there's no more client roster to
-  land on. See `HANDOFF.md` for the remaining reorg pieces (jobs→projects,
-  employees→household_members, etc.).
+  land on. See `HANDOFF.md` for the remaining reorg pieces
+  (employees→household_members, etc.) — `jobs`→`projects` landed in v0.3.
 
 - **v0.1** — reset the footer build counter from the solar-business "Piece N.N" scheme
   to plain semantic versioning, starting at `0.1`, coinciding with the rebrand to

@@ -201,8 +201,8 @@ def build_project_bpmn(project, matched, materials_note="", docs_note=""):
         link("dep40", "monitoring")
         prev = "monitoring"
 
-    # --- Inspections: CID final inspection first; the utility sets the meter
-    # only after it passes (the real interconnection sequence).
+    # --- Wrap-up (inspection half): CID final inspection first; the utility
+    # sets the meter only after it passes (the real interconnection sequence).
     cid_items = [_rule_item(r) for r in matched
                  if "Inspection" in r["label"] and r["category"] == "Compliance"]
     cid_label = f"Final CID Inspection — {county}" if county else "Final CID Inspection"
@@ -232,7 +232,7 @@ def build_project_bpmn(project, matched, materials_note="", docs_note=""):
         prev, yes_label = "jmecloc", ""
     add("sticker", "task", "Photograph Final Inspection Sticker", "Installation", c); c += 1
     link(prev, "sticker", yes_label if prev == "passgw" else "")
-    # --- Closing ---
+    # --- Wrap-up (close-out half) ---
     add("inv10", "task", "Final 10% Invoice", "Finance", c); c += 1
     add("saleswalk", "task", "Final Client Walkthrough (Sales)", "Sales", c); c += 1
     add("review", "task", "Client Review & Sign-off", "Sales", c); c += 1

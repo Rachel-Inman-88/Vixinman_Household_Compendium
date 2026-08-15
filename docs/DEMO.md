@@ -1,6 +1,13 @@
-# Job Creator — Demo Walkthrough
+# Compendium — Demo Walkthrough (historical, pre-household-reorg)
 
 **Vixinman Designs internal tool · Proprietary (see LICENSE) · Build: Piece 5.3**
+
+> ⚠️ This walkthrough predates both the Compendium rebrand and the household
+> reorg — it describes the old **Job Creator** client → job → compliance demo
+> flow, and the client pages/screenshots it references no longer exist (the
+> `clients` table was removed in v0.2). Kept as historical reference for the
+> rules-engine demo idea, not a current how-to. See the root-level `HANDOFF.md`
+> for the app's current shape.
 
 Job Creator manages the client → job → compliance pipeline for Vixinman Designs'
 northern New Mexico territory. Its core idea: **enter the job's facts once,

@@ -1,8 +1,13 @@
-# 🧰 Compendium — Project Handoff (current)
+# 🧰 Compendium — Project Handoff (historical — see root HANDOFF.md for current status)
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** Vixinman Designs (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.5** (footer shows it plainly as "Version 28.5" — the "did my pull work?" check)
+**Current build:** **v0.3** (footer shows it plainly as "Version 0.3" — the "did my pull work?" check).
+This file predates the household reorg (was last updated at Piece 28.5) and everything
+below still describes the app in its old solar-business shape (clients, jobs) — it's kept
+as historical build-log detail, not current status. For what the app is now and what's
+been done in the household reorg (client removal, jobs→projects, pipeline stages), see the
+root-level `HANDOFF.md`.
 
 **Piece 28.5 — Stock Audit (scan-and-reconcile).** New **🧮 Audit stock** button in the
 Inventory toolbar (`inventory.manage`). An audit session scans the physical Code-128 tags
