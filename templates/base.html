@@ -441,22 +441,12 @@
       <div id="navsearch-menu" class="navsearch-menu" style="display:none;"></div>
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
-    {# Order (left→right): Tasks · Boards · Work Bag · Approvals · Team · Databases · Admin #}
+    {# Order (left→right): Tasks · Boards · Work Bag · Approvals · Household · Databases · Admin #}
     <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
     <a href="{{ url_for('boards_page') }}" style="font-size:0.9rem; font-weight:500;">📋 Boards</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
-    {% if can_payroll %}
-    <details class="navdrop">
-      <summary>👥 Team</summary>
-      <div class="navdrop-menu">
-        <a href="/employees">👥 Employees</a>
-        <a href="/payroll">💵 Payroll</a>
-      </div>
-    </details>
-    {% else %}
-    <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
-    {% endif %}
+    <a href="/household-members" style="font-size:0.9rem; font-weight:500;">👥 Household</a>
     <details class="navdrop">
       <summary>🗄 Databases</summary>
       <div class="navdrop-menu">
@@ -467,7 +457,7 @@
         <a href="/directory">📖 L/P/C Directory</a>
         <a href="/inventory">📦 Inventory</a>
         <a href="/catalog">🔌 Calculator Catalog</a>
-        {% if can_payroll %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
+        {% if is_admin %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
         {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed projects</a>{% endif %}
       </div>
     </details>
@@ -475,7 +465,7 @@
        a single reachable item stays a plain link (no one-item menu). #}
     {% set adm_log = can('audit.view') %}
     {% set adm_trash = can('delete') %}
-    {% set adm_access = is_gm %}
+    {% set adm_access = is_admin %}
     {% set adm_count = (adm_log|int) + (adm_trash|int) + (adm_access|int) %}
     {% if adm_count > 1 %}
     <details class="navdrop">
@@ -501,7 +491,7 @@
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; line-height:1.1;">
     <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
        title="My account">
-      {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</a>
+      {{ current_user["name"] }}{% if is_admin %} · admin{% endif %}</a>
     <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
       <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
     </form>
@@ -515,7 +505,7 @@
     <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
       🔓 <strong>No logins set up.</strong> Anyone can access everything. To turn on
       sign-in and admin permissions, go to <a href="{{ url_for('accounts_page') }}">Accounts</a>
-      and give someone a Username, Password, and Admin access level.
+      and give someone a Username, Password, and admin access.
     </div>
     {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}

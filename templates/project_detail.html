@@ -56,14 +56,7 @@
 <div class="card" style="border-left:4px solid var(--brand); padding:0.9rem 1.1rem;">
   <div class="toolbar" style="margin-bottom:0.35rem;">
     <h2 style="margin:0; font-size:1.05rem;">Pipeline stage · {{ stage_editor() }}</h2>
-    <span class="muted" style="font-size:0.85rem;">Owned by <strong>{{ stage.dept }}</strong></span>
   </div>
-  {% if stage.team %}
-  <p style="margin:0.2rem 0 0.3rem;">
-    {% for fn, name in stage.team %}<span class="badge">{{ fn }}: {{ name }}</span>{% endfor %}
-    <span class="muted" style="font-size:0.8rem;">— department heads; delegate within the team</span>
-  </p>
-  {% endif %}
   <p class="muted" style="margin:0.1rem 0 0; font-size:0.85rem;"><strong>To advance:</strong> {{ stage.exit }}</p>
   <div style="margin-top:0.55rem; display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap;">
     {% if stage.tasks_total %}
@@ -542,7 +535,7 @@
     <div class="actions"><button type="submit" class="btn">＋ Add task</button></div>
   </form>
   <p class="muted" style="margin-bottom:0;">Each person's assigned tasks also
-  appear on their <a href="{{ url_for('employees_page') }}">employee profile</a>.</p>
+  appear on their <a href="{{ url_for('household_members_page') }}">household member profile</a>.</p>
 </div>
 </div>
 
@@ -653,7 +646,7 @@
   <div class="card" style="background:var(--bg); border:1px dashed var(--border); margin-bottom:0.9rem;">
     <div class="toolbar" style="margin-bottom:0.4rem;">
       <strong style="font-size:0.95rem;">🏷 Pricing breakdown <span class="muted" style="font-weight:400;">(internal — cost & margin)</span></strong>
-      {% if can_payroll %}<a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>{% endif %}
+      {% if is_admin %}<a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>{% endif %}
     </div>
     <div class="form-grid">
       <div class="field"><label>Equipment (BOM, marked up)</label><div style="font-weight:600;">${{ (pricing.equipment_price)|money }} <span class="muted" style="font-size:0.8rem;">(cost ${{ (pricing.equipment_cost)|money0 }})</span></div></div>

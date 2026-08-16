@@ -7,17 +7,7 @@
   <h1>👋 {% if user %}{{ user["name"].split(" ")[0] }}'s dashboard{% else %}Dashboard{% endif %}</h1>
 </div>
 
-{% if depts|length > 1 %}
-<div class="card" style="padding:0.6rem 0.9rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-  <span class="muted" style="font-size:0.85rem; margin-right:0.3rem;">View:</span>
-  {% for d in depts %}
-  <a href="{{ url_for('dashboard', mode=d) }}" class="btn {{ '' if mode == d else 'btn-secondary' }}" style="padding:0.25rem 0.7rem; font-size:0.85rem;">{{ dept_icons[d] }} {{ d }}</a>
-  {% endfor %}
-</div>
-{% endif %}
-
-
-{# ---- Executive (GM) overview: whole-company snapshot ---- #}
+{# ---- Executive (household) overview: whole-household snapshot, shown to everyone ---- #}
 {% if gm %}
 <details class="card sect" open style="border-left:4px solid var(--brand);">
   <summary>⭐ Company overview</summary>
@@ -156,8 +146,7 @@
 </details>
 {% endif %}
 
-{# ---- Finance: Payments table (money in flight across every active project) ---- #}
-{% if show_payments %}
+{# ---- Payments table (money in flight across every active project) ---- #}
 <details class="card sect" open>
   <summary>💵 Payments <span class="sect-count">{{ payments|length }} project{{ "s" if payments|length != 1 }}</span></summary>
   <p class="muted" style="margin:0 0 0.5rem; font-size:0.82rem;">Open a project's
@@ -201,10 +190,8 @@
   <p class="empty">No active projects to bill right now.</p>
   {% endif %}
 </details>
-{% endif %}
 
-{# ---- Purchasing: procurement rollup (materials by status across Prep-stage projects) ---- #}
-{% if show_procurement %}
+{# ---- Procurement: materials by status, Prep-stage projects ---- #}
 <details class="card sect" open>
   <summary>📦 Procurement <span class="sect-count">{{ procurement|length }} project{{ "s" if procurement|length != 1 }}</span></summary>
   {% if procurement %}
@@ -228,53 +215,15 @@
   </div>
   <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Materials still to
   source (Needed / Quoted / Backordered) are highlighted. Open a project's
-  <strong>Materials</strong> tab to update. <em>Coming later: auto-populated from
-  the designer's system + inventory sheet.</em></p>
+  <strong>Materials</strong> tab to update.</p>
   {% else %}
   <p class="empty">No projects in procurement right now.</p>
   {% endif %}
 </details>
-{% endif %}
 
-{# ---- Projects in your stages (per department). A Planning-only section reads as
-       "In Planning". Columns: Progress · Project · Install date.
-       The Executive viewport skips this flat list — its Company overview above
-       already covers the pipeline, this week's installs, and Wrap-up. ---- #}
-{% for s in sections %}
-{% if s.stages and not (gm and s.name == "Executive") %}
-{% set proposals = s.stages == ["Planning"] %}
-{% set is_permits = s.name == "Permits" %}
-{% set is_install = show_install and s.name == "Installation" %}
-{% set is_closing = show_closing and s.name == "Wrap-up" %}
+{# ---- Install-date buckets: In Progress / Wrap-up projects by timing ---- #}
 <details class="card sect" open>
-  <summary>{{ s.icon }} {% if proposals %}In Planning{% elif is_install %}Installs · by date{% elif is_closing %}Wrap-up · final walkthrough, final invoice &amp; balance due{% else %}{{ s.name }} · projects in your stages
-    <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>{% endif %}
-    <span class="sect-count">{% if is_closing %}{{ closing_jobs|length }}{% else %}{{ s.projects|length }}{% endif %}</span>
-  </summary>
-  {% if is_closing %}
-  {# ---- Sales Wrap-up viewport: balance due + remaining close-out steps ---- #}
-  {% if closing_jobs %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Project</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
-    <tbody>
-      {% for c in closing_jobs %}
-      <tr>
-        <td><a href="{{ url_for('project_detail', project_id=c.project['id'], _anchor='billing') }}">{{ c.project["job_name"] or "Project #" ~ c.project["id"] }}</a></td>
-        <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ (c.balance)|money0 }}</td>
-        <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty">No projects in Wrap-up right now.</p>
-  {% endif %}
-  {% elif is_install %}
-  {# ---- Foreman viewport: installs bucketed by install-date timing ---- #}
-  {% if s.projects %}
+  <summary>🔨 Installs <span class="sect-count">{{ install_buckets|map(attribute='projects')|map('length')|sum }}</span></summary>
   {% for bucket in install_buckets %}
   <div style="margin-bottom:0.8rem;">
     <div style="font-weight:700; margin:0.2rem 0 0.4rem; display:flex; gap:0.4rem; align-items:baseline;">
@@ -300,10 +249,19 @@
     {% endif %}
   </div>
   {% endfor %}
-  {% else %}
-  <p class="empty">No installs on the board right now.</p>
-  {% endif %}
-  {% elif s.projects %}
+</details>
+
+{# ---- Active projects, grouped by stage. A Planning-only section reads as
+       "In Planning". Columns: Progress · Project · Loads (Planning) ·
+       Permits (Prep/Wrap-up) · Install date. ---- #}
+{% for s in sections %}
+{% set proposals = s.name == "Planning" %}
+{% set is_permits = s.name in ("Prep", "Wrap-up") %}
+<details class="card sect" open>
+  <summary>{{ s.icon }} {% if proposals %}In Planning{% else %}{{ s.name }}{% endif %}
+    <span class="sect-count">{{ s.projects|length }}</span>
+  </summary>
+  {% if s.projects %}
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>
@@ -337,13 +295,12 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No projects need {{ s.name }} right now.</p>
+  <p class="empty">No projects in {{ s.name }} right now.</p>
   {% endif %}
 </details>
-{% endif %}
 {% endfor %}
 
-{# ---- Designer: stale-stock notice (zero on hand + unused 6+ months) ---- #}
+{# ---- Stale stock notice (zero on hand + unused 6+ months) ---- #}
 {% if stale_stock %}
 <div class="card" style="border-left:4px solid #f5a623;">
   <h2 style="margin-top:0; font-size:1.05rem;">🕰️ Stale stock</h2>
@@ -355,16 +312,7 @@
 </div>
 {% endif %}
 
-{# ---- Manager: pending approvals (folded into the GM overview above) ---- #}
-{% if pending_subs and not gm %}
-<div class="card" style="border-left:4px solid var(--brand);">
-  <h2 style="margin-top:0; font-size:1.1rem;">⭐ Manager</h2>
-  <p style="margin:0;"><a href="{{ url_for('submissions_page') }}" class="btn">🕗 {{ pending_subs }} field-work approval(s) waiting</a></p>
-</div>
-{% endif %}
-
 {# ---- Backlog worklist (above My tasks) — household ideas not yet started ---- #}
-{% if show_leads %}
 <details class="card sect" open style="border-left:4px solid #f5a623;">
   <summary>🗂 Backlog <span class="sect-count">{{ backlog_worklist|length }}</span></summary>
   {% if backlog_worklist %}
@@ -392,51 +340,7 @@
   <p class="empty">Nothing in the backlog right now. 🎉</p>
   {% endif %}
 </details>
-{% endif %}
 
-{# ---- Payroll reminder (Finance viewport, above My tasks) ---- #}
-{% if payroll_reminder %}
-{% set pr = payroll_reminder %}
-<details class="card sect" {% if pr.in_window and not pr.done %}open{% endif %}
-         style="border-left:4px solid {{ '#1a6e3c' if pr.done else '#f5a623' }};">
-  <summary>💵 Payroll
-    {% if pr.done %}<span class="badge">up to date</span>
-    {% elif pr.in_window %}<span class="badge warn">do today ({{ pr.today_abbr }})</span>
-    {% else %}<span class="badge neutral">pending</span>{% endif %}
-  </summary>
-  <p class="muted" style="margin:0 0 0.6rem; font-size:0.88rem;">
-    Run payroll <strong>Tuesday–Thursday</strong> each week until this period's hours
-    are confirmed <em>and</em> exported. Pay period <strong>{{ pr.start }} → {{ pr.end }}</strong>.</p>
-  {# Tue-Wed-Thu cadence chips, today highlighted #}
-  <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
-    {% for d in pr.days %}
-    <span style="padding:0.2rem 0.7rem; border-radius:999px; font-size:0.8rem; font-weight:700;
-      {% if d == pr.today_abbr %}background:#f5a623; color:#3a2a00;{% else %}background:var(--bg); color:var(--muted); border:1px solid var(--border);{% endif %}">{{ d }}</span>
-    {% endfor %}
-    {% if not pr.in_window %}<span class="muted" style="align-self:center; font-size:0.8rem;">— today is {{ pr.today_abbr }}, outside the payroll window</span>{% endif %}
-  </div>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Step</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-      <tr>
-        <td>1 · Confirm hours <span class="muted" style="font-size:0.8rem;">(approve everyone's time)</span></td>
-        <td>{% if pr.confirmed %}<span class="badge">✓ Confirmed</span>{% else %}<span class="badge warn">{{ pr.pending }} awaiting approval</span>{% endif %}</td>
-        <td><a href="{{ url_for('payroll') }}" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.82rem;">Open payroll</a></td>
-      </tr>
-      <tr>
-        <td>2 · Export to QuickBooks</td>
-        <td>{% if pr.exported %}<span class="badge">✓ Exported</span>{% if pr.exported_at %} <span class="muted" style="font-size:0.8rem;">{{ pr.exported_at }}</span>{% endif %}{% elif pr.exported_at %}<span class="badge warn">re-export (hours changed)</span>{% else %}<span class="badge warn">not yet</span>{% endif %}</td>
-        <td><a href="{{ url_for('payroll_quickbooks_export') }}" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.82rem;">⬇ Export</a></td>
-      </tr>
-    </tbody>
-  </table>
-  </div>
-  {% if pr.done %}
-  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">✅ Payroll is confirmed and exported for this period — nothing to do until next week.</p>
-  {% endif %}
-</details>
-{% endif %}
 
 {# ---- My tasks (bottom) ---- #}
 <details class="card sect" open>

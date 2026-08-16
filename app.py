@@ -942,73 +942,6 @@ def next_stage(status):
         return None
 
 
-# Piece 19: role-based My Dashboard. A person belongs to a department if they
-# hold one of its roles; the dashboard stacks a section per department they're
-# in (with a mode switch to focus on one). `stages` are the pipeline statuses
-# whose active projects that department needs to work. Department names below
-# are org-chart/role groupings, kept as-is by the Piece 34 stage rename (e.g.
-# "Installation" the department is distinct from "In Progress" the stage it
-# tracks) — only the `stages` values themselves were updated.
-DASHBOARD_DEPARTMENTS = {
-    "Sales": {"icon": "💬", "stages": ["Planning"],
-              "roles": {"Sales & Marketing Manager", "Outside Sales Rep",
-                        "Inside Sales Rep", "Marketing Associate"}},
-    "Design": {"icon": "📐", "stages": ["Planning"], "roles": {"Designer"}},
-    "Permits": {"icon": "📋", "stages": ["Prep", "Wrap-up"],
-                "roles": {"Permit Coordinator"}},
-    "Finance": {"icon": "💵", "stages": ["Prep", "In Progress", "Wrap-up"],
-                "roles": {"Finance Manager", "Bookkeeper", "Payroll Manager",
-                          "Payroll Administrator"}},
-    "Purchasing": {"icon": "📦", "stages": ["Prep"],
-                   "roles": {"Inventory Manager", "Purchasing Agent",
-                             "Warehouse Assistant"}},
-    "Installation": {"icon": "🔧", "stages": ["In Progress", "Wrap-up"],
-                     "roles": {"Lead Installer", "Installer",
-                               "Service Technician", "Scheduling Coordinator"}},
-    "Operations": {"icon": "🛠️", "stages": ["Prep", "In Progress", "Wrap-up"],
-                   "roles": {"Operations Manager"}},
-    "Administration": {"icon": "🗂️", "stages": [],
-                       "roles": {"Administration Manager", "Administrative Assistant",
-                                 "Facilities Manager", "Human Resources Manager"}},
-    "Executive": {"icon": "⭐", "stages": STAGE_ORDER[:-1],
-                  "roles": {"General Manager"}},
-}
-
-
-# Piece 29.5: departments that never appear as a dashboard "mode". Administration
-# has no pipeline stages of its own, so its dashboard view was redundant — the
-# department stays for role grouping/permissions, it just isn't a focus tab.
-DASHBOARD_MODE_EXCLUDE = {"Administration"}
-
-# Piece 30.5 (relabeled Piece 34): a virtual dashboard mode. Sales sees the
-# pipeline's tail as "Wrap-up" (inspection sign-off, final walkthrough, final
-# invoice, balance due) rather than the install-crew "Installation" view — so
-# for anyone holding a Sales role, their Installation mode is presented as
-# Wrap-up (see _viewer_modes). MODE_CONFIG is DASHBOARD_DEPARTMENTS plus this
-# Wrap-up mode, used when rendering the switcher.
-MODE_CONFIG = dict(DASHBOARD_DEPARTMENTS)
-MODE_CONFIG["Wrap-up"] = {"icon": "🏁", "stages": ["Wrap-up"], "roles": set()}
-SALES_ROLES = DASHBOARD_DEPARTMENTS["Sales"]["roles"]
-
-
-def _holds_sales_role(user):
-    # Piece 35: the org-chart role system (and its Sales department) is gone —
-    # a household member's role is just Parent/Child/Assistant. Kept as a
-    # stub (always False) until the dashboard redesign (still pending)
-    # removes its remaining callers.
-    return False
-
-
-def user_departments(user):
-    """Piece 35: the org-chart department system is gone — every section of
-    the (still pending) redesigned dashboard renders unconditionally instead
-    of being gated by department membership. Kept as a stub (always empty)
-    until that redesign removes its remaining callers."""
-    return []
-
-
-def _viewer_modes(user):
-    return user_departments(user)
 # Migrate Piece 12.1 statuses to the Piece 16 phases (renamed Piece 34) so
 # existing projects survive.
 OLD_TO_NEW_STATUS = {
@@ -1080,18 +1013,12 @@ UI_MODES = ["sales", "designer"]
 
 
 def loads_view_mode(user):
-    """Piece 26.4: the Loads & Sizing view mode for this viewer. A per-session
-    toggle wins; otherwise it defaults from their department — Designers get
-    Designer mode, Sales gets Sales mode (Design wins for someone who is both,
-    like Cary). It's a view preference, not access control."""
+    """Piece 26.4 (revised Piece 35): the Loads & Sizing view mode for this
+    viewer. A per-session toggle wins; otherwise defaults to designer mode.
+    It's a view preference, not access control."""
     m = session.get("loads_ui_mode")
     if m in UI_MODES:
         return m
-    depts = set(user_departments(user)) if user else set()
-    if "Design" in depts:
-        return "designer"
-    if "Sales" in depts:
-        return "sales"
     return "designer"
 
 
@@ -1778,7 +1705,6 @@ def login():
             session.permanent = True
             session["last_active"] = datetime.now().isoformat(timespec="seconds")
             flash(f"Signed in as {user['name']}.")
-            session.pop("dash_mode", None)  # start on their saved default
             # Honor a deep link (e.g. a specific project someone opened while
             # logged out). "/" and "/dashboard" are the same view now, so the
             # nxt != "/" exclusion below is just a no-op landing normalization.
@@ -3239,34 +3165,20 @@ def _closing_worklist(db):
     return out
 
 
+STAGE_ICON = {"Planning": "💬", "Prep": "📦", "In Progress": "🔧", "Wrap-up": "🏁"}
+
+
 @app.route("/dashboard")
 @app.route("/", endpoint="home")
 def dashboard():
-    """Piece 19 (revised Piece 33): role-based My Dashboard — the sign-in
-    landing, and (since the household model has no separate client-roster
-    home page) the bare "/" root too, both served by this one view. Stacks a
-    section per department the person belongs to; a mode switch focuses on
-    one. In open mode (no accounts set up yet) user is None — everything
-    role-based below just renders empty, same as the rest of the app's open
-    mode handling.
-    """
+    """Piece 19 (revised Piece 35): the household's single shared dashboard —
+    the sign-in landing and the bare "/" root, both served by this one view.
+    Every section below renders unconditionally for every signed-in member;
+    there's no more per-role mode switcher. In open mode (no accounts set up
+    yet) user is None — the personal sections just render empty."""
     user = current_user()
     db = get_db()
     ensure_backlog_reminders(db)
-    depts = _viewer_modes(user)   # Piece 30.5: Sales sees 'Wrap-up', not 'Installation'
-    # Mode: ?mode= sets it for the session; else the saved default; else All.
-    if request.args.get("mode"):
-        session["dash_mode"] = request.args.get("mode")
-    saved = (user["dashboard_mode"] if user is not None
-             and "dashboard_mode" in user.keys() else "")
-    # No "All" view (Piece 20.8) — always focused on one role at a time.
-    mode = session.get("dash_mode") or saved or (depts[0] if depts else "")
-    # A Sales-role viewer's saved/linked 'Installation' resolves to 'Wrap-up'.
-    if mode == "Installation" and "Wrap-up" in depts:
-        mode = "Wrap-up"
-    if mode not in depts:
-        mode = depts[0] if depts else ""
-    shown = [mode] if mode else []
 
     my_tasks = []
     if user is not None:
@@ -3275,12 +3187,6 @@ def dashboard():
             " FROM project_tasks t JOIN projects p ON p.id = t.project_id"
             " WHERE t.household_member_id = ? AND t.status != 'Done' AND p.status != 'Abandoned'"
             " ORDER BY (t.due_date = ''), t.due_date, p.id", (user["id"],)).fetchall()
-    # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
-    # punch list — trim it to on-site field work, dropping office/scheduling
-    # steps (e.g. Set Installation Date) that live on other dashboards.
-    if mode == "Installation":
-        my_tasks = [t for t in my_tasks
-                    if (t["pipeline_status"] or "") in FIELD_STAGES]
     # Piece 26.7: group My Tasks under each project so the board reads as a banner per
     # project with its tasks beneath, instead of one flat list. First-seen order keeps
     # the overdue/soonest-due project on top (my_tasks is already sorted that way).
@@ -3294,235 +3200,173 @@ def dashboard():
                 "project_id": jid, "job_name": t["job_name"], "tasks": []})
         task_groups[_tg_index[jid]]["tasks"].append(t)
 
-    sections = []
-    for d in shown:
-        cfg = MODE_CONFIG[d]
-        projects = []
-        if cfg["stages"]:
-            placeholders = ", ".join("?" * len(cfg["stages"]))
-            projects = db.execute(
-                f"SELECT id, job_name, status, install_date, electric_loads"
-                f" FROM projects WHERE status IN ({placeholders})"
-                f" ORDER BY status, id", cfg["stages"]).fetchall()
-        sections.append({"name": d, "icon": cfg["icon"], "projects": projects,
-                         "stages": cfg["stages"]})
+    # Active-projects overview: every non-terminal project, grouped by stage
+    # (replaces the old per-department project lists).
+    active_projects = db.execute(
+        "SELECT id, job_name, status, install_date, electric_loads"
+        " FROM projects WHERE status NOT IN ('Abandoned', 'Done')"
+        " ORDER BY status, id").fetchall()
+    by_stage = {}
+    for j in active_projects:
+        by_stage.setdefault(j["status"], []).append(j)
+    sections = [{"name": stage, "icon": STAGE_ICON.get(stage, "📋"),
+                 "projects": by_stage[stage]}
+                for stage in STAGE_ORDER[:-1] if stage in by_stage]
 
-    # Progress + loads-recorded status for every project shown across the sections.
+    # Progress + loads-recorded status for every active project.
     progress_by_job = {}
     loads_by_job = {}
-    for sec in sections:
-        for j in sec["projects"]:
-            if j["id"] not in progress_by_job:
-                progress_by_job[j["id"]] = build_project_progress(db, j)
-                loads_by_job[j["id"]] = _loads_recorded(db, j)
+    for j in active_projects:
+        progress_by_job[j["id"]] = build_project_progress(db, j)
+        loads_by_job[j["id"]] = _loads_recorded(db, j)
 
-    # Permits viewport: permit filing coverage (X/Y) per project on the projects table.
-    show_permits = "Permits" in shown
+    # Permits-filed coverage (X/Y) for projects where it matters — Prep and Wrap-up.
+    rules = db.execute("SELECT * FROM resource_rules").fetchall()
     permits_by_job = {}
-    if show_permits:
-        rules = db.execute("SELECT * FROM resource_rules").fetchall()
-        for sec in sections:
-            if sec["name"] == "Permits":
-                for j in sec["projects"]:
-                    full = db.execute("SELECT * FROM projects WHERE id = ?", (j["id"],)).fetchone()
-                    permits_by_job[j["id"]] = project_permit_coverage(db, full, rules)
+    for j in active_projects:
+        if j["status"] in ("Prep", "Wrap-up"):
+            full = db.execute("SELECT * FROM projects WHERE id = ?", (j["id"],)).fetchone()
+            permits_by_job[j["id"]] = project_permit_coverage(db, full, rules)
 
-    # Purchasing viewport: procurement rollup — material counts by status per project.
-    show_procurement = "Purchasing" in shown
+    # Materials/procurement rollup — material counts by status, Prep-stage projects.
     procurement = []
-    if show_procurement:
-        for sec in sections:
-            if sec["name"] == "Purchasing":
-                for j in sec["projects"]:
-                    counts = {s: 0 for s in MATERIAL_STATUSES}
-                    total = 0
-                    for m in db.execute(
-                            "SELECT status, COUNT(*) AS n FROM project_materials"
-                            " WHERE project_id = ? GROUP BY status", (j["id"],)).fetchall():
-                        counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
-                        total += m["n"]
-                    outstanding = (counts.get("Needed", 0) + counts.get("Quoted", 0)
-                                   + counts.get("Backordered", 0))
-                    procurement.append({"project": j, "counts": counts, "total": total,
-                                        "outstanding": outstanding})
+    for j in active_projects:
+        if j["status"] == "Prep":
+            counts = {s: 0 for s in MATERIAL_STATUSES}
+            total = 0
+            for m in db.execute(
+                    "SELECT status, COUNT(*) AS n FROM project_materials"
+                    " WHERE project_id = ? GROUP BY status", (j["id"],)).fetchall():
+                counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
+                total += m["n"]
+            outstanding = (counts.get("Needed", 0) + counts.get("Quoted", 0)
+                           + counts.get("Backordered", 0))
+            procurement.append({"project": j, "counts": counts, "total": total,
+                                "outstanding": outstanding})
 
-    # Piece 30.5: Sales 'Wrap-up' viewport — Wrap-up-stage projects with balance
-    # due and remaining close-out steps (reuses the Executive Wrap-up worklist).
-    show_closing = "Wrap-up" in shown
-    closing_jobs = _closing_worklist(db) if show_closing else []
+    # Install-date buckets — In Progress / Wrap-up projects split by timing.
+    today_d = datetime.now().date()
+    week_end = today_d + timedelta(days=7)
 
-    # Piece 21.6: Installation (Foreman) viewport — split the In Progress /
-    # Wrap-up projects by install-date timing so the crew sees what's imminent.
-    show_install = "Installation" in shown
-    install_buckets = []
-    if show_install:
-        today_d = datetime.now().date()
-        week_end = today_d + timedelta(days=7)
+    def _idate(j):
+        try:
+            return datetime.strptime(j["install_date"], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+    wk, up, other = [], [], []
+    for j in active_projects:
+        if j["status"] in ("In Progress", "Wrap-up"):
+            d = _idate(j)
+            if d and today_d <= d <= week_end:
+                wk.append((d, j))
+            elif d and d > week_end:
+                up.append((d, j))
+            else:
+                other.append((d, j))
 
-        def _idate(j):
-            try:
-                return datetime.strptime(j["install_date"], "%Y-%m-%d").date()
-            except (ValueError, TypeError):
-                return None
-        wk, up, other = [], [], []
-        for sec in sections:
-            if sec["name"] == "Installation":
-                for j in sec["projects"]:
-                    d = _idate(j)
-                    if d and today_d <= d <= week_end:
-                        wk.append((d, j))
-                    elif d and d > week_end:
-                        up.append((d, j))
-                    else:
-                        other.append((d, j))
+    def _srt(rows):
+        return [j for _d, j in sorted(
+            rows, key=lambda x: (x[0] is None, x[0] or date.max))]
+    install_buckets = [
+        {"key": "week", "label": "🔨 This week",
+         "hint": "installs in the next 7 days", "projects": _srt(wk)},
+        {"key": "upcoming", "label": "📅 Upcoming",
+         "hint": "scheduled further out", "projects": _srt(up)},
+        {"key": "other", "label": "🔎 Wrap-up / unscheduled",
+         "hint": "install date passed or not set yet", "projects": _srt(other)},
+    ]
 
-        def _srt(rows):
-            return [j for _d, j in sorted(
-                rows, key=lambda x: (x[0] is None, x[0] or date.max))]
-        install_buckets = [
-            {"key": "week", "label": "🔨 This week",
-             "hint": "installs in the next 7 days", "projects": _srt(wk)},
-            {"key": "upcoming", "label": "📅 Upcoming",
-             "hint": "scheduled further out", "projects": _srt(up)},
-            {"key": "other", "label": "🔎 Wrap-up / unscheduled",
-             "hint": "install date passed or not set yet", "projects": _srt(other)},
-        ]
+    # Piece 22.3 (revised Piece 35): Executive company-overview — a whole-
+    # household snapshot: pipeline counts, money in flight, what needs
+    # attention, this week's installs, and a Wrap-up worklist. Shown to
+    # every signed-in member now, not admin-gated.
+    today_s = today_d.strftime("%Y-%m-%d")
+    exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
+    counts = {s: 0 for s in exec_stages}
+    money = {"contract": 0.0, "collected": 0.0,
+             "outstanding": 0.0, "expense": 0.0}
+    for j in db.execute(
+            "SELECT id, status, contract_amount FROM projects"
+            " WHERE status != 'Abandoned'").fetchall():
+        if j["status"] in counts:
+            counts[j["status"]] += 1
+        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        for k in money:
+            money[k] += b[k]
+    overdue = db.execute(
+        "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+        " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
+        " AND j.status NOT IN ('Abandoned', 'Done')", (today_s,)).fetchone()[0]
+    # Stalled: active projects whose newest task activity is over 14 days
+    # old (projects that had movement and then went quiet; brand-new
+    # no-task projects are excluded).
+    cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+    stalled = db.execute(
+        "SELECT j.id, j.job_name, j.status,"
+        " MAX(t.updated_at) AS last FROM projects j"
+        " JOIN project_tasks t ON t.project_id = j.id"
+        " WHERE j.status NOT IN ('Abandoned', 'Done')"
+        " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
+        " ORDER BY last", (cutoff,)).fetchall()
+    wk_end = (today_d + timedelta(days=7)).strftime("%Y-%m-%d")
+    installs_week = db.execute(
+        "SELECT id, job_name, status, install_date FROM projects"
+        " WHERE install_date != '' AND install_date BETWEEN ? AND ?"
+        " AND status != 'Abandoned' ORDER BY install_date",
+        (today_s, wk_end)).fetchall()
+    closing_jobs = _closing_worklist(db)
+    # Ready for design: Planning-stage projects whose load survey is
+    # captured (the step before design) but whose design isn't finalized yet.
+    ready_design = []
+    for j in db.execute(
+            "SELECT id, job_name, electric_loads FROM projects"
+            " WHERE status = 'Planning' ORDER BY id").fetchall():
+        if not _loads_recorded(db, j):
+            continue
+        designed = db.execute(
+            "SELECT 1 FROM project_tasks WHERE project_id = ?"
+            " AND LOWER(title) LIKE '%finalize%design%' AND status = 'Done'"
+            " LIMIT 1", (j["id"],)).fetchone()
+        if not designed:
+            ready_design.append(j)
+    gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
+          "approvals": db.execute(
+              "SELECT COUNT(*) FROM field_submissions"
+              " WHERE status = 'Pending'").fetchone()[0],
+          "overdue": overdue, "stalled": stalled, "ready_design": ready_design,
+          "installs_week": installs_week, "closing": closing_jobs}
 
-    # Piece 22.3: Executive (GM) overview — a whole-company snapshot: pipeline
-    # counts by stage, money in flight, what needs attention, this week's
-    # installs, and a Wrap-up worklist (balance due + remaining close-out steps).
-    show_exec = "Executive" in shown
-    gm = None
-    if show_exec:
-        today_s = datetime.now().date().strftime("%Y-%m-%d")
-        exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
-        counts = {s: 0 for s in exec_stages}
-        money = {"contract": 0.0, "collected": 0.0,
-                 "outstanding": 0.0, "expense": 0.0}
-        for j in db.execute(
-                "SELECT id, status, contract_amount FROM projects"
-                " WHERE status != 'Abandoned'").fetchall():
-            if j["status"] in counts:
-                counts[j["status"]] += 1
-            b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
-            for k in money:
-                money[k] += b[k]
-        overdue = db.execute(
-            "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
-            " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
-            " AND j.status NOT IN ('Abandoned', 'Done')", (today_s,)).fetchone()[0]
-        # Stalled: active projects whose newest task activity is over 14 days
-        # old (projects that had movement and then went quiet; brand-new
-        # no-task projects are excluded).
-        cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
-        stalled = db.execute(
-            "SELECT j.id, j.job_name, j.status,"
-            " MAX(t.updated_at) AS last FROM projects j"
-            " JOIN project_tasks t ON t.project_id = j.id"
-            " WHERE j.status NOT IN ('Abandoned', 'Done')"
-            " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
-            " ORDER BY last", (cutoff,)).fetchall()
-        wk_end = (datetime.now().date() + timedelta(days=7)).strftime("%Y-%m-%d")
-        installs_week = db.execute(
-            "SELECT id, job_name, status, install_date FROM projects"
-            " WHERE install_date != '' AND install_date BETWEEN ? AND ?"
-            " AND status != 'Abandoned' ORDER BY install_date",
-            (today_s, wk_end)).fetchall()
-        closing = _closing_worklist(db)
-        # Ready for design: Planning-stage projects whose load survey is
-        # captured (the step before design) but whose design isn't finalized
-        # yet — the Sales → Designer hand-off queue.
-        ready_design = []
-        for j in db.execute(
-                "SELECT id, job_name, electric_loads FROM projects"
-                " WHERE status = 'Planning' ORDER BY id").fetchall():
-            if not _loads_recorded(db, j):
-                continue
-            designed = db.execute(
-                "SELECT 1 FROM project_tasks WHERE project_id = ?"
-                " AND LOWER(title) LIKE '%finalize%design%' AND status = 'Done'"
-                " LIMIT 1", (j["id"],)).fetchone()
-            if not designed:
-                ready_design.append(j)
-        gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
-              "approvals": db.execute(
-                  "SELECT COUNT(*) FROM field_submissions"
-                  " WHERE status = 'Pending'").fetchone()[0],
-              "overdue": overdue, "stalled": stalled, "ready_design": ready_design,
-              "installs_week": installs_week, "closing": closing}
-
-    # Finance viewport: Payments table across every active project (all
-    # in-flight money — deposits, invoices, expenses).
-    show_payments = "Finance" in shown
+    # Payments/Finance table across every active project (all in-flight
+    # money — deposits, invoices, expenses).
     payments = []
     pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
                   "expense": 0.0, "net": 0.0}
-    if show_payments:
-        for j in db.execute(
-                "SELECT id, job_name, status, contract_amount FROM projects"
-                " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
-            b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
-            payments.append({"project": j, "b": b})
-            for k in pay_totals:
-                pay_totals[k] += b[k]
+    for j in db.execute(
+            "SELECT id, job_name, status, contract_amount FROM projects"
+            " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
+        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        payments.append({"project": j, "b": b})
+        for k in pay_totals:
+            pay_totals[k] += b[k]
 
-    # Piece 33: the old client-lead worklist is now the household idea
-    # backlog. TODO(household-reorg): this viewport still carries the old
-    # 'Sales' mode name — renaming/relabeling the viewport itself is
-    # next-piece (org-chart) territory, so it just shows backlog data here.
-    show_leads = "Sales" in shown
-    backlog_worklist = []
-    if show_leads:
-        backlog_worklist = db.execute(
-            "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
-            " LEFT JOIN household_members e ON e.id = i.proposed_by"
-            " WHERE i.status = 'Backlog'"
-            " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
-        ).fetchall()
-    pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
-                               " WHERE status = 'Pending'").fetchone()[0]
-                    if "Executive" in shown else 0)
-    # Piece 24.4: the stale-stock notice lands on the Designer's dashboard.
-    stale_stock = len(stale_stock_items(db)) if "Design" in shown else 0
-    # Piece 26.7: payroll reminder on the Finance viewport for whoever runs
-    # payroll (Vanessa) — a Tue–Thu nudge until the period is confirmed + exported.
-    payroll_reminder = None
-    if "Finance" in shown and _can_payroll():
-        p_start, p_end = _pay_period()
-        payroll_reminder = payroll_status(db, p_start, p_end)
-    # Piece 31.8: the 50/40/10 pay-scheme callout moved off the dashboard and
-    # into the project Estimate (Sales/Finance only, before the contract is signed).
+    backlog_worklist = db.execute(
+        "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
+        " LEFT JOIN household_members e ON e.id = i.proposed_by"
+        " WHERE i.status = 'Backlog'"
+        " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
+    ).fetchall()
+    stale_stock = len(stale_stock_items(db))
     return render_template(
-        "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
+        "dashboard.html", user=user,
         stale_stock=stale_stock, task_groups=task_groups,
-        payroll_reminder=payroll_reminder,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
-        show_leads=show_leads,
-        payments=payments, pay_totals=pay_totals, show_payments=show_payments,
-        pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
-        dept_icons={d: c["icon"] for d, c in MODE_CONFIG.items()},
+        payments=payments, pay_totals=pay_totals,
+        today=today_s,
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
-        permits_by_job=permits_by_job, show_procurement=show_procurement,
+        permits_by_job=permits_by_job,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
-        show_install=show_install, install_buckets=install_buckets, gm=gm,
-        show_closing=show_closing, closing_jobs=closing_jobs,   # Piece 30.5
+        install_buckets=install_buckets, gm=gm, closing_jobs=closing_jobs,
         job_status_class=PROJECT_STATUS_CLASS)
-
-
-@app.route("/dashboard/default", methods=["POST"])
-def set_dashboard_default():
-    """Save the current mode as this user's default dashboard (their working
-    role) — supports Cary defaulting to Designer, and aids training."""
-    user = current_user()
-    if user is None:
-        return redirect(url_for("home"))
-    mode = request.form.get("mode", "All")
-    get_db().execute("UPDATE household_members SET dashboard_mode = ? WHERE id = ?",
-                     (mode, user["id"]))
-    get_db().commit()
-    session["dash_mode"] = mode
-    flash(f"Default dashboard set to {mode}.")
-    return redirect(url_for("dashboard"))
 
 
 # ---------------------------- Piece 20: calendar (.ics) export ------------

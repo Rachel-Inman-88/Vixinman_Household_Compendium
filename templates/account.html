@@ -10,7 +10,8 @@
   <dl class="profile">
     <dt>Name</dt><dd>{{ user["name"] }}</dd>
     <dt>Username</dt><dd>{{ user["username"] }}</dd>
-    <dt>Access level</dt><dd>{{ user["access_level"] or "—" }}</dd>
+    <dt>Role</dt><dd>{{ user["role"] or "—" }}</dd>
+    <dt>Admin</dt><dd>{{ "Yes" if user["is_admin"] == "1" else "No" }}</dd>
   </dl>
 </div>
 

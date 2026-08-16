@@ -1,34 +1,18 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit employee" if employee_id else "New employee" }}{% endblock %}
+{% block title %}{{ "Edit household member" if household_member_id else "New household member" }}{% endblock %}
 {% block content %}
-<style>
-  /* Piece 30.9: org-chart role tree */
-  .role-tree, .role-sub { list-style:none; margin:0; padding:0; }
-  .role-sub { margin-left:0.6rem; padding-left:1rem; border-left:1.75px solid var(--border); }
-  .role-tree li { position:relative; }
-  .role-chk { position:relative; display:inline-flex; align-items:center; gap:0.5rem;
-    padding:0.22rem 0.5rem; margin:0.1rem 0; border-radius:7px; cursor:pointer;
-    border:1px solid transparent; }
-  .role-chk:hover { background:var(--bg); }
-  .role-chk:has(input:checked) { background:var(--bg); border-color:var(--brand); }
-  .role-sub > li > .role-chk::before { content:""; position:absolute; left:-1rem;
-    top:50%; width:0.8rem; border-top:1.75px solid var(--border); }
-  .role-lead > .role-chk span { font-weight:700; }
-  .role-chk input { width:auto; margin:0; flex:none; accent-color:var(--brand); }
-  .role-chk span { font-size:0.95rem; }
-</style>
 <div style="margin-bottom: 0.8rem;">
-  {% if employee_id %}
-  <a href="{{ url_for('employee_detail', employee_id=employee_id) }}" class="btn btn-secondary">← Back to {{ values["name"] or "employee" }}</a>
+  {% if household_member_id %}
+  <a href="{{ url_for('household_member_detail', household_member_id=household_member_id) }}" class="btn btn-secondary">← Back to {{ values["name"] or "member" }}</a>
   {% else %}
-  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
+  <a href="{{ url_for('household_members_page') }}" class="btn btn-secondary">← Back to household members</a>
   {% endif %}
 </div>
-<h1>{{ "Edit employee" if employee_id else "New employee" }}</h1>
+<h1>{{ "Edit household member" if household_member_id else "New household member" }}</h1>
 {% if duplicate_warning %}
 <div class="flash error">
-  ⚠️ There's already an employee named <strong>{{ duplicate_warning }}</strong>.
-  If you meant to update them, <a href="{{ url_for('employees_page') }}">go back to the roster</a>
+  ⚠️ There's already a household member named <strong>{{ duplicate_warning }}</strong>.
+  If you meant to update them, <a href="{{ url_for('household_members_page') }}">go back to the roster</a>
   and open their profile. If this is a <strong>different person</strong>, tick the
   box below to add them anyway — a last name or nickname helps tell them apart.
 </div>
@@ -46,7 +30,7 @@
     <div class="field">
       <label for="nickname">Nickname <span class="muted">(optional)</span></label>
       <input id="nickname" name="nickname" value="{{ values.get('nickname', '') }}"
-             placeholder="what the team calls them">
+             placeholder="what the household calls them">
     </div>
     {% if duplicate_warning %}
     <div class="field wide">
@@ -57,65 +41,31 @@
     </div>
     {% endif %}
 
-    <div class="field wide">
-      <fieldset class="section">
-        <legend>Roles</legend>
-        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">Select every
-        role this person holds. The tree is Vixinman's org chart — where a role sits shows
-        <strong>who they report to</strong>; <strong>bold</strong> rows have direct reports.</p>
-
-        {# Piece 30.9: roles as an indented org tree (recursive). #}
-        {% macro role_node(node) %}
-        <li{% if node.children %} class="role-lead"{% endif %}>
-          <label class="role-chk">
-            <input type="checkbox" name="roles" value="{{ node.role }}" {% if node.role in selected %}checked{% endif %}>
-            <span>{{ node.role }}</span>
-          </label>
-          {% if node.children %}
-          <ul class="role-sub">
-            {% for child in node.children %}{{ role_node(child) }}{% endfor %}
-          </ul>
-          {% endif %}
-        </li>
-        {% endmacro %}
-
-        <ul class="role-tree">
-          {% for node in role_tree %}{{ role_node(node) }}{% endfor %}
-        </ul>
-
-        <div class="field" style="margin-top:0.9rem;">
-          <label for="roles_other">Other role(s)</label>
-          <input id="roles_other" name="roles_other" value="{{ roles_other }}"
-                 placeholder="comma-separated, e.g. Trainer, Safety Officer">
-        </div>
-      </fieldset>
+    <div class="field">
+      <label for="role">Role</label>
+      <select id="role" name="role">
+        {% for r in roles %}
+        <option value="{{ r }}" {% if values.get('role') == r %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
     </div>
 
     <div class="field wide">
       <label for="schedule">Schedule</label>
       <textarea id="schedule" name="schedule" rows="3"
-                placeholder="e.g. Mon–Fri 7:00 AM – 4:00 PM; on call alternate weekends">{{ values.get('schedule', '') }}</textarea>
+                placeholder="e.g. school Mon–Fri; soccer practice Tue/Thu">{{ values.get('schedule', '') }}</textarea>
     </div>
 
-    {% if can('employees.manage') %}
+    {% if can('household.manage') %}
     <div class="field wide">
       <fieldset class="section">
         <legend>Login &amp; access</legend>
         <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">
-          Give this person a sign-in. <strong>Admin</strong> can edit Rules,
-          Catalog, Employees/accounts and view the Log; <strong>Standard</strong>
-          does everyday work (projects, tasks, documents). Leave Access
-          level as “No login” for no account.</p>
+          Give this person a sign-in. <strong>Admin</strong> can manage household
+          members/accounts, rules, catalog, and view the log; everyone else does
+          everyday work (projects, tasks, documents) unless individually granted
+          more on the Access page. Leave Username blank for no account.</p>
         <div class="form-grid">
-          <div class="field">
-            <label for="access_level">Access level</label>
-            <select id="access_level" name="access_level">
-              <option value="" {% if not access_level %}selected{% endif %}>No login</option>
-              {% for lv in access_levels %}
-              <option value="{{ lv }}" {% if access_level == lv %}selected{% endif %}>{{ lv }}</option>
-              {% endfor %}
-            </select>
-          </div>
           <div class="field">
             <label for="username">Username</label>
             <input id="username" name="username" value="{{ username }}" autocomplete="off">
@@ -126,73 +76,24 @@
             <input id="password" name="password" type="password" autocomplete="new-password">
           </div>
         </div>
-        {% if is_gm %}
         <label style="display:flex; gap:0.5rem; align-items:flex-start; margin-top:0.7rem; cursor:pointer;">
-          <input type="checkbox" name="is_supervisor" value="1" style="margin-top:0.2rem;" {% if supervisor_checked %}checked{% endif %}>
-          <span>🛡 <strong>Supervisor</strong> — can emergency-revoke and reinstate
-            other employees' access.
-            <span class="muted" style="display:block; font-size:0.82rem;">Only General Managers can grant this. Supervisors can't lock out a GM or another Supervisor.</span></span>
+          <input type="checkbox" name="is_admin" value="1" style="margin-top:0.2rem;" {% if is_admin_checked %}checked{% endif %}>
+          <span>🔑 <strong>Admin</strong> — full access except Delete, which
+            always needs a separate grant on the Access page.</span>
         </label>
-        {% endif %}
-      </fieldset>
-    </div>
-    {% endif %}
-
-    {# Piece 31.2: onboarding is initiated here, as the last step of intake —
-       once the profile is saved, this new hire's onboarding checklist starts and
-       someone is put on the hook for finishing it. New-employee form only. #}
-    {% if not employee_id %}
-    <div class="field wide">
-      <fieldset class="section">
-        <legend>🚀 Onboarding</legend>
-        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">
-          Saving this profile <strong>starts {{ values.get('first_name') or 'this person' }}'s
-          onboarding</strong>. The person you choose below is responsible for making
-          sure every to-do below gets done — they'll get a notification, and you'll
-          land on the checklist to start ticking items off.</p>
-
-        <div class="field" style="max-width:22rem;">
-          <label for="onboarding_owner_id">Who's responsible for onboarding?</label>
-          <select id="onboarding_owner_id" name="onboarding_owner_id">
-            {% if not onboarding_owner_candidates %}
-            <option value="">No General Manager or Supervisor set up yet</option>
-            {% endif %}
-            {% for o in onboarding_owner_candidates %}
-            <option value="{{ o['id'] }}" {% if onboarding_owner_id == o['id']|string %}selected{% endif %}>{{ o['name'] }}</option>
-            {% endfor %}
-          </select>
-          <p class="muted" style="margin:0.35rem 0 0; font-size:0.8rem;">Defaults to the
-            General Manager. Only GMs and Supervisors can be assigned.</p>
-        </div>
-
-        {% if onboarding_preview %}
-        <p class="muted" style="margin:0.9rem 0 0.3rem; font-size:0.82rem;">
-          Checklist they'll be responsible for ({{ onboarding_preview|length }} step{{ 's' if onboarding_preview|length != 1 else '' }}):</p>
-        <ul style="margin:0; padding-left:1.1rem; font-size:0.85rem;">
-          {% for s in onboarding_preview %}
-          <li style="margin:0.15rem 0;">{{ s['title'] }}{% if s['category'] %}
-            <span class="badge neutral" style="font-size:0.72rem;">{{ s['category'] }}</span>{% endif %}</li>
-          {% endfor %}
-        </ul>
-        <p class="muted" style="margin:0.5rem 0 0; font-size:0.8rem;">Edit this template
-          any time under Employees → Onboarding checklist.</p>
-        {% else %}
-        <p class="muted" style="margin:0.6rem 0 0; font-size:0.82rem;">No onboarding
-          steps are defined yet — you can set them up after saving.</p>
-        {% endif %}
       </fieldset>
     </div>
     {% endif %}
   </div>
   <p class="muted" style="margin:0.6rem 0 0;">💡 Licenses, certifications
-  (with expiry dates) and document copies are added on the employee's profile
-  page {% if employee_id %}below{% else %}once you save this record{% endif %}.</p>
+  (with expiry dates) and document copies are added on the member's profile
+  page {% if household_member_id %}below{% else %}once you save this record{% endif %}.</p>
   <div class="actions">
-    <button type="submit" class="btn">{{ "Save changes" if employee_id else "Add employee" }}</button>
-    {% if employee_id %}
-    <a href="{{ url_for('employee_detail', employee_id=employee_id) }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn">{{ "Save changes" if household_member_id else "Add member" }}</button>
+    {% if household_member_id %}
+    <a href="{{ url_for('household_member_detail', household_member_id=household_member_id) }}" class="btn btn-secondary">Cancel</a>
     {% else %}
-    <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">Cancel</a>
+    <a href="{{ url_for('household_members_page') }}" class="btn btn-secondary">Cancel</a>
     {% endif %}
   </div>
 </form>

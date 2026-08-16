@@ -3,58 +3,22 @@
 {% block content %}
 {% set state_class = {"ok": "", "soon": "warn", "expired": "danger", "none": "neutral"} %}
 <div style="margin-bottom: 0.8rem;">
-  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
+  <a href="{{ url_for('household_members_page') }}" class="btn btn-secondary">← Back to household members</a>
 </div>
 <div class="toolbar">
   <h1>{{ employee["name"] }}{% if employee["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ employee["nickname"] }}”</span>{% endif %}
-    {% if employee["is_supervisor"] == "1" %}<span class="badge" title="Can emergency-revoke access" style="vertical-align:middle;">🛡 Supervisor</span>{% endif %}
-    {% if access_revoked %}<span class="badge danger" style="vertical-align:middle;">⛔ Access suspended</span>{% endif %}</h1>
+    <span class="badge" style="vertical-align:middle;">{{ employee["role"] }}</span>
+    {% if employee["is_admin"] == "1" %}<span class="badge warn" style="vertical-align:middle;">🔑 Admin</span>{% endif %}</h1>
   <div style="display:flex; gap:0.5rem;">
-    {% if can('employees.manage') %}
-    <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>
-    <a href="{{ url_for('delete_employee', employee_id=employee['id']) }}" class="btn btn-secondary">Remove employee</a>
+    {% if can('household.manage') %}
+    <a href="{{ url_for('edit_household_member', household_member_id=employee['id']) }}" class="btn">Edit</a>
+    <a href="{{ url_for('delete_household_member', household_member_id=employee['id']) }}" class="btn btn-secondary">Remove</a>
     {% endif %}
   </div>
 </div>
 
-{# Piece 29.0: emergency access lockout — GM / Supervisor only #}
-{% if access_revoked %}
-<div class="card" style="border-left:4px solid #9a1c1c; background:#fbe9e9;">
-  <h2 style="margin:0 0 0.3rem; font-size:1.05rem; color:#9a1c1c;">⛔ Access is suspended</h2>
-  <p style="margin:0 0 0.5rem;">{{ employee["name"] }} is signed out and cannot sign in.
-    {% if employee["access_revoked_by"] %}<br><span class="muted" style="font-size:0.85rem;">By {{ employee["access_revoked_by"] }}{% if employee["access_revoked_at"] %} on {{ employee["access_revoked_at"][:16].replace("T"," ") }}{% endif %}{% if employee["access_revoked_reason"] %} — “{{ employee["access_revoked_reason"] }}”{% endif %}</span>{% endif %}
-  </p>
-  {% if can_control_access and can_revoke_this %}
-  <form method="post" action="{{ url_for('reinstate_employee_access', employee_id=employee['id']) }}"
-        onsubmit="return confirm('Reinstate access for this employee?');" style="margin:0;">
-    <button type="submit" class="btn">✓ Reinstate access</button>
-  </form>
-  {% else %}
-  <p class="muted" style="margin:0; font-size:0.85rem;">Only a General Manager or Supervisor can reinstate this.</p>
-  {% endif %}
-</div>
-{% elif can_control_access and can_revoke_this and employee["username"] %}
-<details class="card" style="border-left:4px solid #d97706;">
-  <summary style="cursor:pointer; font-weight:600; color:#92400e;">⛔ Emergency access control</summary>
-  <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">
-    Instantly suspend <strong>all</strong> of {{ employee["name"] }}'s access. They're
-    signed out and can't sign back in until a GM or Supervisor reinstates them. Their
-    account, login and data stay intact.</p>
-  <form method="post" action="{{ url_for('revoke_employee_access', employee_id=employee['id']) }}"
-        onsubmit="return confirm('Emergency-suspend ALL access for this employee now?');"
-        style="margin:0; display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
-    <div class="field" style="margin:0; flex:1; min-width:14rem;">
-      <label style="font-size:0.85rem;">Reason (optional, logged)</label>
-      <input name="reason" placeholder="e.g. offboarding, lost device, security hold">
-    </div>
-    <button type="submit" class="btn" style="background:#9a1c1c;">⛔ Revoke all access</button>
-  </form>
-</details>
-{% endif %}
-
 <div class="tab-bar">
   <button class="tab-btn" data-tab="details">Details</button>
-  <button class="tab-btn" data-tab="onboarding">Onboarding ({{ onboarding_done }}/{{ onboarding_total }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ assigned_tasks|length }})</button>
   <button class="tab-btn" data-tab="licenses">Licenses &amp; Certifications ({{ credentials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
@@ -63,12 +27,8 @@
 <div class="tab-panel" id="tab-details">
 <div class="card">
   <dl class="profile">
-    <dt>Roles</dt>
-    <dd>
-      {% if roles %}
-        {% for r in roles %}<span class="badge">{{ r }}</span>{% endfor %}
-      {% else %}<span class="muted">—</span>{% endif %}
-    </dd>
+    <dt>Role</dt>
+    <dd><span class="badge">{{ employee["role"] }}</span></dd>
     <dt>Schedule</dt>
     <dd style="white-space: pre-line;">{{ employee["schedule"] or "—" }}</dd>
   </dl>
@@ -78,80 +38,6 @@
     <span style="white-space: pre-line;">{{ employee["licenses_certifications"] }}</span><br>
     Re-enter these under Licenses &amp; Certifications so expiry can be tracked.
   </p>
-  {% endif %}
-</div>
-</div>
-
-<div class="tab-panel" id="tab-onboarding">
-<div class="card">
-  <div class="toolbar" style="margin-bottom:0.4rem;">
-    <h2 style="margin:0; font-size:1.1rem;">🚀 Onboarding checklist</h2>
-    {% if can('employees.manage') %}
-    <a href="{{ url_for('onboarding_checklist') }}" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Edit checklist template</a>
-    {% endif %}
-  </div>
-  {% if onboarding_just_created %}
-  <div class="flash" style="background:#eef6ff; border-color:#bcdcff; color:#0b4a8f; margin:0 0 0.8rem;">
-    ✅ <strong>Profile saved.</strong> This is the last step of intake — work through
-    {{ employee["name"] }}'s onboarding to-do's below.
-  </div>
-  {% endif %}
-  {# Piece 31.2: who's accountable for finishing onboarding. #}
-  <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; margin:0 0 0.8rem; padding:0.55rem 0.7rem; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
-    <span style="font-size:0.9rem;">🧑‍💼 <strong>Responsible:</strong>
-      {% if onboarding_owner %}{{ onboarding_owner["name"] }}{% else %}<span class="muted">no one assigned</span>{% endif %}</span>
-    {% if can('employees.manage') and onboarding_owner_candidates %}
-    <form method="post" action="{{ url_for('employee_onboarding_owner', employee_id=employee['id']) }}"
-          style="margin:0 0 0 auto; display:flex; gap:0.4rem; align-items:center;">
-      <select name="onboarding_owner_id" style="font-size:0.85rem; padding:0.2rem 0.4rem;">
-        {% for o in onboarding_owner_candidates %}
-        <option value="{{ o['id'] }}" {% if onboarding_owner_id == o['id']|string %}selected{% endif %}>{{ o['name'] }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Reassign</button>
-    </form>
-    {% endif %}
-  </div>
-  {% if onboarding_total %}
-  {% set pct = (onboarding_done * 100 // onboarding_total) if onboarding_total else 0 %}
-  <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.8rem;">
-    <div style="flex:1; background:var(--border); border-radius:999px; height:0.7rem; overflow:hidden;">
-      <div style="width:{{ pct }}%; background:{{ '#12673a' if onboarding_done == onboarding_total else '#2563eb' }}; height:100%;"></div>
-    </div>
-    <span class="muted" style="font-size:0.85rem; white-space:nowrap;">{{ onboarding_done }} / {{ onboarding_total }} done</span>
-  </div>
-  {% if onboarding_done == onboarding_total %}
-  <p class="badge" style="background:#e6f4ea; color:#12673a; border:1px solid #9dd3b0;">✓ Onboarding complete</p>
-  {% endif %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th style="width:2.2rem;"></th><th>Step</th><th>Category</th><th>Completed</th></tr></thead>
-    <tbody>
-      {% for s in onboarding %}
-      {% set done = s["done"] == "1" %}
-      <tr{% if done %} style="background:#f3faf5;"{% endif %}>
-        <td style="text-align:center;">
-          {% if can('employees.manage') %}
-          <form method="post" action="{{ url_for('employee_onboarding_toggle', employee_id=employee['id'], step_id=s['step_id']) }}" style="margin:0;">
-            <button type="submit" class="btn btn-secondary" style="padding:0.05rem 0.4rem; font-size:0.95rem;"
-                    title="{{ 'Mark not done' if done else 'Mark done' }}">{{ '✅' if done else '⬜' }}</button>
-          </form>
-          {% else %}
-          {{ '✅' if done else '⬜' }}
-          {% endif %}
-        </td>
-        <td><strong>{{ s["title"] }}</strong>{% if s["description"] %}<br><span class="muted" style="font-size:0.82rem;">{{ s["description"] }}</span>{% endif %}</td>
-        <td>{% if s["category"] %}<span class="badge">{{ s["category"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="muted" style="font-size:0.82rem;">
-          {% if done %}{% if s["done_by"] %}{{ s["done_by"] }}{% endif %}{% if s["done_at"] %}<br>{{ s["done_at"][:10] }}{% endif %}{% else %}<span class="muted">—</span>{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty">No onboarding steps defined yet.{% if can('employees.manage') %} <a href="{{ url_for('onboarding_checklist') }}">Set up the checklist</a>.{% endif %}</p>
   {% endif %}
 </div>
 </div>
@@ -208,12 +94,12 @@
         <td class="muted">{{ r["rule_label"] or "—" }}</td>
         <td>{% if c.documented %}📎 yes{% else %}<span class="muted">—</span>{% endif %}</td>
         <td style="white-space:nowrap;">
-          {% if can('employees.manage') %}
-          <a href="{{ url_for('employee_detail', employee_id=employee['id'], edit_credential=r['id'], _anchor='licenses') }}#credential-form"
+          {% if can('household.manage') %}
+          <a href="{{ url_for('household_member_detail', household_member_id=employee['id'], edit_credential=r['id'], _anchor='licenses') }}#credential-form"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% endif %}
           {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_credential', employee_id=employee['id'], credential_id=r['id']) }}"
+          <form method="post" action="{{ url_for('delete_credential', household_member_id=employee['id'], credential_id=r['id']) }}"
                 onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0; display:inline;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
@@ -228,15 +114,15 @@
   <p class="empty">No licenses or certifications recorded yet.</p>
   {% endif %}
 
-  {% if can('employees.manage') %}
+  {% if can('household.manage') %}
   {% set ecr = edit_credential %}
   <form method="post" id="credential-form" style="margin-top:0.9rem;"
-        action="{{ url_for('update_credential', employee_id=employee['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', employee_id=employee['id']) }}">
+        action="{{ url_for('update_credential', household_member_id=employee['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', household_member_id=employee['id']) }}">
     <h3 style="margin:0 0 0.5rem; font-size:0.95rem;">{{ "Edit license / certification" if ecr else "Add a license / certification" }}</h3>
     <div class="form-grid">
       <div class="field wide">
         <label for="cname">License / Certification *</label>
-        <input id="cname" name="name" required value="{{ ecr['name'] if ecr else '' }}" placeholder="e.g. EE-98J Journeyman, EPA 608 Universal, NABCEP PV">
+        <input id="cname" name="name" required value="{{ ecr['name'] if ecr else '' }}" placeholder="e.g. Driver's license, First aid/CPR">
       </div>
       <div class="field">
         <label for="number">Number</label>
@@ -265,7 +151,7 @@
       </div>
     </div>
     <div class="actions"><button type="submit" class="btn">{{ "Save changes" if ecr else "＋ Add license / certification" }}</button>
-      {% if ecr %}<a href="{{ url_for('employee_detail', employee_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
+      {% if ecr %}<a href="{{ url_for('household_member_detail', household_member_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
   </form>
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
   to a project requirement lets each project page show whether someone on staff holds
@@ -281,11 +167,11 @@
   <ul style="margin:0 0 0.8rem; padding-left:1.2rem;">
     {% for f in files %}
     <li style="margin-bottom:0.3rem;">
-      <a href="{{ url_for('download_employee_file', employee_id=employee['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+      <a href="{{ url_for('download_household_member_file', household_member_id=employee['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
       {% if f["credential_name"] %}<span class="badge">{{ f["credential_name"] }}</span>{% endif %}
       <span class="muted">{{ f["uploaded_at"][:10] }}</span>
       {% if can('delete') %}
-      <form method="post" action="{{ url_for('delete_employee_file', employee_id=employee['id'], file_id=f['id']) }}"
+      <form method="post" action="{{ url_for('delete_household_member_file', household_member_id=employee['id'], file_id=f['id']) }}"
             onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
         <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
       </form>
@@ -296,8 +182,8 @@
   {% else %}
   <p class="empty">No document copies on file yet.</p>
   {% endif %}
-  {% if can('employees.manage') %}
-  <form method="post" action="{{ url_for('upload_employee_file', employee_id=employee['id']) }}" enctype="multipart/form-data">
+  {% if can('household.manage') %}
+  <form method="post" action="{{ url_for('upload_household_member_file', household_member_id=employee['id']) }}" enctype="multipart/form-data">
     <div class="form-grid">
       <div class="field">
         <label>File * <span class="muted">(pdf, images, office docs — max 25 MB)</span></label>
@@ -322,7 +208,7 @@
 <script>
   // Same hash-based tab persistence as the project page, so posts that redirect
   // back (add a license, upload a doc) land on the tab you were using.
-  const TABS = ["details", "onboarding", "tasks", "licenses", "documents"];
+  const TABS = ["details", "tasks", "licenses", "documents"];
   function activateTab(name, updateHash) {
     if (!TABS.includes(name)) name = "details";
     document.querySelectorAll(".tab-btn").forEach(b =>

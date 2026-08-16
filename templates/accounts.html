@@ -3,12 +3,13 @@
 {% block content %}
 <div class="toolbar">
   <h1>🔑 Accounts</h1>
-  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Employees</a>
+  <a href="{{ url_for('household_members_page') }}" class="btn btn-secondary">← Household Members</a>
 </div>
-<p class="muted">Who can sign in to Compendium and at what level. Logins are set
-on each person's employee profile. <strong>Admin</strong> can edit Rules,
-Catalog, Employees/accounts and view the Log; <strong>Standard</strong> does
-everyday work.</p>
+<p class="muted">Who can sign in and who's an admin. Logins are set on each
+person's household member profile. <strong>Admin</strong> can manage
+household members/accounts, rules, catalog, and view the log; everyone else
+does everyday work unless individually granted more on the
+<a href="{{ url_for('access_console') }}">Access</a> page.</p>
 
 {% if not login_active %}
 <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
@@ -21,10 +22,10 @@ everyday work.</p>
 <div class="flash error">
   ⚠️ <strong>Duplicate usernames (case-insensitive).</strong> Since login now
   ignores capitalization, these accounts share a username and a sign-in would be
-  ambiguous — give each a distinct username on their employee profile:
+  ambiguous — give each a distinct username on their profile:
   <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
     {% for group in dup_usernames %}
-    <li>{% for e in group %}<a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a> (“{{ e["username"] }}”){% if not loop.last %} · {% endif %}{% endfor %}</li>
+    <li>{% for e in group %}<a href="{{ url_for('household_member_detail', household_member_id=e['id']) }}">{{ e["name"] }}</a> (“{{ e["username"] }}”){% if not loop.last %} · {% endif %}{% endfor %}</li>
     {% endfor %}
   </ul>
 </div>
@@ -36,7 +37,7 @@ everyday work.</p>
   <p class="muted" style="margin-top:0;">Approve to apply the new password (you
   don't see it — it's applied straight to their account), or reject to discard.</p>
   <table>
-    <thead><tr><th>Employee</th><th>Username</th><th>Requested</th><th></th></tr></thead>
+    <thead><tr><th>Member</th><th>Username</th><th>Requested</th><th></th></tr></thead>
     <tbody>
       {% for r in pending %}
       <tr>
@@ -68,19 +69,18 @@ everyday work.</p>
   </div>
   {% if with_login %}
   <table>
-    <thead><tr><th>Name</th><th>Username</th><th>Access level</th><th>Password set</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Username</th><th>Admin</th><th>Password set</th><th></th></tr></thead>
     <tbody>
       {% for e in with_login %}
       <tr>
-        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
+        <td><a href="{{ url_for('household_member_detail', household_member_id=e['id']) }}">{{ e["name"] }}</a></td>
         <td>{{ e["username"] }}</td>
         <td>
-          {% if e["access_level"] == "Admin" %}<span class="badge warn">Admin</span>
-          {% elif e["access_level"] == "Standard" %}<span class="badge">Standard</span>
+          {% if e["is_admin"] == "1" %}<span class="badge warn">Admin</span>
           {% else %}<span class="muted">—</span>{% endif %}
         </td>
         <td>{% if e["pw"] %}✓{% else %}<span class="badge danger">no password</span>{% endif %}</td>
-        <td><a href="{{ url_for('edit_employee', employee_id=e['id']) }}">Edit login</a></td>
+        <td><a href="{{ url_for('edit_household_member', household_member_id=e['id']) }}">Edit login</a></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -91,15 +91,15 @@ everyday work.</p>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.05rem;">Employees without a login ({{ without_login|length }})</h2>
+  <h2 style="margin-top:0; font-size:1.05rem;">Household members without a login ({{ without_login|length }})</h2>
   {% if without_login %}
   <table>
     <thead><tr><th>Name</th><th></th></tr></thead>
     <tbody>
       {% for e in without_login %}
       <tr>
-        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
-        <td><a href="{{ url_for('edit_employee', employee_id=e['id']) }}">Set up login</a></td>
+        <td><a href="{{ url_for('household_member_detail', household_member_id=e['id']) }}">{{ e["name"] }}</a></td>
+        <td><a href="{{ url_for('edit_household_member', household_member_id=e['id']) }}">Set up login</a></td>
       </tr>
       {% endfor %}
     </tbody>

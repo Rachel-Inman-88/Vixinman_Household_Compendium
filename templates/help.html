@@ -20,8 +20,8 @@
   <span class="muted" style="font-size:0.85rem;">First draft · covers every feature</span>
 </div>
 <p class="muted" style="margin-top:0;">Short how-tos and answers for using Compendium. Jump to a
-section, or expand a question. What you can see and do depends on your role — if a page or
-button below isn't visible to you, you may not have access to it (ask a General Manager).</p>
+section, or expand a question. What you can see and do depends on whether you're an admin — if a page or
+button below isn't visible to you, you may not have access to it (ask an admin).</p>
 
 <div class="card" id="top">
   <strong>Contents</strong>
@@ -56,10 +56,10 @@ button below isn't visible to you, you may not have access to it (ask a General 
   <details><summary>I forgot my password — how do I get back in?</summary>
     <p>On the sign-in page click <strong>Forgot your password?</strong>, enter your username, and answer the
     2 (randomly chosen) security questions you enrolled. You then set a new password yourself — no admin needed.
-    If you never set up questions, ask a manager to reset it from your employee profile.</p></details>
-  <details><summary>Why did my account get locked after a reset attempt?</summary>
-    <p>Too many wrong security-question answers auto-locks the account for safety and notifies a Supervisor
-    (or the GM). A manager reinstates it from your employee profile.</p></details>
+    If you never set up questions, ask an admin to reset it from your profile.</p></details>
+  <details><summary>Why can't I answer my security questions?</summary>
+    <p>Too many wrong answers notifies the household's admins, who can reset your
+    password directly from your profile.</p></details>
   <details><summary>I got signed out on my own — why?</summary>
     <p>Sessions end after <strong>12 hours of inactivity</strong> (the clock resets on each action). Just sign in again.</p></details>
 </div>
@@ -150,9 +150,9 @@ button below isn't visible to you, you may not have access to it (ask a General 
   <h3>Tutorial — do field work from the Work Bag</h3>
   <ol class="steps">
     <li>Open <strong>🎒 Work Bag</strong> (works offline). Tap a project to see its field tasks, hours, receipts, and notes.</li>
-    <li>Finish a task with <strong>✓ Submit as done</strong> and enter the time it took, <strong>split by pay type</strong> (e.g. 8h regular + 1h travel + 2h roof).</li>
+    <li>Finish a task with <strong>✓ Submit as done</strong> and enter the time it took.</li>
     <li>Photo steps open a <strong>take / review / submit</strong> screen — at least one photo is required.</li>
-    <li>Your supervisor approves the task, then Finance approves the hours for payroll (two sign-offs).</li>
+    <li>An admin approves the submission on the Approvals page.</li>
   </ol>
   <details><summary>Can I log a receipt or a note from the field?</summary>
     <p>Yes — snap a receipt (date, total, vendor, category) and it's filed as a paid expense; the 📝 Project notes box
@@ -198,14 +198,11 @@ button below isn't visible to you, you may not have access to it (ask a General 
     <li>The Billing tab totals up contract, collected, outstanding, and expenses so you can see where the budget stands.</li>
   </ol>
   <details><summary>Where do markups, county tax, and travel rates live?</summary>
-    <p><strong>🗄 Databases → Cost model &amp; finance</strong> (Finance/Admin/GM): six cost-model sections
+    <p><strong>🗄 Databases → Cost model &amp; finance</strong> (admins only): six cost-model sections
     (equipment markup, labor, travel, adders, overhead) plus the NM county GRT table.</p></details>
   <details><summary>Who can see the cost/margin breakdown?</summary>
-    <p>The internal <strong>Pricing breakdown</strong> on the Billing tab is visible to Finance, Sales &amp; Design
+    <p>The internal <strong>Pricing breakdown</strong> on the Billing tab is visible to admins
     only.</p></details>
-  <details><summary>How does payroll work?</summary>
-    <p>Crews log hours by pay type in the Work Bag; supervisors approve them; Finance runs payroll (Sun→Sat periods,
-    automatic overtime, QuickBooks CSV export). Only the GM and Payroll Manager change pay rates.</p></details>
 </div>
 
 <!-- 8 -->
@@ -232,21 +229,18 @@ button below isn't visible to you, you may not have access to it (ask a General 
 <div class="card" id="people">
   <h2>9. People, roles &amp; permissions</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
-  <h3>Tutorial — onboard a new employee</h3>
+  <h3>Tutorial — add a household member</h3>
   <ol class="steps">
-    <li>Add them under <strong>👥 Team → Employees</strong> (roles, and a login if they need one).</li>
-    <li>Open their profile → <strong>Onboarding</strong> tab and check off steps as they're completed. Edit the checklist template from the Employees page.</li>
+    <li>Add them under <strong>👥 Household</strong> (role, and a login if they need one).</li>
+    <li>Tick <strong>Admin</strong> on their profile if they should manage household members/accounts, rules,
+      catalog, and view the log.</li>
   </ol>
-  <details><summary>How do the dashboard "modes" work?</summary>
-    <p>Your dashboard shows a section per department you belong to; the <strong>View:</strong> buttons focus on
-    one. Your default is remembered. (Sales-role users see a <strong>🏁 Wrap-up</strong> mode where installers
-    see Installation.)</p></details>
-  <details><summary>What is "emergency revoke access"?</summary>
-    <p>A GM or a designated <strong>Supervisor</strong> can instantly suspend all of an employee's access from
-    their profile — they're signed out and blocked until <strong>reinstated</strong>. Nothing is deleted.</p></details>
+  <details><summary>What's the difference between Parent, Child, and Assistant?</summary>
+    <p>These are just labels for the roster — they don't grant access on their own. <strong>Admin</strong> is
+    a separate flag, set explicitly per person on their profile.</p></details>
   <details><summary>How are permissions granted?</summary>
-    <p>The GM has full access and can grant individuals specific tools (optionally with an expiry). Admin sits below
-    GM; most people get exactly what their role needs.</p></details>
+    <p>Admins have full access except <strong>Delete</strong>, which always needs an explicit grant even for
+    admins. Everyone else gets only what's granted individually on the <strong>Access</strong> page.</p></details>
 </div>
 
 <!-- 10 -->
@@ -263,16 +257,16 @@ button below isn't visible to you, you may not have access to it (ask a General 
 
 <!-- 11 -->
 <div class="card" id="managers">
-  <h2>11. For managers &amp; admins</h2>
+  <h2>11. For admins</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <ul class="steps">
     <li><strong>🔧 Admin → Log</strong>: the audit log of every change (who/what/when), with passwords redacted.</li>
-    <li><strong>🔧 Admin → Trash</strong>: deleted items (GM restores or purges). Deletes are blocked if data is in use.</li>
-    <li><strong>🔧 Admin → Access</strong>: grant per-person tool access, optionally with an expiry (GM only).</li>
+    <li><strong>🔧 Admin → Trash</strong>: deleted items (an admin restores or purges). Deletes are blocked if data is in use.</li>
+    <li><strong>🔧 Admin → Access</strong>: grant per-person tool access.</li>
     <li><strong>🗄 Databases → Closed projects</strong>: review cancelled + completed projects; reopen a cancelled project.</li>
     <li><strong>🗄 Databases → Cost model &amp; finance</strong>: markups, county GRT, travel, overhead.</li>
-    <li><strong>Executive dashboard</strong>: company overview — pipeline counts, money in flight, attention row,
-      ready-for-design, this week's installs, and the Wrap-up worklist.</li>
+    <li><strong>Company overview</strong> (on the dashboard): pipeline counts, money in flight, attention row,
+      ready-for-design, this week's installs, and the Wrap-up worklist — visible to everyone.</li>
   </ul>
   <details><summary>How do we back up the data?</summary>
     <p>Everything lives in <code>job_creator.db</code> with uploaded files in the <code>uploads/</code> folder —

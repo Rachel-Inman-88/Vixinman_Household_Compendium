@@ -1,19 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Employees{% endblock %}
+{% block title %}Household Members{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>👥 Employees</h1>
-  {% if can('employees.manage') %}
+  <h1>👥 Household Members</h1>
+  {% if can('household.manage') %}
   <div style="display:flex; gap:0.5rem;">
-    <a href="{{ url_for('onboarding_checklist') }}" class="btn btn-secondary">🚀 Onboarding checklist</a>
     <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">🔑 Accounts</a>
-    <a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>
+    <a href="{{ url_for('new_household_member') }}" class="btn">＋ New member</a>
   </div>
   {% endif %}
 </div>
-<p class="muted">Vixinman's crew: each person's roles, the licenses and
-certifications they hold, and their working schedule. Click a name to view
-or edit their record.</p>
+<p class="muted">Everyone in the household: their role, the licenses and
+certifications they hold, and their schedule. Click a name to view or edit
+their record.</p>
 <div class="card">
   {% if employees %}
   <div style="overflow-x:auto;">
@@ -21,7 +20,7 @@ or edit their record.</p>
     <thead>
       <tr>
         <th>Name</th>
-        <th>Roles</th>
+        <th>Role</th>
         <th>Licenses &amp; Certifications</th>
         <th>Schedule</th>
       </tr>
@@ -30,16 +29,9 @@ or edit their record.</p>
       {% for e in employees %}
       {% set s = summary.get(e["id"]) %}
       <tr>
-        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a>{% if e["nickname"] %} <span class="muted" style="font-size:0.85rem;">“{{ e["nickname"] }}”</span>{% endif %}
-          {% if e["is_supervisor"] == "1" %} <span class="badge" title="Supervisor">🛡</span>{% endif %}
-          {% if e["access_revoked"] == "1" %} <span class="badge danger" title="Access suspended">⛔ suspended</span>{% endif %}</td>
-        <td>
-          {% for r in (e["roles"] or "").split(",") if r.strip() %}
-          <span class="badge">{{ r.strip() }}</span>
-          {% else %}
-          <span class="muted">—</span>
-          {% endfor %}
-        </td>
+        <td><a href="{{ url_for('household_member_detail', household_member_id=e['id']) }}">{{ e["name"] }}</a>{% if e["nickname"] %} <span class="muted" style="font-size:0.85rem;">“{{ e["nickname"] }}”</span>{% endif %}
+          {% if e["is_admin"] == "1" %} <span class="badge" title="Admin">🔑</span>{% endif %}</td>
+        <td><span class="badge">{{ e["role"] or "—" }}</span></td>
         <td>
           {% if s and s.count %}
             {{ s.count }} on file
@@ -56,7 +48,7 @@ or edit their record.</p>
   </table>
   </div>
   {% else %}
-  <p class="empty">No employees yet — click “＋ New employee” to add the first one.</p>
+  <p class="empty">No household members yet — click “＋ New member” to add the first one.</p>
   {% endif %}
 </div>
 {% endblock %}

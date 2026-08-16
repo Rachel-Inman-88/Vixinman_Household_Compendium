@@ -13,9 +13,8 @@
   </div>
 </div>
 <p class="muted">When a task is finished, hit <strong>Submit as done</strong> and enter the
-time it took — split into pay types (regular, roof, travel…) if the project needs it. It's
-held for your supervisor to approve, then Finance approves the hours for payroll.
-Everything is saved on this device, so it keeps working offline.</p>
+time it took. It's held for an admin to approve. Everything is saved on this
+device, so it keeps working offline.</p>
 
 <div id="status" class="flash" style="display:none;"></div>
 
@@ -29,59 +28,25 @@ Everything is saved on this device, so it keeps working offline.</p>
   <div id="subs"><p class="muted">None yet.</p></div>
 </div>
 
+{% if my_entries %}
 <div class="card" id="hours">
-  <h2 style="margin-top:0; font-size:1.1rem;">⏱ Log other hours</h2>
-  <p class="muted" style="margin-top:0;">For time on this project that isn't tied to a task
-  (shop time, standby…). Task time is best logged on the task itself, above. These go to
-  your supervisor to approve — overtime is figured automatically past the weekly limit.</p>
-  <form method="post" action="{{ url_for('log_my_hours') }}">
-    <input type="hidden" name="project_id" value="{{ project['id'] }}">
-    <div class="form-grid">
-      <div class="field"><label>Date</label><input type="date" name="work_date" value="{{ today }}"></div>
-      <div class="field">
-        <label>Pay type</label>
-        <select name="pay_type_id">
-          {% for t in pay_types %}<option value="{{ t['id'] }}">{{ t["name"] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Hours *</label><input name="hours" type="number" step="0.25" min="0" required placeholder="8"></div>
-      <div class="field wide"><label>Note</label><input name="note" placeholder="optional"></div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Submit hours</button></div>
-  </form>
-
-  <div style="margin-top:0.8rem;">
-    <a href="{{ url_for('timesheet') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕒 My full timesheet</a>
-  </div>
-
-  {% if my_entries %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours on this project</h3>
+  <h2 style="margin-top:0; font-size:1.1rem;">⏱ Your recent hours on this project</h2>
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Date</th><th>Pay type</th><th style="text-align:right;">Hours</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th style="text-align:right;">Hours</th><th>Status</th></tr></thead>
     <tbody>
       {% for e in my_entries %}
       <tr>
         <td class="muted">{{ e["work_date"] or "—" }}</td>
-        <td>{{ e["type_name"] or "—" }}</td>
-        <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
+        <td style="text-align:right;">{{ "%.2f"|format(e["reported_hours"] or 0) }}</td>
         <td><span class="badge {{ '' if e['status'] == 'Approved' else 'warn' }}">{{ e["status"] }}</span></td>
-        <td>
-          {% if e["status"] == "Pending" %}
-          <form method="post" action="{{ url_for('delete_my_hours', entry_id=e['id']) }}" style="margin:0;"
-                onsubmit="return confirm('Remove this pending time entry?');">
-            <input type="hidden" name="project_id" value="{{ project['id'] }}">
-            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
-          </form>
-          {% endif %}
-        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  {% endif %}
 </div>
+{% endif %}
 
 <div class="card" id="receipts">
   <h2 style="margin-top:0; font-size:1.1rem;">🧾 Add a receipt</h2>
@@ -173,17 +138,14 @@ Everything is saved on this device, so it keeps working offline.</p>
   const LS_TASKS = "compendium_wb_tasks", LS_QUEUE = "compendium_wb_queue", LS_MATS = "compendium_wb_mats";
   const PROJECT_ID = {{ project['id'] }};
   const TODAY = {{ today | tojson }};
-  const PAY_TYPES = {{ pay_types_js | tojson }};
-  const PALETTE = ["#1a6e3c", "#b45309", "#1d4ed8", "#6d28d9", "#0891b2", "#be185d", "#4d7c0f", "#9a3412"];
   const FIELD_STAGES = ["In Progress", "Wrap-up"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let tasks = load(LS_TASKS, []);
-  let queue = load(LS_QUEUE, {});   // id -> {status, notes, work_date, segments, base_updated_at}
+  let queue = load(LS_QUEUE, {});   // id -> {status, notes, work_date, hours, base_updated_at}
   let pending = {};
   let submissions = [];
   let materials = load(LS_MATS, {});
-  const segState = {};              // id -> [{pay_type_id, hours}] (working, unsubmitted)
   function save() {
     localStorage.setItem(LS_TASKS, JSON.stringify(tasks));
     localStorage.setItem(LS_QUEUE, JSON.stringify(queue));
@@ -197,18 +159,6 @@ Everything is saved on this device, so it keeps working offline.</p>
     if (s === "On hand" || s === "Received") return "";
     return "neutral";
   }
-  function payName(pid) { const p = PAY_TYPES.find(x => x.id === pid); return p ? p.name : ""; }
-  function payColor(pid) { const i = PAY_TYPES.findIndex(x => x.id === pid); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
-  function defaultSeg() { return { pay_type_id: PAY_TYPES.length ? PAY_TYPES[0].id : null, hours: "" }; }
-  function getSegs(id) {
-    if (!segState[id]) {
-      const q = queue[id];
-      segState[id] = (q && q.segments && q.segments.length)
-        ? q.segments.map(s => ({ pay_type_id: s.pay_type_id, hours: s.hours }))
-        : [defaultSeg()];
-    }
-    return segState[id];
-  }
 
   function setNet() {
     const on = navigator.onLine, el = $("#net");
@@ -221,63 +171,6 @@ Everything is saved on this device, so it keeps working offline.</p>
     s.style.display = text ? "block" : "none";
   }
   const queueCount = () => Object.keys(queue).length;
-
-  function renderTimeline(el, segs) {
-    const valid = segs.filter(s => Number(s.hours) > 0);
-    const total = valid.reduce((a, s) => a + Number(s.hours), 0);
-    el.innerHTML = "";
-    if (total <= 0) {
-      el.innerHTML = '<span class="muted" style="font-size:0.8rem;">Enter the time it took — it shows here as a timeline.</span>';
-      return;
-    }
-    const bar = document.createElement("div");
-    bar.style.cssText = "display:flex; height:26px; border-radius:6px; overflow:hidden; border:1px solid var(--border);";
-    valid.forEach(s => {
-      const seg = document.createElement("div");
-      const pct = Number(s.hours) / total * 100;
-      seg.style.cssText = "flex:" + Number(s.hours) + " 0 0; background:" + payColor(s.pay_type_id) +
-        "; color:#fff; font-size:0.72rem; display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden;";
-      seg.title = payName(s.pay_type_id) + ": " + s.hours + "h";
-      seg.textContent = pct > 12 ? (s.hours + "h") : "";
-      bar.appendChild(seg);
-    });
-    el.appendChild(bar);
-    const legend = document.createElement("div");
-    legend.style.cssText = "display:flex; gap:0.7rem; flex-wrap:wrap; margin-top:0.3rem;";
-    legend.innerHTML = valid.map(s =>
-      '<span style="font-size:0.75rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' +
-      payColor(s.pay_type_id) + ';margin-right:3px;vertical-align:middle;"></span>' +
-      esc(payName(s.pay_type_id)) + ' ' + esc(s.hours) + 'h</span>').join("") +
-      ' <span class="muted" style="font-size:0.75rem;">· total ' + total.toFixed(2) + 'h</span>';
-    el.appendChild(legend);
-  }
-
-  function buildSegments(wrap, timeline, id) {
-    const segs = getSegs(id);
-    wrap.innerHTML = "";
-    segs.forEach((s, idx) => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex; gap:0.4rem; align-items:center; margin-bottom:0.35rem;";
-      const sel = document.createElement("select");
-      sel.style.cssText = "padding:0.25rem; flex:1; min-width:7rem;";
-      sel.innerHTML = PAY_TYPES.map(p => '<option value="' + p.id + '"' + (p.id === s.pay_type_id ? ' selected' : '') + '>' + esc(p.name) + '</option>').join("");
-      sel.addEventListener("change", () => { s.pay_type_id = Number(sel.value); renderTimeline(timeline, segs); });
-      const hrs = document.createElement("input");
-      hrs.type = "number"; hrs.step = "0.25"; hrs.min = "0"; hrs.placeholder = "hrs"; hrs.value = s.hours;
-      hrs.style.cssText = "width:5rem; padding:0.25rem;";
-      hrs.addEventListener("input", () => { s.hours = hrs.value; renderTimeline(timeline, segs); });
-      row.appendChild(sel); row.appendChild(hrs);
-      if (segs.length > 1) {
-        const rm = document.createElement("button");
-        rm.type = "button"; rm.className = "btn btn-secondary"; rm.textContent = "✕";
-        rm.style.cssText = "padding:0 0.5rem; font-size:0.8rem;";
-        rm.title = "Remove this time type";
-        rm.addEventListener("click", () => { segs.splice(idx, 1); buildSegments(wrap, timeline, id); renderTimeline(timeline, segs); });
-        row.appendChild(rm);
-      }
-      wrap.appendChild(row);
-    });
-  }
 
   function photoBlock(t, primary) {
     if (!t.is_photo_step) return null;
@@ -372,12 +265,10 @@ Everything is saved on this device, so it keeps working offline.</p>
     nrow.appendChild(nlabel); nrow.appendChild(note);
     card.appendChild(nrow);
 
-    // Time it took — date + segments + timeline
+    // Time it took — date + hours
     const timeWrap = document.createElement("div");
-    timeWrap.style.cssText = "margin-top:0.6rem; padding:0.6rem 0.7rem; background:var(--bg); border-radius:8px;";
-    const trow = document.createElement("div");
-    trow.style.cssText = "display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-bottom:0.45rem;";
-    trow.innerHTML = '<span style="font-weight:600; font-size:0.85rem;">⏱ Time it took</span>';
+    timeWrap.style.cssText = "margin-top:0.6rem; padding:0.6rem 0.7rem; background:var(--bg); border-radius:8px; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;";
+    timeWrap.innerHTML = '<span style="font-weight:600; font-size:0.85rem;">⏱ Time it took</span>';
     const dl = document.createElement("label");
     dl.className = "muted"; dl.style.cssText = "font-size:0.78rem; display:flex; gap:0.3rem; align-items:center;";
     const dInput = document.createElement("input");
@@ -385,25 +276,16 @@ Everything is saved on this device, so it keeps working offline.</p>
     dInput.value = (queue[t.id] && queue[t.id].work_date) ? queue[t.id].work_date : TODAY;
     dInput.style.padding = "0.2rem";
     dl.appendChild(document.createTextNode("on ")); dl.appendChild(dInput);
-    trow.appendChild(dl);
-    timeWrap.appendChild(trow);
-
-    const segWrap = document.createElement("div");
-    const timeline = document.createElement("div");
-    timeline.style.marginTop = "0.2rem";
-    timeWrap.appendChild(segWrap);
-
-    const addBtn = document.createElement("button");
-    addBtn.type = "button"; addBtn.className = "btn btn-secondary";
-    addBtn.style.cssText = "padding:0.2rem 0.6rem; font-size:0.8rem; margin:0.1rem 0 0.5rem;";
-    addBtn.textContent = "＋ Add time type";
-    addBtn.addEventListener("click", () => { getSegs(t.id).push(defaultSeg()); buildSegments(segWrap, timeline, t.id); renderTimeline(timeline, getSegs(t.id)); });
-    timeWrap.appendChild(addBtn);
-    timeWrap.appendChild(timeline);
+    timeWrap.appendChild(dl);
+    const hl = document.createElement("label");
+    hl.className = "muted"; hl.style.cssText = "font-size:0.78rem; display:flex; gap:0.3rem; align-items:center;";
+    const hInput = document.createElement("input");
+    hInput.type = "number"; hInput.step = "0.25"; hInput.min = "0"; hInput.placeholder = "hrs";
+    hInput.value = (queue[t.id] && queue[t.id].hours) ? queue[t.id].hours : "";
+    hInput.style.cssText = "width:5rem; padding:0.2rem;";
+    hl.appendChild(hInput); hl.appendChild(document.createTextNode(" hours"));
+    timeWrap.appendChild(hl);
     card.appendChild(timeWrap);
-
-    buildSegments(segWrap, timeline, t.id);
-    renderTimeline(timeline, getSegs(t.id));
 
     // Actions
     const actions = document.createElement("div");
@@ -411,12 +293,12 @@ Everything is saved on this device, so it keeps working offline.</p>
     const doneBtn = document.createElement("button");
     doneBtn.type = "button"; doneBtn.className = "btn";
     doneBtn.textContent = "✓ Submit as done";
-    doneBtn.addEventListener("click", () => submitTask(t.id, "Done", note.value, dInput.value));
+    doneBtn.addEventListener("click", () => submitTask(t.id, "Done", note.value, dInput.value, hInput.value));
     const blockBtn = document.createElement("button");
     blockBtn.type = "button"; blockBtn.className = "btn btn-secondary";
     blockBtn.textContent = "⚠ Can't finish";
     blockBtn.title = "Flag this as blocked — add a note about what's stopping it";
-    blockBtn.addEventListener("click", () => submitTask(t.id, "Blocked", note.value, dInput.value));
+    blockBtn.addEventListener("click", () => submitTask(t.id, "Blocked", note.value, dInput.value, hInput.value));
     actions.appendChild(doneBtn); actions.appendChild(blockBtn);
     card.appendChild(actions);
 
@@ -424,17 +306,14 @@ Everything is saved on this device, so it keeps working offline.</p>
     return card;
   }
 
-  function submitTask(id, status, notes, workDate) {
+  function submitTask(id, status, notes, workDate, hours) {
     const t = tasks.find(x => x.id === id);
     if (status === "Done") {
-      const segs = getSegs(id).filter(s => Number(s.hours) > 0);
-      if (!segs.length) { msg("Enter the time it took before submitting it as done.", "error"); return; }
       queue[id] = { status: "Done", notes: notes, work_date: workDate,
-        segments: segs.map(s => ({ pay_type_id: s.pay_type_id, hours: Number(s.hours) })),
-        base_updated_at: (t && t.updated_at) || "" };
+        hours: Number(hours) || 0, base_updated_at: (t && t.updated_at) || "" };
     } else { // Blocked
       if (!String(notes || "").trim()) { msg("Add a note about what's blocking it.", "error"); return; }
-      queue[id] = { status: "Blocked", notes: notes, work_date: workDate, segments: [],
+      queue[id] = { status: "Blocked", notes: notes, work_date: workDate, hours: 0,
         base_updated_at: (t && t.updated_at) || "" };
     }
     if (t) { t.status = status; t.notes = notes; }
@@ -528,14 +407,15 @@ Everything is saved on this device, so it keeps working offline.</p>
     const ids = Object.keys(queue);
     if (!ids.length) return;
     const changes = ids.map(id => Object.assign({ id: +id }, queue[id]));
+    const totalHours = changes.reduce((a, ch) => a + (Number(ch.hours) || 0), 0);
     try {
       const r = await fetch("/api/work-bag/submit", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ changes: changes }) });
+        body: JSON.stringify({ changes: changes, reported_hours: totalHours || null }) });
       if (r.status === 401) { msg("Please sign in to submit.", "error"); return; }
       const data = await r.json();
       if (data.error) { msg(data.error, "error"); return; }
-      changes.forEach(ch => { delete queue[ch.id]; delete segState[ch.id]; });
+      changes.forEach(ch => { delete queue[ch.id]; });
       save();
       msg("Submitted for approval — it counts once your supervisor approves it.", "");
       await pull();

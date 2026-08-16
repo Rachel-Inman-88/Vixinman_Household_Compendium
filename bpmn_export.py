@@ -22,10 +22,12 @@ bpmn.io / Camunda Modeler / any BPMN viewer.
 
 from xml.sax.saxutils import escape
 
-# Piece 24.5: swim-lanes are the company's functional departments (matching the
-# app's DASHBOARD_DEPARTMENTS / role model), plus the two external actors and the
-# Compendium automation. Replaces the earlier generic role labels (Foreman, System
-# Designer, …). LANE_TO_ROLES in app.py resolves each lane to the real Vixinman roles.
+# Piece 24.5 (revised Piece 35): swim-lanes describe the real functional
+# sequence of work on a project (Sales through Executive sign-off), plus the
+# two external actors and the Compendium automation. They no longer map to a
+# household staffing/role model — Piece 35 removed per-lane auto-assignment
+# (was LANE_TO_ROLES in app.py) since a small household doesn't need it;
+# tasks land unassigned and get hand-picked from the short roster instead.
 LANES = [
     "Sales", "Design", "Compendium System", "Permits",
     "Purchasing", "Installation", "Finance",
