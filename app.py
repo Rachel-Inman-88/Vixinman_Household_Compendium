@@ -1528,6 +1528,9 @@ TRASH_REGISTRY = {
     "household_idea": {"table": "household_ideas", "label": lambda r: r["name"],
                        "found_in": lambda db, r: "Backlog",
                        "in_use": lambda db, r: []},
+    "external_helper": {"table": "external_helpers", "label": lambda r: r["name"],
+                        "found_in": lambda db, r: "External Helpers",
+                        "in_use": lambda db, r: []},
     "credential": {"table": "household_member_credentials", "label": lambda r: r["name"],
                    "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Credentials",
                    "in_use": lambda db, r: []},
@@ -3650,6 +3653,70 @@ def backlog_delete(idea_id):
     ok, msg = trash_item("household_idea", idea_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("backlog_page"))
+
+
+# --------------------------------------------------------------- Piece 35: external helpers
+@app.route("/external-helpers")
+def external_helpers_page():
+    """A reusable contact roster for people who help the household but aren't
+    a household member — a contractor, tutor, coach, etc."""
+    db = get_db()
+    helpers = db.execute("SELECT * FROM external_helpers ORDER BY name").fetchall()
+    edit_id = request.args.get("edit", type=int)
+    edit_helper = db.execute(
+        "SELECT * FROM external_helpers WHERE id = ?", (edit_id,)
+    ).fetchone() if edit_id else None
+    return render_template("external_helpers.html", helpers=helpers,
+                           edit_helper=edit_helper)
+
+
+@app.route("/external-helpers/new", methods=["POST"])
+def new_external_helper():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("A name is required.", "error")
+        return redirect(url_for("external_helpers_page"))
+    db = get_db()
+    db.execute(
+        "INSERT INTO external_helpers (name, phone, email, specialty, notes)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (name, request.form.get("phone", "").strip(),
+         request.form.get("email", "").strip(),
+         request.form.get("specialty", "").strip(),
+         request.form.get("notes", "").strip()))
+    db.commit()
+    flash(f"Added: {name}")
+    return redirect(url_for("external_helpers_page"))
+
+
+@app.route("/external-helpers/<int:helper_id>/edit", methods=["POST"])
+def edit_external_helper(helper_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM external_helpers WHERE id = ?",
+                  (helper_id,)).fetchone() is None:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("A name is required.", "error")
+        return redirect(url_for("external_helpers_page", edit=helper_id))
+    db.execute(
+        "UPDATE external_helpers SET name = ?, phone = ?, email = ?,"
+        " specialty = ?, notes = ? WHERE id = ?",
+        (name, request.form.get("phone", "").strip(),
+         request.form.get("email", "").strip(),
+         request.form.get("specialty", "").strip(),
+         request.form.get("notes", "").strip(), helper_id))
+    db.commit()
+    flash(f"Updated: {name}")
+    return redirect(url_for("external_helpers_page"))
+
+
+@app.route("/external-helpers/<int:helper_id>/delete", methods=["POST"])
+@delete_required
+def delete_external_helper(helper_id):
+    ok, msg = trash_item("external_helper", helper_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("external_helpers_page"))
 
 
 # ------------------------------------------------- household-wide documents

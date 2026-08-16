@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}External Helpers{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🧰 External Helpers <span class="muted" style="font-size:0.95rem; font-weight:400;">— contractors, tutors, coaches, and others who help but aren't household members</span></h1>
+</div>
+
+<div class="card">
+  {% if helpers %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Name</th><th>Specialty</th><th>Phone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for h in helpers %}
+      <tr>
+        <td>{{ h["name"] }}</td>
+        <td class="muted">{{ h["specialty"] or "—" }}</td>
+        <td>{{ h["phone"] or "—" }}</td>
+        <td>{{ h["email"] or "—" }}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ h["notes"] or "—" }}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('external_helpers_page', edit=h['id']) }}#helper-form"
+             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+          {% if can('delete') %}
+          <form method="post" action="{{ url_for('delete_external_helper', helper_id=h['id']) }}"
+                onsubmit="return confirm('Send this contact to the trash?');" style="margin:0; display:inline;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No external helpers on file yet — add one below.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="helper-form">
+  {% set eh = edit_helper %}
+  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit contact" if eh else "＋ New contact" }}</h2>
+  <form method="post" action="{{ url_for('edit_external_helper', helper_id=eh['id']) if eh else url_for('new_external_helper') }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="name">Name *</label>
+        <input id="name" name="name" required value="{{ eh['name'] if eh else '' }}" placeholder="e.g. Sandia Electric — Mike"></div>
+      <div class="field"><label for="specialty">Specialty</label>
+        <input id="specialty" name="specialty" value="{{ eh['specialty'] if eh else '' }}" placeholder="e.g. Electrician, Piano tutor"></div>
+      <div class="field"><label for="phone">Phone</label>
+        <input id="phone" name="phone" value="{{ eh['phone'] if eh else '' }}"></div>
+      <div class="field"><label for="email">Email</label>
+        <input id="email" name="email" type="email" value="{{ eh['email'] if eh else '' }}"></div>
+      <div class="field wide"><label for="notes">Notes</label>
+        <input id="notes" name="notes" value="{{ eh['notes'] if eh else '' }}" placeholder="anything else worth remembering"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add contact" }}</button>
+      {% if eh %}<a href="{{ url_for('external_helpers_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
