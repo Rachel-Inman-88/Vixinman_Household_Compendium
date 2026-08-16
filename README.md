@@ -2,9 +2,10 @@
 
 **Compendium** — the Vixinman household's task/project manager. Create project
 profiles directly for the household, and automatically surface the right resources
-(licenses, permits, compliance items, links, phone numbers, docs) based on each
+(certifications, permits, prerequisites, links, phone numbers, docs) based on each
 project's fields — then run the whole project through a standardized, role-based pipeline.
-Someday/maybe ideas live in a household idea backlog until you're ready to start them.
+Recurring internal obligations (taxes, homeschool registration) and someday/maybe
+ideas each have their own place, so nothing has to live on a project to be tracked.
 
 **Proprietary software — see [LICENSE](LICENSE). Do not distribute.**
 
@@ -61,28 +62,34 @@ can confirm a pull/update took effect.
   one project (insurance, warranties, correspondence), with categories.
 
 ### Projects
-- **Project profiles** belong to the household directly, with full field capture.
-- **Rules engine** — project selections → the licenses, permits, and compliance
-  items that apply, across two pages:
-  - **Rules Editor** (`/rules`): the editable catalog of resources (links, phone
-    numbers, docs, accepted file formats). Grouped by category.
-  - **L/P/C Directory** (`/directory`): a read-only lookup filtered by project type.
-    Shared requirements are **consolidated** — a requirement needed by more than
-    one selection (e.g. EE-98 for PV + Battery) shows **once** with every
-    triggering scenario listed beneath, instead of repeating. Compliance rules
-    can also carry the **verbatim source text** (the exact code wording), shown
-    above the shorthand + source link, above the scenarios it applies to.
+- **Project profiles** belong to the household directly, with full field capture,
+  including a **project category** (Home Improvement / Personal Improvement) and
+  free-text **project type**, so the Requirements Engine has household-appropriate
+  fields to match against.
+- **Requirements Engine** — project selections → the certifications, permits, and
+  prerequisites that apply, across two pages:
+  - **Requirements Editor** (`/rules`): the editable catalog of resources (links,
+    phone numbers, docs, accepted file formats), grouped by category
+    (Certification / Permit / Prerequisite / Link / Phone / Doc). Each rule can
+    also carry optional, purely informational **cost / time / maintenance notes**.
+  - **Requirements Library** (`/directory`): a read-only lookup filtered by project
+    type. Shared requirements are **consolidated** — a requirement needed by more
+    than one selection shows **once** with every triggering scenario listed
+    beneath, instead of repeating. Prerequisite rules can also carry the
+    **verbatim source text**, shown above the shorthand + source link.
+  - **Standalone recurring requirements**: a rule can skip the project condition
+    entirely and instead repeat on its own interval — for internal household
+    obligations that aren't tied to any project (taxes, homeschool registration).
+    These show on the Requirements Editor and on the dashboard's **My
+    requirements** card, with the same assign/mark-done/reminder mechanics as
+    Chores.
 - **Verbatim source text** is an editable per-rule field for capturing the exact
-  wording from the code/source, surfaced on the L/P/C Directory.
+  wording from the code/source, surfaced on the Requirements Library.
 - **Verification callouts**: a rule can carry a visible **⚠ Verify / ⚠ Unverified**
-  chip (with a legend) so field staff know what to confirm before relying on it.
-  This is an **explicit, editable field** in the Rules Editor (a dropdown:
-  none / Verify / Unverified) — a human can add or remove the callout on any
-  rule/compliance note at will; existing rules were backfilled from the original
-  NM reference-set convention.
-- **NM reference data** (statewide licensing, all 33 counties' AHJ contacts,
-  every utility's interconnection contacts) is kept reconciled against the
-  verified July 2026 reference set.
+  chip (with a legend) so anyone using it knows what to confirm before relying on
+  it. This is an **explicit, editable field** in the Requirements Editor (a
+  dropdown: none / Verify / Unverified) — add or remove the callout on any rule
+  at will.
 - **County → utility auto-matching**: picking a county on the project form filters
   the utility-provider dropdown to the providers that serve it (verified doc-03
   table). If one utility serves the county it's auto-selected; if several do,
@@ -115,9 +122,9 @@ can confirm a pull/update took effect.
   editing it applies everywhere immediately.
 - **Materials lists** per project (status: Needed → Quoted → Ordered → Backordered →
   Received → On hand → Installed) and **document upload/storage** with
-  per-requirement filing coverage. The project's **L/P/C tab** leads with **Permits**
-  — each with an **inline upload slot** so the permit coordinator views the
-  requirement and files the document in one place — with licenses and compliance
+  per-requirement filing coverage. The project's **Requirements tab** leads with
+  **Permits** — each with an **inline upload slot** to view the requirement and
+  file the document in one place — with certifications and prerequisites
   collapsed below. The **Permits dashboard** shows a **permits-filed X/Y** column;
   the **Purchasing dashboard** shows a **procurement rollup** of materials by
   status across Prep-stage projects.
@@ -449,6 +456,24 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.7** — redesigned the Rules Editor into a household **Requirements
+  Engine**. `RULE_CATEGORIES` renamed for household use (License →
+  Certification, Compliance → Prerequisite; a migration remaps existing
+  rows). Projects gain **project_category** (Home Improvement / Personal
+  Improvement) and free-text **project_type**, giving rules something
+  household-relevant to match against — the solar-specific project fields
+  stay in place but are no longer the only option. Each rule can carry
+  optional, purely informational **est_cost / est_time / maintenance_note**
+  fields. A rule can also skip the project condition entirely and become a
+  **standalone recurring requirement** — for internal household obligations
+  not tied to any project (taxes, homeschool registration) — reminded on its
+  own interval with the same assign/mark-done mechanics as Chores, plus a
+  "My requirements" dashboard card. The solar-specific seed content
+  (`SEED_RULES`, the NM AHJ/utility rule batches) is gone; a fresh install
+  now starts with an empty Requirements Engine. `/rules` and `/directory`
+  keep their URLs, relabeled **Requirements Editor** / **Requirements
+  Library** throughout the nav and UI.
 
 - **v0.6** — added **Chores** (`/chores`): a new `routine_tasks` table for
   recurring household tasks that aren't tied to any project (trash day,

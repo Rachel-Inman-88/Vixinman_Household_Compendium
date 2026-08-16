@@ -149,6 +149,54 @@ Verified via fresh-DB boot, a full create/edit/mark-done/delete POST cycle
 exactly once per cycle, no duplicates on a second call), delete correctly
 blocked until granted, and a ~30-route sweep.
 
+**The Rules Editor → Requirements Engine redesign (sixth piece of the
+structural reorg, Piece 38 / v0.7) is done.** This turned out to be much
+bigger than "keeps its shape almost exactly" (the framing this doc used to
+carry, below) — the user's own words: a household's requirements are mostly
+internal paperwork (taxes, homeschool registration) and budgeting, and its
+projects split into home-improvement and personal-improvement work, neither
+of which the old solar `PROJECT_FIELDS` could describe. Three things landed
+together:
+- `projects` gained **`project_category`** (Home Improvement / Personal
+  Improvement) and free-text **`project_type`**, added to `PROJECT_FIELDS`
+  so rules have household-relevant fields to match against. The solar
+  fields stay (untouched, just no longer the only option) — ripping them
+  out is a separate future "Projects" piece, out of scope here.
+- `RULE_CATEGORIES` renamed (License → Certification, Compliance →
+  Prerequisite; Permit/Link/Phone/Doc unchanged), with a meta-guarded
+  migration remapping existing rows. `resource_rules` gained optional
+  descriptive fields (`est_cost`/`est_time`/`maintenance_note` — plain text,
+  informational, explicitly **not** a calculator per the user) and the
+  columns for a **standalone recurring requirement**: a rule with no
+  `field_name` and a `recurrence_days` set is never matched against any
+  project (`condition_met()` already no-ops on a blank `field_name` — zero
+  code changes needed there) and instead reminds on its own interval via
+  `ensure_requirement_reminders()`, mirroring `ensure_routine_task_reminders()`
+  from Piece 37. This is the vehicle for household paperwork that isn't tied
+  to any project — the user was explicit this should live **inside** the
+  Requirements Engine, not extend Chores.
+- The solar-specific seed content (`SEED_RULES`/`SEED_RULES_V8`, the NM
+  AHJ/utility rule batches sourced from `nm_directory.py`) is gone — a fresh
+  install now starts with an empty Requirements Engine. `seed_version`
+  watermarking means an existing database is unaffected; any rule rows it
+  already has are left in place for review/delete via the Requirements
+  Editor, same "don't destroy existing data" precedent as Piece 36's
+  inventory cut. `nm_directory.py` itself is untouched beyond dropping the
+  now-unused rule-batch import — its AHJ/utility contact data is reserved
+  for the still-separate vendor/contractor directory piece below.
+- `/rules` and `/directory` keep their URLs, relabeled **Requirements
+  Editor** / **Requirements Library** in the nav and page titles.
+
+Verified via compile, a Jinja parse sweep of all 49 templates, fresh-DB
+boot (confirms the new columns and zero seeded rules), a migration test
+(pre-existing `License`/`Compliance` rows correctly remap, built by
+injecting legacy rows before the first-ever `init_db()` call per the Piece
+36 lesson), a full Flask test-client cycle (project-triggered rule matching
+by `project_category` and correctly *not* matching a different category,
+standalone requirement create → reminder fires once → mark-done advances
+`next_due` and clears `reminder_sent`, project create/edit round-trips
+`project_category`/`project_type`), and a 42-route GET sweep.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -158,13 +206,15 @@ blocked until granted, and a ~30-route sweep.
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   **after every feature/file/database reorg piece below is done**, not incrementally
   per piece.
-- **The rest of the structural/domain reorg** — the Requirements Engine
-  relabel and the vendor/contractor directory repurpose of `nm_directory.py`.
-  See below — the open questions on both are already resolved.
-- **A manual browser click-through of Pieces 35–37** — verification so
+- **The vendor/contractor directory repurpose of `nm_directory.py`** — its
+  AHJ/utility contact data (33 counties, every utility) is still sitting
+  there unused now that the Requirements Engine no longer imports its rule
+  batches. Repurposing it into a household vendor/contractor directory is
+  its own not-yet-started piece.
+- **A manual browser click-through of Pieces 35–38** — verification so
   far is automated (Flask test-client route sweeps + POST flows); no one has
-  clicked through the new household-member/dashboard/access/inventory UI in
-  a real browser yet.
+  clicked through the new household-member/dashboard/access/inventory/
+  requirements UI in a real browser yet.
 
 ---
 
