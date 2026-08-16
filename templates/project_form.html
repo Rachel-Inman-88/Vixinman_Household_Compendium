@@ -52,14 +52,8 @@ recordkeeping.</p>
     </div>
     <div class="field">
       <label for="utility_provider">Utility provider</label>
-      <div style="display:flex; gap:0.4rem; align-items:center;">
-        <select id="utility_provider" name="utility_provider" style="flex:1;"
-                data-current="{{ values.get('utility_provider', '') }}"></select>
-        <button type="button" id="util_override" class="btn btn-secondary"
-                style="padding:0.4rem 0.7rem; white-space:nowrap;"
-                title="Show every utility statewide — for a site that doesn't follow the standard county mapping">Manual override</button>
-      </div>
-      <p id="util_note" class="muted" style="margin:0.25rem 0 0; font-size:0.8rem;"></p>
+      <input id="utility_provider" name="utility_provider"
+             value="{{ values.get('utility_provider', '') }}">
     </div>
     {% if editing_job_id %}
     <div class="field wide">
@@ -243,73 +237,5 @@ recordkeeping.</p>
     });
   }
 
-  // County-aware utility dropdown. Choosing a county filters the utility list
-  // to the providers that serve it (verified doc-03 table); "Manual override"
-  // opens the full statewide list for the rare non-standard case. The utility
-  // still matters off-grid — the meter/account ties to the provider, so we keep
-  // the field regardless of grid-tie vs off-grid.
-  const COUNTY_UTILITIES = {{ county_utilities_json|safe }};
-  const ALL_UTILITIES = {{ utilities_json|safe }};
-  const countyInput = document.getElementById("county");
-  const utilSel = document.getElementById("utility_provider");
-  const overrideBtn = document.getElementById("util_override");
-  const utilNote = document.getElementById("util_note");
-  let manualOverride = false;
-
-  function mappedUtilities(raw) {
-    const c = (raw || "").trim();
-    if (COUNTY_UTILITIES[c]) return COUNTY_UTILITIES[c];
-    if (COUNTY_UTILITIES[c + " County"]) return COUNTY_UTILITIES[c + " County"];
-    const lc = c.toLowerCase();
-    for (const k in COUNTY_UTILITIES) {
-      if (k.toLowerCase() === lc) return COUNTY_UTILITIES[k];
-    }
-    return null;
-  }
-
-  function buildUtilOptions(isInitial) {
-    const prev = isInitial ? (utilSel.dataset.current || "") : utilSel.value;
-    const mapped = mappedUtilities(countyInput.value);
-    const useAll = manualOverride || !mapped;
-    let list = (useAll ? ALL_UTILITIES : mapped).slice();
-    if (!list.includes("N/A")) list.push("N/A");   // off-grid / no utility
-    let selected = "";
-    if (prev && list.includes(prev)) {
-      selected = prev;
-    } else if (isInitial && prev) {                 // keep a saved out-of-map value
-      list.unshift(prev);
-      selected = prev;
-    } else if (!useAll && mapped && mapped.length === 1) {
-      selected = mapped[0];                         // single serving utility → auto-match
-    }
-    utilSel.innerHTML = "";
-    const blank = document.createElement("option");
-    blank.value = ""; blank.textContent = "— select utility —";
-    utilSel.appendChild(blank);
-    list.forEach(u => {
-      const o = document.createElement("option");
-      o.value = u; o.textContent = u;
-      if (u === selected) o.selected = true;
-      utilSel.appendChild(o);
-    });
-    if (manualOverride) {
-      utilNote.textContent = "Manual override on — showing all NM utilities.";
-    } else if (mapped && mapped.length > 1) {
-      utilNote.textContent = "Multiple utilities serve this county — pick the one on the customer's bill.";
-    } else if (mapped && mapped.length === 1) {
-      utilNote.textContent = "Auto-matched from the county. Useful even off-grid (ties the meter to the provider).";
-    } else {
-      utilNote.textContent = "Choose a county to auto-match its utilities, or use Manual override for the full list.";
-    }
-    overrideBtn.textContent = manualOverride ? "Match to county" : "Manual override";
-  }
-
-  overrideBtn.addEventListener("click", () => {
-    manualOverride = !manualOverride;
-    buildUtilOptions(false);
-  });
-  countyInput.addEventListener("input", () => buildUtilOptions(false));
-  countyInput.addEventListener("change", () => buildUtilOptions(false));
-  buildUtilOptions(true);
 </script>
 {% endblock %}

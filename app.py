@@ -36,12 +36,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from bpmn_export import build_project_bpmn
-# Piece 38: only the reference data (counties/utilities) is still used — the
-# rule-batch content (NEW_RULES_V10, CORRECTIONS_V10/11) was solar-specific
-# and is gone along with the rest of SEED_RULES/SEED_BATCHES below. The rest
-# of nm_directory.py (AHJ/utility contact data) is untouched, reserved for a
-# future vendor/contractor directory piece.
-from nm_directory import COUNTIES_ALL, COUNTY_UTILITIES, UTILITIES_ALL
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 from inventory_seed import INVENTORY_CATEGORY_SPECS
 from inventory_research import (
@@ -519,10 +513,20 @@ SEED_RULES = []
 SEED_BATCHES = {}
 SEED_BATCH_SQL = {}
 
-# Canonical values suggested on the project form so free-typed utilities and
-# counties actually match whatever rules someone writes against them.
-UTILITIES = UTILITIES_ALL
-COUNTIES = COUNTIES_ALL
+# Piece 39: county suggestions for the project form's free-text county field
+# — the last thing kept from the now-deleted nm_directory.py. The statewide
+# utility list and the county->utility auto-match feature that used to live
+# there were solar-business logic for picking a utility per job site across
+# NM — cut, since the household has one property and one utility;
+# utility_provider is now a plain text field. The NM AHJ/utility rule-batch
+# data (dead since Piece 38 dropped its import) went with it.
+COUNTIES = [f"{c} County" for c in (
+    "Bernalillo", "Catron", "Chaves", "Cibola", "Colfax", "Curry", "De Baca",
+    "Doña Ana", "Eddy", "Grant", "Guadalupe", "Harding", "Hidalgo", "Lea",
+    "Lincoln", "Los Alamos", "Luna", "McKinley", "Mora", "Otero", "Quay",
+    "Rio Arriba", "Roosevelt", "San Juan", "San Miguel", "Sandoval",
+    "Santa Fe", "Sierra", "Socorro", "Taos", "Torrance", "Union", "Valencia",
+)]
 
 # These products share one utility-connection choice on the project form.
 GRID_CONNECTION_FIELDS = {
@@ -3697,9 +3701,7 @@ def render_project_form(values, selected, existing_jobs=False,
         project_categories=PROJECT_CATEGORIES,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         payment_terms=PAYMENT_TERMS,                       # Piece 31.8
-        utilities=UTILITIES, counties=COUNTIES,
-        county_utilities_json=json.dumps(COUNTY_UTILITIES),
-        utilities_json=json.dumps(UTILITIES),
+        counties=COUNTIES,
         existing_jobs=jobs_on_books, editing_job_id=editing_job_id,
     )
 
