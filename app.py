@@ -71,7 +71,7 @@ def ensure_backlog_reminders(db):
     and from the background scheduler (run_maintenance) — the latter has no
     request/app context, so this builds plain link paths, not url_for."""
     recipients = [r["id"] for r in db.execute(
-        "SELECT id FROM employees WHERE COALESCE(username,'') != ''").fetchall()]
+        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
     if not recipients:
         return
     made = False
@@ -139,64 +139,22 @@ PROJECT_FIELD_LABELS = {
 # managed on the profile page.
 # Piece 19.3: names are entered as first/last (+ optional nickname); `name`
 # is the composed "First Last" display value kept for everything that reads it.
-EMPLOYEE_FIELDS = ["name", "first_name", "last_name", "nickname",
-                   "roles", "schedule"]
-# Piece 13: an employee becomes a login by gaining a username + password +
-# access level. Kept off the plain-text EMPLOYEE_FIELDS above and handled
-# separately so a normal profile edit never touches account data by accident.
-EMPLOYEE_AUTH_FIELDS = ["username", "password_hash", "access_level"]
-ACCESS_LEVELS = ["Standard", "Admin"]
+HOUSEHOLD_MEMBER_FIELDS = ["name", "first_name", "last_name", "nickname",
+                           "role", "schedule"]
 
-# Piece 17: the tools/functions a General Manager can grant to an individual
-# (with an optional expiry). GM ⇒ all of these automatically; Admin ⇒ every
-# tool below except "delete"; Standard ⇒ only what's granted.
+# Piece 17 (revised Piece 35): the tools/functions an admin can grant to a
+# non-admin household member. Admin ⇒ all of these automatically except
+# "delete"; everyone else ⇒ only what's explicitly granted.
 PERMISSIONS = {
     "rules.manage": "Manage rules",
     "catalog.manage": "Manage catalog (appliances & components)",
     "inventory.manage": "Manage inventory (add/edit items, tools, stock)",
     "inventory.register": "Register & print inventory tags (barcodes)",
-    "employees.manage": "Manage employees & accounts",
+    "household.manage": "Manage household members & accounts",
     "approvals": "Approve field work",
     "audit.view": "View the audit log",
     "delete": "Delete data (sends it to the trash)",
 }
-# Piece 24.6: department/role-scoped access. Holding a role confers its module
-# permissions automatically, so access follows the org chart instead of needing
-# a per-person grant for everyone. A person's effective permissions are the
-# union of these role defaults and any explicit grants; the GM still has
-# everything, and 'delete' is deliberately never role-conferred (it stays
-# GM-or-explicit-grant, preserving the soft-delete safety model).
-ROLE_PERMISSIONS = {
-    "Operations Manager": {"inventory.manage", "approvals", "audit.view"},
-    # The warehouse manager owns tag registration/printing (Piece 26.1); the GM
-    # can also grant "inventory.register" to whoever fills that role via /access.
-    "Inventory Manager": {"inventory.manage", "inventory.register"},
-    "Purchasing Agent": {"inventory.manage"},
-    "Warehouse Assistant": {"inventory.manage"},
-    "Designer": {"inventory.manage"},          # actions the stale-stock queue
-    "Administration Manager": {"employees.manage"},
-    "Human Resources Manager": {"employees.manage"},
-    "Finance Manager": {"approvals"},
-    "Research & Development Manager": {"rules.manage", "catalog.manage"},
-    "Process Developer": {"rules.manage", "catalog.manage"},
-    "Software Developer": {"rules.manage", "catalog.manage"},
-}
-
-
-def roles_of(user):
-    """The set of role names a user holds (comma-separated in employees.roles)."""
-    if user is None:
-        return set()
-    return {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
-
-
-def permissions_from_roles(user):
-    """The permissions a user gets purely from the roles they hold."""
-    held = roles_of(user)
-    out = set()
-    for role in held:
-        out |= ROLE_PERMISSIONS.get(role, set())
-    return out
 PASSWORD_MIN_LEN = 6
 # Piece 29.1: self-service password reset. A menu of security questions to
 # choose from (plus a free-typed "own question" option in the form). Enrolling
@@ -216,36 +174,6 @@ SECURITY_QUESTIONS = [
 SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled
 SECURITY_QUESTIONS_ASK = 2        # how many (randomly chosen) to answer on reset
 SECURITY_RESET_MAX_ATTEMPTS = 5   # wrong tries before the account auto-locks
-
-# Piece 29.2: default new-employee onboarding checklist (title, description,
-# category). Seeded once into onboarding_steps; fully editable afterwards.
-ONBOARDING_SEED = [
-    ("Complete new-hire paperwork", "I-9, W-4, direct-deposit and signed offer letter on file.", "HR"),
-    ("Add to payroll & benefits", "Set up in payroll; enrol in health/PTO and set the base wage.", "HR"),
-    ("Collect emergency contacts", "Emergency contact and any medical notes recorded.", "HR"),
-    ("Create Compendium login & assign roles", "Give a username/password and set their org-chart roles and access.", "IT"),
-    ("Review licenses & certifications", "Record any electrical/PV/EPA licenses with expiry dates.", "HR"),
-    ("Safety orientation", "Ladder, fall-protection and PPE basics; site-safety expectations.", "Safety"),
-    ("Electrical & jobsite safety review", "OSHA-10 / lockout-tagout / arc-flash awareness as applicable.", "Safety"),
-    ("Vehicle & driving policy", "Company-vehicle assignment, driving record and fuel-card rules.", "Operations"),
-    ("Tool issue & barcode-tag training", "Issue tools; show how to scan/register inventory tags.", "Operations"),
-    ("Walk through project workflow & Work Bag", "How projects flow through the pipeline and how to use the field Work Bag.", "Operations"),
-    ("Assign a mentor & first-week schedule", "Pair with an experienced installer and set the first-week plan.", "Operations"),
-]
-
-
-def seed_onboarding_steps(db):
-    """Populate the default onboarding checklist once (meta-guarded), so every
-    install has a starting template that HR can then tailor."""
-    if db.execute("SELECT 1 FROM meta WHERE key = 'onboarding_seeded'").fetchone():
-        return
-    if db.execute("SELECT COUNT(*) FROM onboarding_steps").fetchone()[0] == 0:
-        for order, (title, desc, cat) in enumerate(ONBOARDING_SEED):
-            db.execute(
-                "INSERT INTO onboarding_steps (title, description, category,"
-                " sort_order) VALUES (?, ?, ?, ?)", (title, desc, cat, order))
-    db.execute("INSERT INTO meta (key, value) VALUES ('onboarding_seeded', '1')"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
 
 
 def seed_finance_reference(db):
@@ -283,96 +211,23 @@ CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes
 # A credential within this many days of its expiry date is flagged
 # "expiring soon" on the employee and project pages.
 EXPIRY_SOON_DAYS = 60
-# Vixinman's roles, grouped by department (Piece 16.1) so the employee form's role
-# picker reads like the org chart. An employee may hold any number; roles are
-# stored comma-separated, like the project form's products. EMPLOYEE_ROLES is the
-# flat list derived from the groups, so the two never drift apart.
-# Piece 30.9: the org chart as a hierarchy (matches the finance team's outline).
-# This single tree drives the New Employee "Roles" picker (rendered as an indented
-# org tree) and, flattened, the list of valid roles.
-ROLE_TREE = [
-    {"role": "General Manager", "children": [
-        {"role": "Sales & Marketing Manager", "children": [
-            {"role": "Marketing Associate"},
-            {"role": "Inside Sales Rep"},
-            {"role": "Outside Sales Rep"},
-        ]},
-        {"role": "Operations Manager", "children": [
-            {"role": "Designer"},
-            {"role": "Inventory Manager", "children": [
-                {"role": "Purchasing Agent"},
-                {"role": "Warehouse Assistant"},
-            ]},
-            {"role": "Permit Coordinator"},
-            {"role": "Scheduling Coordinator"},
-            {"role": "Lead Installer", "children": [
-                {"role": "Installer"},
-            ]},
-            {"role": "Service Technician"},
-        ]},
-        {"role": "Administration Manager", "children": [
-            {"role": "Facilities Manager"},
-            {"role": "Human Resources Manager", "children": [
-                {"role": "Hiring and Performance Coordinator"},
-                {"role": "Payroll Manager", "children": [
-                    {"role": "Payroll Administrator"},
-                ]},
-            ]},
-            {"role": "Administrative Assistant"},
-        ]},
-        {"role": "Finance Manager", "children": [
-            {"role": "Bookkeeper"},
-        ]},
-        {"role": "Research & Development Manager", "children": [
-            {"role": "Product Portfolio Manager"},
-            {"role": "Process Developer"},
-            {"role": "Software Developer"},
-        ]},
-    ]},
-]
+# Piece 35: the household's role set, replacing the 28-role solar org chart.
+# A household member holds exactly one role (was comma-separated multiple
+# roles under the old model). Parent/Child map to HANDOFF.md's original
+# Adult/Kid concept under friendlier names; Assistant is a household member
+# with their own login who isn't a Parent (not auto-admin) — distinct from
+# an External helper (external_helpers table), who isn't a household member
+# at all.
+HOUSEHOLD_ROLES = ["Parent", "Child", "Assistant"]
 
-
-def _flatten_roles(nodes):
-    out = []
-    for n in nodes:
-        out.append(n["role"])
-        out.extend(_flatten_roles(n.get("children", [])))
-    return out
-
-
-EMPLOYEE_ROLES = _flatten_roles(ROLE_TREE)
-# Piece 30.9: legacy role name → current name, for a one-time migration of the
-# employees.roles text (and back-compat when reading old data).
-ROLE_RENAMES = {
-    "Sales and Marketing Manager": "Sales & Marketing Manager",
-    "Research and Development Manager": "Research & Development Manager",
-    "Warehouse Associate": "Warehouse Assistant",
-    "HR Manager": "Human Resources Manager",
-}
-
-# Piece 16.1: Vixinman's org chart as a one-time employee seed (matched from the
-# provided diagram). Each person may hold many roles.
-ORG_CHART_TEAM = [
-    ("Cary", ["General Manager", "Sales & Marketing Manager",
-              "Administration Manager", "Finance Manager",
-              "Research & Development Manager", "Marketing Associate",
-              "Inside Sales Rep", "Outside Sales Rep", "Designer",
-              "Inventory Manager", "Purchasing Agent", "Scheduling Coordinator",
-              "Lead Installer", "Installer", "Service Technician",
-              "Human Resources Manager", "Product Portfolio Manager",
-              "Process Developer"]),
-    ("Will", ["Operations Manager", "Purchasing Agent", "Scheduling Coordinator",
-              "Lead Installer", "Installer", "Service Technician"]),
-    ("Rachel", ["Marketing Associate", "Process Developer"]),
-    ("Louie", ["Inside Sales Rep", "Outside Sales Rep", "Scheduling Coordinator",
-               "Installer"]),
-    ("Trish", ["Permit Coordinator", "Purchasing Agent", "Warehouse Assistant",
-               "Facilities Manager", "Administrative Assistant"]),
-    ("Si", ["Purchasing Agent", "Lead Installer", "Installer",
-            "Service Technician"]),
-    ("Lisa", ["Payroll Manager", "Payroll Administrator"]),
-    ("Vanessa", ["Bookkeeper", "Payroll Administrator"]),
-    ("Brady", ["Process Developer", "Software Developer"]),
+# Piece 16.1 (revised Piece 35): the household's roster as a one-time seed
+# for a fresh install — (name, role, is_admin).
+HOUSEHOLD_ROSTER = [
+    ("Jacob", "Parent", True),
+    ("Rachel", "Parent", True),
+    ("Victor", "Child", False),
+    ("Dmitri", "Child", False),
+    ("Gremory", "Assistant", False),
 ]
 
 UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
@@ -570,25 +425,6 @@ COST_MODEL_SEED = {
         ("G&A", "", None, None, 22),
     ],
 }
-
-# Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
-# the employee's base wage (so it's per-employee automatically) or a "flat"
-# $/hr. Seeded once; fully editable, and each employee can override any type's
-# value. Vixinman's real numbers get entered in Payroll → Settings.
-PAY_METHODS = ["multiplier", "flat"]
-PAY_TYPE_SEED = [
-    # (name, method, default value, sort_order). Overtime is NOT a logged type —
-    # it's applied automatically past the weekly threshold (see OT_* below).
-    ("Regular", "multiplier", 1.0, 0),
-    ("Roof time", "multiplier", 1.25, 1),
-    ("Travel time", "flat", 0.0, 2),
-    ("Holiday (2x)", "multiplier", 2.0, 3),
-    ("PTO", "multiplier", 1.0, 4),
-]
-# Auto-overtime defaults (editable in Pay settings, stored in `meta`): hours
-# over the weekly threshold of OT-eligible time earn the OT multiplier.
-OT_THRESHOLD_DEFAULT = 40.0
-OT_MULTIPLIER_DEFAULT = 1.5
 
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
@@ -1067,32 +903,22 @@ PROJECT_STATUS_CLASS = {
     "Wrap-up": "warn", "Done": "", "Abandoned": "danger",
 }
 DEFAULT_PROJECT_STATUS = "Planning"
-# Piece 18: which department governs each pipeline status, the functions that
-# staff it (each resolved to its head via best_assignee_for_lane on the BPMN
-# lane), and the exit criteria to advance. Kept standardized but flexible —
-# the rules engine still drives which project-specific steps actually apply.
+# Piece 18 (revised Piece 35): the exit criteria to advance each pipeline
+# status. Used to be role/department-staffed (the "team" key, resolved via
+# best_assignee_for_lane on the BPMN lane) — a household doesn't have
+# per-stage staffing, so that's gone; `dept` is now just descriptive text.
 STATUS_OWNERSHIP = {
-    "Planning": {"dept": "Sales", "exit": "Sales signs the contract.",
-                 "team": [("Sales", "Sales"), ("Design", "Design")]},
-    "Prep": {"dept": "Operations — parallel functions",
+    "Planning": {"dept": "Sales", "exit": "Sales signs the contract."},
+    "Prep": {"dept": "Prep work",
                  "exit": "All permits filed and an install date set "
-                         "(setting the install date advances the project).",
-                 "team": [("Permits", "Permits"),
-                          ("Finance", "Finance"),
-                          ("Purchasing", "Purchasing"),
-                          ("Install prep", "Installation")]},
-    "In Progress": {"dept": "Service & Technician", "exit": "Install complete.",
-                     "team": [("Install", "Installation")]},
+                         "(setting the install date advances the project)."},
+    "In Progress": {"dept": "Installation", "exit": "Install complete."},
     # Piece 34: merged from the old Inspections + Closing stages.
-    "Wrap-up": {"dept": "Operations & all departments — sign-off, then one final task each",
+    "Wrap-up": {"dept": "Wrap-up — sign-off, then one final task each",
                 "exit": "Inspection passed and signed off; final invoice,"
-                        " walkthrough, and paperwork done.",
-                "team": [("Permits", "Permits"),
-                         ("Fixes", "Installation"),
-                         ("Finance", "Finance"),
-                         ("Sales", "Sales"), ("Sign-off", "Executive")]},
-    "Done": {"dept": "—", "exit": "Project closed.", "team": []},
-    "Abandoned": {"dept": "—", "exit": "", "team": []},
+                        " walkthrough, and paperwork done."},
+    "Done": {"dept": "—", "exit": "Project closed."},
+    "Abandoned": {"dept": "—", "exit": ""},
 }
 # The linear advance path (Abandoned is an off-path terminal state).
 STAGE_ORDER = ["Planning", "Prep", "In Progress", "Wrap-up", "Done"]
@@ -1166,32 +992,23 @@ SALES_ROLES = DASHBOARD_DEPARTMENTS["Sales"]["roles"]
 
 
 def _holds_sales_role(user):
-    if user is None:
-        return False
-    held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
-    return bool(held & SALES_ROLES)
+    # Piece 35: the org-chart role system (and its Sales department) is gone —
+    # a household member's role is just Parent/Child/Assistant. Kept as a
+    # stub (always False) until the dashboard redesign (still pending)
+    # removes its remaining callers.
+    return False
 
 
 def user_departments(user):
-    """Departments the user belongs to (holds a role for), in config order.
-    Excludes departments that aren't offered as a dashboard mode."""
-    if user is None:
-        return []
-    held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
-    return [d for d, cfg in DASHBOARD_DEPARTMENTS.items()
-            if held & cfg["roles"] and d not in DASHBOARD_MODE_EXCLUDE]
+    """Piece 35: the org-chart department system is gone — every section of
+    the (still pending) redesigned dashboard renders unconditionally instead
+    of being gated by department membership. Kept as a stub (always empty)
+    until that redesign removes its remaining callers."""
+    return []
 
 
 def _viewer_modes(user):
-    """The dashboard modes to offer this viewer — like user_departments, but for
-    a Sales-role holder the 'Installation' mode is presented as 'Wrap-up'
-    (Piece 30.5, relabeled Piece 34). The GM is exempt — a General Manager keeps
-    every mode as-is, including Installation (Piece 30.6)."""
-    depts = user_departments(user)
-    if (_holds_sales_role(user) and not _has_gm_role(user)
-            and "Installation" in depts):
-        depts = ["Wrap-up" if d == "Installation" else d for d in depts]
-    return depts
+    return user_departments(user)
 # Migrate Piece 12.1 statuses to the Piece 16 phases (renamed Piece 34) so
 # existing projects survive.
 OLD_TO_NEW_STATUS = {
@@ -1209,33 +1026,6 @@ OLD_TO_NEW_STAGE = {
 }
 # Piece 10: per-project task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
-# Piece 10.2 / 24.5: map each BPMN lane (now a functional department) to the
-# real Vixinman role(s) that own its steps, so a step auto-assigns to the person who
-# holds that role (first match = highest priority). Lanes not listed (Compendium
-# System, Authorities (CID), Utility Company) are external/automated and never
-# auto-assign. The legacy generic labels (Foreman, System Designer, …) are kept
-# as aliases so tasks generated before the 24.5 lane rename still resolve.
-LANE_TO_ROLES = {
-    "Sales": ["Outside Sales Rep", "Inside Sales Rep", "Sales & Marketing Manager"],
-    "Design": ["Designer"],
-    "Permits": ["Permit Coordinator"],
-    "Purchasing": ["Purchasing Agent", "Inventory Manager", "Warehouse Assistant"],
-    "Installation": ["Lead Installer", "Installer", "Scheduling Coordinator",
-                     "Service Technician"],
-    "Finance": ["Finance Manager", "Bookkeeper", "Payroll Manager"],
-    "Executive": ["General Manager"],
-}
-# Legacy lane labels → their new department lane's roles (back-compat for
-# already-generated task notes like "Process step · Foreman").
-LANE_TO_ROLES.update({
-    "Sales Rep": LANE_TO_ROLES["Sales"],
-    "System Designer": LANE_TO_ROLES["Design"],
-    "Permit Coordinator": LANE_TO_ROLES["Permits"],
-    "Warehouse Assistant": LANE_TO_ROLES["Purchasing"],
-    "Foreman": LANE_TO_ROLES["Installation"],
-    "Finance Department": LANE_TO_ROLES["Finance"],
-    "General Manager": LANE_TO_ROLES["Executive"],
-})
 # Days between consecutive generated tasks when a target install date is
 # given — a rough schedule anchored on the Site Installation step.
 TASK_DUE_SPACING_DAYS = 2
@@ -1245,35 +1035,6 @@ TASK_DUE_SPACING_DAYS = 2
 # re-default the next open step to this many days out. Rough on purpose —
 # meant to be tightened by hand per project.
 TASK_DEFAULT_LEAD_DAYS = 7
-
-# Piece 17.2: for tasks that don't carry a process lane in their notes (the
-# demo/hand-added ones), infer the responsible lane from keywords in the
-# title, so they can be role-assigned too. First match wins. (Rough — meant
-# to be standardized later.)
-TITLE_LANE_KEYWORDS = [
-    ("interconnection", "Permits"),
-    ("plan review", "Permits"),
-    ("permit", "Permits"),
-    ("inspection", "Permits"),
-    ("zoning", "Permits"),
-    ("credit", "Finance"),
-    ("invoice", "Finance"),
-    ("deposit", "Finance"),
-    ("payment", "Finance"),
-    ("design", "Design"),
-    ("order", "Purchasing"),
-    ("material", "Purchasing"),
-    ("component", "Purchasing"),
-    ("install", "Installation"),
-    ("walkthrough", "Installation"),
-    ("monitoring", "Installation"),
-    ("doc tube", "Installation"),
-    ("contract", "Sales"),
-    ("site visit", "Sales"),
-    ("questionnaire", "Sales"),
-    ("proposal", "Sales"),
-    ("paperwork", "Executive"),
-]
 
 # Piece 18.1: infer a pipeline stage for an existing (un-tagged) task from its
 # title, so current projects show stage progress. Order matters — specific
@@ -1465,11 +1226,11 @@ def audit(response):
 
 # --------------------------------------------------------------- auth (Piece 13)
 def accounts_exist():
-    """True once at least one employee has a usable login. Until then the
-    app runs in open mode (no login wall) so nothing locks up and setup is
+    """True once at least one household member has a usable login. Until then
+    the app runs in open mode (no login wall) so nothing locks up and setup is
     possible."""
     row = get_db().execute(
-        "SELECT COUNT(*) FROM employees"
+        "SELECT COUNT(*) FROM household_members"
         " WHERE COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''"
     ).fetchone()
     return row[0] > 0
@@ -1480,112 +1241,52 @@ def current_user():
     if not uid:
         return None
     return get_db().execute(
-        "SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
-
-
-def _has_gm_role(user):
-    """A General Manager is anyone whose roles include 'General Manager'
-    (Piece 17 — GM access is derived from the org-chart role)."""
-    if user is None:
-        return False
-    return "General Manager" in [r.strip() for r in (user["roles"] or "").split(",")]
-
-
-def is_gm():
-    """GM tier — unfettered access. Open mode counts as GM so the very first
-    account can be set up."""
-    if not accounts_exist():
-        return True
-    return _has_gm_role(current_user())
+        "SELECT * FROM household_members WHERE id = ?", (uid,)).fetchone()
 
 
 def _is_admin():
-    """GM or Admin, OR open mode (no accounts yet) so setup can happen."""
+    """Admin flag on the household_members row, OR open mode (no accounts yet)
+    so the very first account can be set up."""
     if not accounts_exist():
         return True
     user = current_user()
-    return user is not None and (
-        _has_gm_role(user) or user["access_level"] == "Admin")
+    return user is not None and str(user["is_admin"] or "") == "1"
 
 
 def _has_grant(user, perm):
-    """A live (unexpired) permission grant for this user."""
+    """A standing permission grant for this user."""
     if user is None:
         return False
-    today = datetime.now().strftime("%Y-%m-%d")
     return get_db().execute(
-        "SELECT 1 FROM permission_grants WHERE employee_id = ? AND permission = ?"
-        " AND (COALESCE(expires_on, '') = '' OR expires_on >= ?) LIMIT 1",
-        (user["id"], perm, today)).fetchone() is not None
-
-
-def _is_supervisor(user):
-    """Piece 29.0: a Supervisor is a non-GM given the emergency access-control
-    power (revoke / reinstate a teammate's access). The GM designates them."""
-    if user is None:
-        return False
-    return str(user["is_supervisor"] if "is_supervisor" in user.keys() else "") == "1"
-
-
-def can_control_access():
-    """Who may emergency-revoke or reinstate access: the GM (always) or a
-    designated Supervisor. Open mode (no accounts yet) can't lock anyone out."""
-    if not accounts_exist():
-        return False
-    user = current_user()
-    return _has_gm_role(user) or _is_supervisor(user)
-
-
-def is_access_revoked(user):
-    """True while this employee's access is under an emergency lockout."""
-    if user is None:
-        return False
-    val = user["access_revoked"] if "access_revoked" in user.keys() else ""
-    return str(val or "") == "1"
+        "SELECT 1 FROM permission_grants WHERE household_member_id = ?"
+        " AND permission = ? LIMIT 1", (user["id"], perm)).fetchone() is not None
 
 
 def notify_employees(db, recipient_ids, message, link="", kind=""):
-    """Piece 29.3: drop an in-app notification to each recipient employee id."""
+    """Piece 29.3: drop an in-app notification to each recipient household
+    member id."""
     for rid in dict.fromkeys(recipient_ids):   # de-dupe, preserve order
         db.execute(
             "INSERT INTO notifications (recipient_id, message, link, kind)"
             " VALUES (?, ?, ?, ?)", (rid, message, link, kind))
 
 
-def supervisors_or_gm_ids(db, exclude_id=None):
-    """Recipients for a supervisor-level alert: everyone flagged Supervisor
-    (with a login); if there are none, fall back to the General Manager(s).
-    Any exclude_id (e.g. the affected employee) is dropped."""
-    sups = [r["id"] for r in db.execute(
-        "SELECT id FROM employees WHERE is_supervisor = '1'"
-        " AND COALESCE(username,'') != ''").fetchall()]
-    if not sups:
-        sups = [r["id"] for r in db.execute(
-            "SELECT id FROM employees WHERE roles LIKE '%General Manager%'"
-            " AND COALESCE(username,'') != ''").fetchall()]
-    return [i for i in sups if i != exclude_id]
-
-
 def project_involved_ids(db, project, exclude_id=None):
-    """Piece 30.3: employees involved in a project so far — anyone assigned a task on
-    it, or anyone who logged time to it. Only those with a login (who can read
-    an inbox); the given id is dropped."""
+    """Piece 30.3: household members involved in a project so far — anyone
+    assigned a task on it. Only those with a login (who can read an inbox);
+    the given id is dropped."""
     ids = set()
-    for r in db.execute("SELECT DISTINCT employee_id FROM project_tasks"
-                        " WHERE project_id = ? AND employee_id IS NOT NULL",
+    for r in db.execute("SELECT DISTINCT household_member_id FROM project_tasks"
+                        " WHERE project_id = ? AND household_member_id IS NOT NULL",
                         (project["id"],)).fetchall():
-        ids.add(r["employee_id"])
-    for r in db.execute("SELECT DISTINCT employee_id FROM time_entries"
-                        " WHERE project_id = ? AND employee_id IS NOT NULL",
-                        (project["id"],)).fetchall():
-        ids.add(r["employee_id"])
+        ids.add(r["household_member_id"])
     ids.discard(None)
     ids.discard(exclude_id)
     if not ids:
         return []
     ph = ",".join("?" * len(ids))
     return [r["id"] for r in db.execute(
-        f"SELECT id FROM employees WHERE id IN ({ph})"
+        f"SELECT id FROM household_members WHERE id IN ({ph})"
         " AND COALESCE(username,'') != ''", tuple(ids)).fetchall()]
 
 
@@ -1600,133 +1301,59 @@ def unread_notification_count(user):
         return 0
 
 
-def department_employee_ids(db, dept_names):
-    """Piece 29.4: the signed-in employees whose roles place them in any of the
-    given departments (used to notify the team a project just turned over to)."""
-    roles = set()
-    for d in dept_names:
-        roles |= DASHBOARD_DEPARTMENTS.get(d, {}).get("roles", set())
-    if not roles:
-        return []
-    ids = []
-    for e in db.execute(
-            "SELECT id, roles FROM employees WHERE COALESCE(username,'') != ''"
-            " AND COALESCE(access_revoked,'') != '1'").fetchall():
-        held = {r.strip() for r in (e["roles"] or "").split(",") if r.strip()}
-        if held & roles:
-            ids.append(e["id"])
-    return ids
+def household_member_ids_with_login(db, exclude_id=None):
+    """Piece 35: everyone who can sign in — the audience for a shared
+    household notification, now that there's no department roster to target."""
+    return [r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''"
+        ).fetchall() if r["id"] != exclude_id]
 
 
 def notify_stage_turnover(db, project, new_status, exclude_id=None):
-    """Piece 29.4: when a project turns over to a pipeline stage, notify the
-    department(s) that own that stage. The recipient's copy clears once they
-    open it (or open the project). The person who triggered the move is skipped."""
+    """Piece 29.4 (revised Piece 35): when a project turns over to a pipeline
+    stage, notify every household member with a login. The recipient's copy
+    clears once they open it (or open the project). The person who triggered
+    the move is skipped."""
     own = STATUS_OWNERSHIP.get(new_status)
     if not own:
         return
-    team = own.get("team", [])
-    depts = [dept for _label, dept in team]
-    recipients = [i for i in department_employee_ids(db, depts) if i != exclude_id]
+    recipients = household_member_ids_with_login(db, exclude_id=exclude_id)
     if not recipients:
         return
     jobname = project["job_name"] or f"Project #{project['id']}"
-    labels = ", ".join(dict.fromkeys(label for label, _dept in team))
     notify_employees(
-        db, recipients,
-        f"📋 {jobname} turned over to "
-        f"{new_status}{(' — ' + labels + ' up next') if labels else ''}.",
+        db, recipients, f"📋 {jobname} turned over to {new_status}.",
         link=url_for("project_detail", project_id=project["id"]), kind="stage")
 
 
-def security_questions_enrolled(employee_id):
-    """The security questions this employee has set up (for the reset flow)."""
+def security_questions_enrolled(household_member_id):
+    """The security questions this household member has set up (for the
+    reset flow)."""
     return get_db().execute(
-        "SELECT * FROM security_answers WHERE employee_id = ?"
-        " ORDER BY sort_order, id", (employee_id,)).fetchall()
-
-
-def onboarding_overview(db, employee_id):
-    """Piece 29.2: each active checklist step joined with this employee's
-    completion, plus (done, total) counts. New steps show as not-done."""
-    rows = db.execute(
-        "SELECT s.id AS step_id, s.title, s.description, s.category,"
-        " COALESCE(eo.done,'') AS done, COALESCE(eo.done_at,'') AS done_at,"
-        " COALESCE(eo.done_by,'') AS done_by, COALESCE(eo.note,'') AS note"
-        " FROM onboarding_steps s"
-        " LEFT JOIN employee_onboarding eo"
-        "   ON eo.step_id = s.id AND eo.employee_id = ?"
-        " WHERE s.active = '1'"
-        " ORDER BY s.sort_order, s.id", (employee_id,)).fetchall()
-    done = sum(1 for r in rows if r["done"] == "1")
-    return rows, done, len(rows)
-
-
-def onboarding_owner_candidates(db):
-    """Piece 31.2: who may be put on the hook for finishing a new hire's
-    onboarding — the General Manager(s) and any designated Supervisor, all of
-    whom must have a login so they can actually act. GM(s) first."""
-    return db.execute(
-        "SELECT id, name FROM employees"
-        " WHERE COALESCE(username,'') != ''"
-        "   AND (roles LIKE '%General Manager%' OR is_supervisor = '1')"
-        " ORDER BY (roles LIKE '%General Manager%') DESC, name").fetchall()
-
-
-def default_onboarding_owner_id(db):
-    """Default accountable person for a new hire's onboarding: the first
-    General Manager with a login, else the first Supervisor, else nobody."""
-    row = db.execute(
-        "SELECT id FROM employees WHERE roles LIKE '%General Manager%'"
-        " AND COALESCE(username,'') != '' ORDER BY name LIMIT 1").fetchone()
-    if row:
-        return str(row["id"])
-    row = db.execute(
-        "SELECT id FROM employees WHERE is_supervisor = '1'"
-        " AND COALESCE(username,'') != '' ORDER BY name LIMIT 1").fetchone()
-    return str(row["id"]) if row else ""
-
-
-def can_revoke_target(actor, target):
-    """May `actor` emergency-revoke `target`? Guards the hierarchy: nobody
-    revokes themselves; a GM can act on anyone else; a Supervisor can act on
-    ordinary employees but not on a GM or a fellow Supervisor (no peer/
-    upward lockouts)."""
-    if actor is None or target is None or actor["id"] == target["id"]:
-        return False
-    if _has_gm_role(actor):
-        return True
-    if not _is_supervisor(actor):
-        return False
-    return not _has_gm_role(target) and not _is_supervisor(target)
+        "SELECT * FROM security_answers WHERE household_member_id = ?"
+        " ORDER BY sort_order, id", (household_member_id,)).fetchall()
 
 
 def has_permission(perm):
-    """Central access check. GM ⇒ everything. 'delete' is GM-or-granted only
-    (never automatic for Admin). Other tools: Admin ⇒ yes, else a live grant.
-    perm=None is the generic Admin/GM gate."""
+    """Central access check. Admin ⇒ everything except 'delete', which stays
+    grant-only even for admins (the soft-delete safety rail). Everyone else
+    needs an explicit grant. perm=None is the generic admin gate."""
     if not accounts_exist():
         return True
     user = current_user()
     if user is None:
         return False
-    if _has_gm_role(user):
-        return True
     if perm == "delete":
-        return _has_grant(user, "delete")   # never role-conferred (safety)
+        return _has_grant(user, "delete")   # never automatic, even for admins
     if perm is None:
-        return user["access_level"] == "Admin"
-    if user["access_level"] == "Admin":
-        return True
-    # Piece 24.6: a role the user holds may confer this permission (org-chart
-    # scoped access), else fall back to an explicit per-person grant.
-    if perm in permissions_from_roles(user):
+        return _is_admin()
+    if _is_admin():
         return True
     return _has_grant(user, perm)
 
 
 # Which permission each admin-gated view needs (Piece 17). Views not listed
-# fall back to the generic Admin/GM gate (perm=None).
+# fall back to the generic admin gate (perm=None).
 VIEW_PERMISSION = {
     "add_appliance_catalog": "catalog.manage",
     "delete_appliance_catalog": "catalog.manage",
@@ -1737,25 +1364,17 @@ VIEW_PERMISSION = {
     "reject_submission": "approvals",
     "add_rule": "rules.manage",
     "delete_rule": "rules.manage",
-    "accounts_page": "employees.manage",
-    "approve_password_change": "employees.manage",
-    "reject_password_change": "employees.manage",
-    "new_employee": "employees.manage",
-    "edit_employee": "employees.manage",
-    "delete_employee": "employees.manage",
-    "add_credential": "employees.manage",
-    "update_credential": "employees.manage",
-    "delete_credential": "employees.manage",
-    "upload_employee_file": "employees.manage",
-    "delete_employee_file": "employees.manage",
-    # Piece 29.2: onboarding checklist management + per-employee progress.
-    "onboarding_checklist": "employees.manage",
-    "onboarding_step_add": "employees.manage",
-    "onboarding_step_edit": "employees.manage",
-    "onboarding_step_delete": "employees.manage",
-    "onboarding_step_move": "employees.manage",
-    "employee_onboarding_toggle": "employees.manage",
-    "employee_onboarding_owner": "employees.manage",  # Piece 31.2
+    "accounts_page": "household.manage",
+    "approve_password_change": "household.manage",
+    "reject_password_change": "household.manage",
+    "new_household_member": "household.manage",
+    "edit_household_member": "household.manage",
+    "delete_household_member": "household.manage",
+    "add_credential": "household.manage",
+    "update_credential": "household.manage",
+    "delete_credential": "household.manage",
+    "upload_household_member_file": "household.manage",
+    "delete_household_member_file": "household.manage",
     "audit_log_page": "audit.view",
     # Piece 24.6: inventory editing is scoped to inventory.manage (viewing the
     # catalog stays open to any signed-in user).
@@ -1791,87 +1410,30 @@ VIEW_PERMISSION = {
 
 def admin_required(view):
     """Guard a shared-data view by the permission it maps to (or the generic
-    Admin/GM gate). Granting that permission to a Standard user opens exactly
-    this tool for them."""
+    admin gate). Granting that permission to a non-admin opens exactly this
+    tool for them."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not has_permission(VIEW_PERMISSION.get(view.__name__)):
-            flash("You don't have access to that. Ask a General Manager.", "error")
+            flash("You don't have access to that. Ask an admin.", "error")
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
-
-
-def gm_required(view):
-    """General-Manager-only actions (the access console; trash management)."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not is_gm():
-            flash("That's limited to the General Manager.", "error")
-            return redirect(url_for("home"))
-        return view(*args, **kwargs)
-    return wrapped
-
-
-def _can_payroll():
-    """Payroll is Finance work: the General Manager, any Admin, or anyone in
-    the Finance department. (Open mode — no logins — allows everyone.)"""
-    user = current_user()
-    if user is None:
-        return True
-    return is_gm() or _is_admin() or "Finance" in user_departments(user)
 
 
 def _can_see_pricing():
-    """Piece 29.7: who may see the internal cost/margin pricing breakdown —
-    Finance, Admin, GM, and (because they price and design projects) Sales & Design.
-    Deliberately NOT the whole company: it exposes cost and margin."""
-    user = current_user()
-    if user is None:
-        return True
-    if is_gm() or _is_admin():
-        return True
-    return bool({"Finance", "Sales", "Design"} & set(user_departments(user)))
-
-
-def _can_edit_pay_rates():
-    """Only the GM (Cary) and the Payroll Manager (Lisa) can change pay rates —
-    a separation of duties from the people who log/approve/run payroll."""
-    user = current_user()
-    if user is None:
-        return True
-    roles = [r.strip() for r in (user["roles"] or "").split(",")]
-    return is_gm() or "Payroll Manager" in roles
-
-
-def payroll_required(view):
-    """Guard payroll pages to Finance / Admin / GM."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not _can_payroll():
-            flash("Payroll is limited to Finance and management.", "error")
-            return redirect(url_for("home"))
-        return view(*args, **kwargs)
-    return wrapped
-
-
-def pay_rates_required(view):
-    """Guard pay-rate editing to the GM and Payroll Manager only."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not _can_edit_pay_rates():
-            flash("Only the General Manager or Payroll Manager can change pay rates.", "error")
-            return redirect(url_for("payroll"))
-        return view(*args, **kwargs)
-    return wrapped
+    """Piece 29.7 (revised Piece 35): who may see the internal cost/margin
+    pricing breakdown — admins only. Deliberately narrow: it exposes cost and
+    margin."""
+    return _is_admin()
 
 
 def finance_required(view):
-    """Guard finance settings/pages to Finance / Admin / GM (Piece 29.6)."""
+    """Guard the surviving cost-model/GRT-rate settings pages to admins."""
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not _can_payroll():   # GM, Admin, or the Finance department
-            flash("That's limited to Finance and management.", "error")
+        if not _is_admin():
+            flash("That's limited to admins.", "error")
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
@@ -1888,12 +1450,6 @@ def _meta_set(db, key, value):
                (key, str(value)))
 
 
-def ot_rules(db):
-    """Current weekly-overtime settings (threshold hours, multiplier)."""
-    return (_to_float(_meta_get(db, "payroll_ot_threshold")) or OT_THRESHOLD_DEFAULT,
-            _to_float(_meta_get(db, "payroll_ot_multiplier")) or OT_MULTIPLIER_DEFAULT)
-
-
 @app.context_processor
 def inject_auth():
     user = current_user()
@@ -1906,59 +1462,49 @@ def inject_auth():
         except Exception:
             pending = 0
     return {"current_user": user, "login_active": accounts_exist(),
-            "is_admin": _is_admin(), "is_gm": is_gm(), "can": has_permission,
-            "can_payroll": _can_payroll(),
-            "can_edit_pay_rates": _can_edit_pay_rates(),
-            "can_control_access": can_control_access(),  # Piece 29.0
-            "is_supervisor": _is_supervisor(user),
+            "is_admin": _is_admin(), "can": has_permission,
             "unread_notifications": unread_notification_count(user),  # Piece 29.3
             "pending_submissions": pending}
 
 
 @app.route("/access")
-@gm_required
+@admin_required
 def access_console():
-    """GM console: grant individual tools to people (with optional expiry)."""
+    """Admin console: grant individual tools to household members."""
     db = get_db()
     people = db.execute(
-        "SELECT * FROM employees WHERE COALESCE(username,'') != '' ORDER BY name"
+        "SELECT * FROM household_members WHERE COALESCE(username,'') != '' ORDER BY name"
     ).fetchall()
     grants = {}
-    for g in db.execute(
-            "SELECT employee_id, permission, expires_on FROM permission_grants"):
-        grants.setdefault(g["employee_id"], {})[g["permission"]] = g["expires_on"] or ""
+    for g in db.execute("SELECT household_member_id, permission FROM permission_grants"):
+        grants.setdefault(g["household_member_id"], set()).add(g["permission"])
     rows = [{
-        "id": p["id"], "name": p["name"], "is_gm": _has_gm_role(p),
-        "level": p["access_level"] or "Standard", "grants": grants.get(p["id"], {}),
-        # Piece 24.6: permissions this person already gets from their roles —
-        # shown as auto-granted (change the role to alter these, not a grant).
-        "role_perms": permissions_from_roles(p),
+        "id": p["id"], "name": p["name"],
+        "is_admin": str(p["is_admin"] or "") == "1",
+        "grants": grants.get(p["id"], set()),
     } for p in people]
-    return render_template("access.html", rows=rows, permissions=PERMISSIONS,
-                           today=datetime.now().strftime("%Y-%m-%d"))
+    return render_template("access.html", rows=rows, permissions=PERMISSIONS)
 
 
-@app.route("/access/<int:employee_id>", methods=["POST"])
-@gm_required
-def save_access(employee_id):
+@app.route("/access/<int:member_id>", methods=["POST"])
+@admin_required
+def save_access(member_id):
     db = get_db()
-    emp = db.execute("SELECT * FROM employees WHERE id = ?",
-                     (employee_id,)).fetchone()
-    if emp is None:
+    member = db.execute("SELECT * FROM household_members WHERE id = ?",
+                        (member_id,)).fetchone()
+    if member is None:
         abort(404)
-    gm = current_user()
-    granter = gm["name"] if gm else "General Manager"
-    db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
+    who = current_user()
+    granter = who["name"] if who else ""
+    db.execute("DELETE FROM permission_grants WHERE household_member_id = ?", (member_id,))
     for key in PERMISSIONS:
         if request.form.get(f"perm_{key}"):
             db.execute(
-                "INSERT INTO permission_grants (employee_id, permission,"
-                " granted_by, expires_on) VALUES (?, ?, ?, ?)",
-                (employee_id, key, granter,
-                 request.form.get(f"exp_{key}", "").strip()))
+                "INSERT INTO permission_grants (household_member_id, permission,"
+                " granted_by) VALUES (?, ?, ?)", (member_id, key, granter))
     db.commit()
-    flash(f"Access updated for {emp['name']}.")
-    return redirect(url_for("access_console", _anchor=f"emp{employee_id}"))
+    flash(f"Access updated for {member['name']}.")
+    return redirect(url_for("access_console", _anchor=f"member{member_id}"))
 
 
 # ===================== Piece 17.1: soft-delete / trash / in-use checks ======
@@ -1984,8 +1530,8 @@ def _project_name(db, jid):
 
 
 def _emp_name(db, eid):
-    r = db.execute("SELECT name FROM employees WHERE id = ?", (eid,)).fetchone()
-    return r["name"] if r else f"Employee #{eid}"
+    r = db.execute("SELECT name FROM household_members WHERE id = ?", (eid,)).fetchone()
+    return r["name"] if r else f"Household member #{eid}"
 
 
 def _component_uses(db, cid):
@@ -2002,10 +1548,10 @@ def _component_uses(db, cid):
 
 def _employee_uses(db, eid):
     uses = []
-    n = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE employee_id = ?", (eid,))
+    n = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE household_member_id = ?", (eid,))
     if n:
         uses.append(f"{n} assigned task(s)")
-    n = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (eid,))
+    n = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE household_member_id = ?", (eid,))
     if n:
         uses.append(f"{n} field-work submission(s)")
     return uses
@@ -2055,15 +1601,15 @@ TRASH_REGISTRY = {
     "household_idea": {"table": "household_ideas", "label": lambda r: r["name"],
                        "found_in": lambda db, r: "Backlog",
                        "in_use": lambda db, r: []},
-    "credential": {"table": "employee_credentials", "label": lambda r: r["name"],
-                   "found_in": lambda db, r: f"{_emp_name(db, r['employee_id'])} — Credentials",
+    "credential": {"table": "household_member_credentials", "label": lambda r: r["name"],
+                   "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Credentials",
                    "in_use": lambda db, r: []},
-    "employee_file": {"table": "employee_files", "label": lambda r: r["original_name"],
-                      "found_in": lambda db, r: f"{_emp_name(db, r['employee_id'])} — Documents",
+    "employee_file": {"table": "household_member_files", "label": lambda r: r["original_name"],
+                      "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Documents",
                       "in_use": lambda db, r: [],
-                      "file": lambda r: UPLOADS_DIR / f"employee_{r['employee_id']}" / r["stored_name"]},
-    "employee": {"table": "employees", "label": lambda r: r["name"],
-                 "found_in": lambda db, r: "Employees",
+                      "file": lambda r: UPLOADS_DIR / f"employee_{r['household_member_id']}" / r["stored_name"]},
+    "employee": {"table": "household_members", "label": lambda r: r["name"],
+                 "found_in": lambda db, r: "Household Members",
                  "in_use": lambda db, r: _employee_uses(db, r["id"])},
     "inventory_item": {"table": "inventory_items",
                        "label": lambda r: f"{r['make']} {r['model']}".strip() or r["category"],
@@ -2137,9 +1683,9 @@ def restore_trash(trash_id):
 
 
 @app.route("/trash/<int:trash_id>/purge", methods=["POST"])
-@gm_required
+@admin_required
 def purge_trash(trash_id):
-    """Permanent deletion — General Manager only."""
+    """Permanent deletion — admin only."""
     db = get_db()
     t = db.execute("SELECT * FROM trash WHERE id = ?", (trash_id,)).fetchone()
     if t is None:
@@ -2202,15 +1748,6 @@ def require_login():
             return jsonify({"error": "not signed in"}), 401
         nxt = request.path if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
-    # Piece 29.0: an emergency access lockout takes effect immediately — sign
-    # the person out mid-session and hold them at the login wall.
-    if is_access_revoked(user):
-        session.clear()
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "access revoked"}), 403
-        flash("Your access has been suspended. Contact a manager to restore it.",
-              "error")
-        return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -2222,7 +1759,7 @@ def login():
         password = request.form.get("password", "")
         # Usernames are matched case-insensitively (passwords stay exact).
         user = get_db().execute(
-            "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
+            "SELECT * FROM household_members WHERE LOWER(username) = LOWER(?)"
             " AND COALESCE(username,'') != ''",
             (username,)).fetchone()
         try:
@@ -2233,12 +1770,6 @@ def login():
             flash("This account's password can't be verified on this machine "
                   "(hashing backend unavailable). Ask a manager to reset it, or "
                   "reset the local database.", "error")
-            return render_template("login.html", next=request.args.get("next", ""))
-        if ok and is_access_revoked(user):
-            # Piece 29.0: correct credentials, but access is under an emergency
-            # lockout — refuse the sign-in without hinting the password was wrong.
-            flash("Your access has been suspended. Contact a manager to restore it.",
-                  "error")
             return render_template("login.html", next=request.args.get("next", ""))
         if ok:
             session["user_id"] = user["id"]
@@ -2266,22 +1797,18 @@ def logout():
     return redirect(url_for("login"))
 
 
-def _lock_account_after_failed_reset(db, user):
-    """Piece 29.3: too many wrong reset answers auto-locks the account (the same
-    emergency lockout a GM/Supervisor applies) and notifies the Supervisors —
-    or the GM(s) if there are none — so a human reviews it."""
-    db.execute(
-        "UPDATE employees SET access_revoked = '1', access_revoked_at = ?,"
-        " access_revoked_by = ?, access_revoked_reason = ? WHERE id = ?",
-        (datetime.now().isoformat(timespec="seconds"), "System (auto-lock)",
-         "Too many failed password-reset attempts", user["id"]))
-    recipients = supervisors_or_gm_ids(db, exclude_id=user["id"])
+def _notify_failed_reset(db, user):
+    """Piece 29.3 (revised Piece 35): too many wrong reset answers notifies
+    every admin with a login, so a human reviews it and resets the password
+    directly (there's no emergency-lockout mechanism to auto-apply anymore)."""
+    recipients = [r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE is_admin = '1'"
+        " AND COALESCE(username,'') != '' AND id != ?", (user["id"],)).fetchall()]
     notify_employees(
         db, recipients,
-        f"🔒 {user['name']}'s account was auto-locked after "
-        f"{SECURITY_RESET_MAX_ATTEMPTS} failed password-reset attempts. "
-        "Review and reinstate their access if appropriate.",
-        link=url_for("employee_detail", employee_id=user["id"]),
+        f"🔒 {user['name']} had {SECURITY_RESET_MAX_ATTEMPTS} failed"
+        " password-reset attempts. They'll need their password reset directly.",
+        link=url_for("household_member_detail", household_member_id=user["id"]),
         kind="security")
     db.commit()
 
@@ -2304,12 +1831,11 @@ def forgot_password():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         user = get_db().execute(
-            "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
+            "SELECT * FROM household_members WHERE LOWER(username) = LOWER(?)"
             " AND COALESCE(username,'') != ''", (username,)).fetchone()
         enrolled = security_questions_enrolled(user["id"]) if user else []
         # Only proceed for a real, active login that has questions enrolled.
-        if (user and user["password_hash"] and not is_access_revoked(user)
-                and enrolled):
+        if user and user["password_hash"] and enrolled:
             ids = [q["id"] for q in enrolled]
             # Randomly choose which questions to ask this time (2 of 3).
             ask = random.sample(ids, min(SECURITY_QUESTIONS_ASK, len(ids)))
@@ -2334,11 +1860,11 @@ def forgot_password_verify():
     if not uid or not ask:
         return redirect(url_for("forgot_password"))
     db = get_db()
-    user = db.execute("SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
+    user = db.execute("SELECT * FROM household_members WHERE id = ?", (uid,)).fetchone()
     enrolled = {q["id"]: q for q in security_questions_enrolled(uid)} if user else {}
     # The chosen questions, in the order they were picked.
     questions = [enrolled[i] for i in ask if i in enrolled]
-    if not user or is_access_revoked(user) or len(questions) != len(ask):
+    if not user or len(questions) != len(ask):
         _clear_reset_session()
         flash("That reset is no longer valid. Ask a manager for help.", "error")
         return redirect(url_for("login"))
@@ -2353,11 +1879,11 @@ def forgot_password_verify():
         if not all_ok:
             session["pwreset_attempts"] = session.get("pwreset_attempts", 0) + 1
             if session["pwreset_attempts"] >= SECURITY_RESET_MAX_ATTEMPTS:
-                _lock_account_after_failed_reset(db, user)
+                _notify_failed_reset(db, user)
                 _clear_reset_session()
-                flash("Too many incorrect answers — for security this account "
-                      "has been locked and a supervisor notified. They can "
-                      "reinstate your access.", "error")
+                flash("Too many incorrect answers — for security, an admin has "
+                      "been notified and will need to reset your password "
+                      "directly.", "error")
                 return redirect(url_for("login"))
             left = SECURITY_RESET_MAX_ATTEMPTS - session["pwreset_attempts"]
             flash(f"One or more answers were incorrect. {left} attempt(s) left "
@@ -2370,9 +1896,9 @@ def forgot_password_verify():
         if new != confirm:
             flash("New password and confirmation don't match.", "error")
             return render_template("forgot_verify.html", questions=questions)
-        db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
+        db.execute("UPDATE household_members SET password_hash = ? WHERE id = ?",
                    (generate_password_hash(new, method="pbkdf2:sha256"), uid))
-        db.execute("DELETE FROM password_requests WHERE employee_id = ?"
+        db.execute("DELETE FROM password_requests WHERE household_member_id = ?"
                    " AND status = 'Pending'", (uid,))
         db.commit()
         _clear_reset_session()
@@ -2450,7 +1976,7 @@ def account():
     if user is None:
         return redirect(url_for("home"))
     pending = get_db().execute(
-        "SELECT * FROM password_requests WHERE employee_id = ? AND status = 'Pending'"
+        "SELECT * FROM password_requests WHERE household_member_id = ? AND status = 'Pending'"
         " ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone()
     enrolled = security_questions_enrolled(user["id"])
     return render_template("account.html", user=user, pending=pending,
@@ -2480,9 +2006,9 @@ def request_password_change():
         db = get_db()
         # One pending request at a time — a new one supersedes the old.
         db.execute("DELETE FROM password_requests"
-                   " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
+                   " WHERE household_member_id = ? AND status = 'Pending'", (user["id"],))
         db.execute(
-            "INSERT INTO password_requests (employee_id, new_hash) VALUES (?, ?)",
+            "INSERT INTO password_requests (household_member_id, new_hash) VALUES (?, ?)",
             (user["id"], generate_password_hash(new, method="pbkdf2:sha256")))
         db.commit()
         flash("Password change submitted — it takes effect once an admin approves it.")
@@ -2496,7 +2022,7 @@ def cancel_password_change():
         return redirect(url_for("home"))
     db = get_db()
     db.execute("DELETE FROM password_requests"
-               " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
+               " WHERE household_member_id = ? AND status = 'Pending'", (user["id"],))
     db.commit()
     flash("Password request cancelled.")
     return redirect(url_for("account"))
@@ -2533,10 +2059,10 @@ def save_security_questions():
         seen.add(key)
         pairs.append((q, a))
     db = get_db()
-    db.execute("DELETE FROM security_answers WHERE employee_id = ?", (user["id"],))
+    db.execute("DELETE FROM security_answers WHERE household_member_id = ?", (user["id"],))
     for order, (q, a) in enumerate(pairs):
         db.execute(
-            "INSERT INTO security_answers (employee_id, question, answer_hash,"
+            "INSERT INTO security_answers (household_member_id, question, answer_hash,"
             " sort_order) VALUES (?, ?, ?, ?)",
             (user["id"], q,
              generate_password_hash(a, method="pbkdf2:sha256"), order))
@@ -2557,21 +2083,18 @@ def ensure_columns(db, table, columns):
 
 
 def seed_org_team(db):
-    """Piece 16.1: create Vixinman's org-chart team (by name) with their roles.
-    Runs once per database (guarded by a meta flag) and skips anyone already
-    present, so it populates existing installs without duplicating and never
-    resurrects someone who was deleted on purpose."""
+    """Piece 16.1 (revised Piece 35): create the household's roster (by name)
+    with their role and admin status. Runs once per database (guarded by a
+    meta flag) and skips anyone already present, so it populates a fresh
+    install without duplicating and never resurrects someone who was deleted
+    on purpose."""
     if db.execute("SELECT 1 FROM meta WHERE key = 'org_team_seeded'").fetchone():
         return
-    for name, roles in ORG_CHART_TEAM:
-        if not db.execute("SELECT 1 FROM employees WHERE name = ?",
+    for name, role, admin in HOUSEHOLD_ROSTER:
+        if not db.execute("SELECT 1 FROM household_members WHERE name = ?",
                           (name,)).fetchone():
-            db.execute("INSERT INTO employees (name, roles) VALUES (?, ?)",
-                       (name, ", ".join(roles)))
-    # Cary holds every role (he's the GM); default his dashboard to the Executive
-    # whole-company overview (Piece 26.8 — was Design).
-    db.execute("UPDATE employees SET dashboard_mode = 'Executive'"
-               " WHERE name = 'Cary' AND COALESCE(dashboard_mode, '') = ''")
+            db.execute("INSERT INTO household_members (name, role, is_admin)"
+                       " VALUES (?, ?, ?)", (name, role, "1" if admin else ""))
     db.execute("INSERT INTO meta (key, value) VALUES ('org_team_seeded', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
@@ -2838,6 +2361,24 @@ def init_db():
             db.execute("ALTER TABLE household_ideas"
                        " RENAME COLUMN started_job_id TO started_project_id")
         db.commit()
+    # Piece 35: same reasoning, for a pre-reorg database that still has an
+    # "employees" table — rename it and its child tables/columns to the new
+    # household_members-based names before schema.sql runs.
+    if "employees" in legacy_tables:
+        db.execute("ALTER TABLE employees RENAME TO household_members")
+        db.execute("ALTER TABLE household_members RENAME COLUMN roles TO role")
+        for old, new in (
+            ("employee_credentials", "household_member_credentials"),
+            ("employee_files", "household_member_files"),
+        ):
+            db.execute(f"ALTER TABLE {old} RENAME TO {new}")
+        for t in ("household_member_credentials", "household_member_files",
+                  "permission_grants", "password_requests", "security_answers",
+                  "project_tasks", "board_time", "field_submissions"):
+            cols = {r[1] for r in db.execute(f"PRAGMA table_info({t})")}
+            if "employee_id" in cols:
+                db.execute(f"ALTER TABLE {t} RENAME COLUMN employee_id TO household_member_id")
+        db.commit()
     db.executescript((BASE_DIR / "schema.sql").read_text())
     # Piece 33: the multi-client model is gone (household_ideas/household_files
     # replace clients/cold_leads/lead_followups/client_versions/client_files).
@@ -2887,64 +2428,37 @@ def init_db():
     ensure_columns(db, "project_tasks", ["updated_at", "pipeline_status"])
     db.execute("UPDATE project_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
-    ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
-                   + ["dashboard_mode", "base_wage"]  # Piece 21.2: hourly base wage
-                   # Piece 29.0: supervisor designation + emergency access lockout.
-                   + ["is_supervisor", "access_revoked", "access_revoked_at",
-                      "access_revoked_by", "access_revoked_reason"]
-                   # Piece 31.2: who's accountable for finishing onboarding.
-                   + ["onboarding_owner_id"])
-    # Piece 30.9: rename roles to the org-chart outline once (meta-guarded).
-    # Rewrites each employee's comma-separated roles via ROLE_RENAMES. The
-    # init_db connection returns tuples (no Row factory), so index by position.
-    if not db.execute("SELECT 1 FROM meta WHERE key = 'role_names_v2'").fetchone():
-        for rid, roles in db.execute("SELECT id, roles FROM employees").fetchall():
-            parts = [p.strip() for p in (roles or "").split(",") if p.strip()]
-            renamed = [ROLE_RENAMES.get(p, p) for p in parts]
-            if renamed != parts:
-                db.execute("UPDATE employees SET roles = ? WHERE id = ?",
-                           (", ".join(renamed), rid))
-        db.execute("INSERT INTO meta (key, value) VALUES ('role_names_v2', '1')"
+    # Piece 35: a table renamed from "employees" (not freshly created) skips
+    # schema.sql's CREATE TABLE, so columns baked into the new household_members
+    # shape that the old employees table never had must be added explicitly —
+    # plus the transitional "access_level" column, kept just long enough for
+    # the is_admin backfill below, then dropped.
+    ensure_columns(db, "household_members",
+                   ["is_admin", "licenses_certifications", "access_level"])
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'household_reorg_v1'").fetchone():
+        # Backfill is_admin from the old access_level/GM-role signal *before*
+        # the role remap below overwrites the role text it reads here.
+        db.execute("UPDATE household_members SET is_admin = '1'"
+                   " WHERE access_level = 'Admin' OR role LIKE '%General Manager%'")
+        # No signal in old data tells an adult from a kid — any pre-existing
+        # role text implied a job-title-holding adult, so default to Parent.
+        db.execute("UPDATE household_members SET role = 'Parent'"
+                   " WHERE role NOT IN ('Parent', 'Child', 'Assistant')")
+        db.execute("UPDATE permission_grants SET permission = 'household.manage'"
+                   " WHERE permission = 'employees.manage'")
+        for legacy_table in ("onboarding_steps", "employee_onboarding",
+                              "pay_types", "pay_rates", "time_entries"):
+            db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
+        for col in ("access_level", "is_supervisor", "access_revoked",
+                    "access_revoked_at", "access_revoked_by",
+                    "access_revoked_reason", "onboarding_owner_id", "base_wage"):
+            try:
+                db.execute(f"ALTER TABLE household_members DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        db.execute("INSERT INTO meta (key, value) VALUES ('household_reorg_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    # Piece 26.8: move Cary's default dashboard to the Executive overview. Runs
-    # once (meta-guarded) and only flips the old seeded 'Design' default, so it
-    # won't override a choice Cary has since made himself.
-    if not db.execute("SELECT 1 FROM meta WHERE key = 'cary_exec_default'").fetchone():
-        db.execute("UPDATE employees SET dashboard_mode = 'Executive'"
-                   " WHERE name = 'Cary' AND COALESCE(dashboard_mode, '') IN ('', 'Design')")
-        db.execute("INSERT INTO meta (key, value) VALUES ('cary_exec_default', '1')"
-                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    if db.execute("SELECT COUNT(*) FROM pay_types").fetchone()[0] == 0:
-        db.executemany(
-            "INSERT INTO pay_types (name, method, value, sort_order)"
-            " VALUES (?, ?, ?, ?)", PAY_TYPE_SEED)
-    # Piece 21.3: OT-eligibility on pay types + approval status on time entries
-    # (existing databases created these tables in 21.2 without the columns).
-    pt_cols = {r[1] for r in db.execute("PRAGMA table_info(pay_types)")}
-    if "ot_eligible" not in pt_cols:
-        db.execute("ALTER TABLE pay_types ADD COLUMN ot_eligible INTEGER NOT NULL DEFAULT 1")
-    # PTO / Holiday / a manual Overtime type don't count toward the OT threshold.
-    db.execute("UPDATE pay_types SET ot_eligible = 0"
-               " WHERE name IN ('PTO', 'Holiday (2x)', 'Overtime (1.5x)')")
-    # Piece 26.7: mark leave (vacation/PTO/sick) pay types. Leave hours can't be
-    # used to push a week over the 40 h cap — they can't earn overtime — unless a
-    # GM overrides it on the approval form. Seed PTO/vacation/sick as leave; a
-    # meta flag makes the seed run once so hand-edits aren't overwritten.
-    if "is_leave" not in pt_cols:
-        db.execute("ALTER TABLE pay_types ADD COLUMN is_leave INTEGER NOT NULL DEFAULT 0")
-    if not db.execute("SELECT 1 FROM meta WHERE key = 'pay_leave_seeded'").fetchone():
-        db.execute("UPDATE pay_types SET is_leave = 1"
-                   " WHERE name IN ('PTO', 'Vacation', 'Sick', 'Sick leave',"
-                   "                'Paid time off', 'Leave')")
-        db.execute("INSERT OR REPLACE INTO meta (key, value)"
-                   " VALUES ('pay_leave_seeded', '1')")
-    te_cols = {r[1] for r in db.execute("PRAGMA table_info(time_entries)")}
-    if "status" not in te_cols:
-        db.execute("ALTER TABLE time_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'")
-        db.execute("ALTER TABLE time_entries ADD COLUMN approved_by TEXT DEFAULT ''")
-        db.execute("ALTER TABLE time_entries ADD COLUMN approved_at TEXT DEFAULT ''")
-        # Hours logged before approvals existed are treated as already approved.
-        db.execute("UPDATE time_entries SET status = 'Approved'")
+    db.commit()
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     # Piece 26.9: verbatim source text for a rule (esp. compliance) — the exact
@@ -3010,7 +2524,6 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
-    seed_onboarding_steps(db)  # Piece 29.2: default onboarding checklist
     seed_finance_reference(db)  # Piece 29.6: county GRT + markup categories
     ensure_columns(db, "projects", ["travel_miles"])       # Piece 29.6
     # Piece 30.2: cancellation (Abandoned) metadata — reason, who/when, and the
@@ -3062,7 +2575,6 @@ def init_db():
         db.execute("INSERT INTO meta (key, value) VALUES ('inv_fcc_flagged', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
-    assign_tasks_by_role(db)
     tag_tasks_by_stage(db)
     db.close()
 
@@ -3278,8 +2790,8 @@ def license_staffing():
     Drives the 'who on staff is licensed' badges on project pages."""
     rows = get_db().execute(
         "SELECT c.rule_label, c.expires, e.name AS emp_name"
-        " FROM employee_credentials c"
-        " JOIN employees e ON e.id = c.employee_id"
+        " FROM household_member_credentials c"
+        " JOIN household_members e ON e.id = c.household_member_id"
         " WHERE c.rule_label != ''"
         " ORDER BY e.name"
     ).fetchall()
@@ -3487,7 +2999,7 @@ def _notify_board_assignee(db, board_id, title, assignee_id, actor):
     """Tell a teammate a to-do was sent to them (skip self / login-less)."""
     if not assignee_id or (actor and actor["id"] == assignee_id):
         return
-    row = db.execute("SELECT COALESCE(username,'') AS u FROM employees WHERE id = ?",
+    row = db.execute("SELECT COALESCE(username,'') AS u FROM household_members WHERE id = ?",
                      (assignee_id,)).fetchone()
     if not row or not row["u"]:
         return
@@ -3507,7 +3019,7 @@ def boards_page():
     who = request.args.get("who", "mine" if me else "all")
     show = request.args.get("show", "open")
     sql = ("SELECT b.*, e.name AS assignee_name FROM boards b"
-           " LEFT JOIN employees e ON e.id = b.assigned_to WHERE 1 = 1")
+           " LEFT JOIN household_members e ON e.id = b.assigned_to WHERE 1 = 1")
     params = []
     if who == "mine" and me:
         sql += " AND b.assigned_to = ?"
@@ -3523,7 +3035,7 @@ def boards_page():
             " b.id DESC")
     boards = db.execute(sql, params).fetchall()
     employees = db.execute(
-        "SELECT id, name FROM employees ORDER BY name").fetchall()
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
     open_count = db.execute(
         "SELECT COUNT(*) FROM boards WHERE status != 'Done'").fetchone()[0]
     return render_template("boards.html", boards=boards, employees=employees,
@@ -3561,7 +3073,7 @@ def board_detail(board_id):
     db = get_db()
     board = db.execute(
         "SELECT b.*, e.name AS assignee_name FROM boards b"
-        " LEFT JOIN employees e ON e.id = b.assigned_to WHERE b.id = ?",
+        " LEFT JOIN household_members e ON e.id = b.assigned_to WHERE b.id = ?",
         (board_id,)).fetchone()
     if board is None:
         abort(404)
@@ -3575,7 +3087,7 @@ def board_detail(board_id):
         "SELECT COALESCE(SUM(hours), 0) FROM board_time WHERE board_id = ?",
         (board_id,)).fetchone()[0]
     employees = db.execute(
-        "SELECT id, name FROM employees ORDER BY name").fetchall()
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("board_detail.html", board=board, notes=notes,
                            times=times, total_hours=total_hours,
                            employees=employees, task_statuses=TASK_STATUSES,
@@ -3672,7 +3184,7 @@ def board_time_add(board_id):
         return redirect(url_for("board_detail", board_id=board_id))
     who = current_user()
     db.execute(
-        "INSERT INTO board_time (board_id, employee_id, who, hours, work_date, note)"
+        "INSERT INTO board_time (board_id, household_member_id, who, hours, work_date, note)"
         " VALUES (?, ?, ?, ?, ?, ?)",
         (board_id, who["id"] if who else None, who["name"] if who else "",
          round(hours, 2),
@@ -3691,8 +3203,8 @@ def board_delete(board_id):
     if board is None:
         abort(404)
     me = current_user()
-    # The creator, the current assignee, or a GM/Admin may remove a board.
-    allowed = (is_gm() or _is_admin()
+    # The creator, the current assignee, or an admin may remove a board.
+    allowed = (_is_admin()
                or (me and board["assigned_to"] == me["id"])
                or (me and (board["created_by"] or "") == me["name"]))
     if not allowed:
@@ -3761,7 +3273,7 @@ def dashboard():
         my_tasks = db.execute(
             "SELECT t.*, p.job_name, p.id AS project_id"
             " FROM project_tasks t JOIN projects p ON p.id = t.project_id"
-            " WHERE t.employee_id = ? AND t.status != 'Done' AND p.status != 'Abandoned'"
+            " WHERE t.household_member_id = ? AND t.status != 'Done' AND p.status != 'Abandoned'"
             " ORDER BY (t.due_date = ''), t.due_date, p.id", (user["id"],)).fetchall()
     # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
     # punch list — trim it to on-site field work, dropping office/scheduling
@@ -3963,7 +3475,7 @@ def dashboard():
     if show_leads:
         backlog_worklist = db.execute(
             "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
-            " LEFT JOIN employees e ON e.id = i.proposed_by"
+            " LEFT JOIN household_members e ON e.id = i.proposed_by"
             " WHERE i.status = 'Backlog'"
             " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
         ).fetchall()
@@ -4005,7 +3517,7 @@ def set_dashboard_default():
     if user is None:
         return redirect(url_for("home"))
     mode = request.form.get("mode", "All")
-    get_db().execute("UPDATE employees SET dashboard_mode = ? WHERE id = ?",
+    get_db().execute("UPDATE household_members SET dashboard_mode = ? WHERE id = ?",
                      (mode, user["id"]))
     get_db().commit()
     session["dash_mode"] = mode
@@ -4084,8 +3596,8 @@ def my_calendar_ics():
             " WHERE COALESCE(install_date, '') != ''")
     params = []
     if user:
-        tsql += " AND t.employee_id = ?"
-        jsql += " AND id IN (SELECT project_id FROM project_tasks WHERE employee_id = ?)"
+        tsql += " AND t.household_member_id = ?"
+        jsql += " AND id IN (SELECT project_id FROM project_tasks WHERE household_member_id = ?)"
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
@@ -4172,13 +3684,13 @@ def backlog_page():
     db = get_db()
     show = request.args.get("show", "open")
     sql = ("SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
-           " LEFT JOIN employees e ON e.id = i.proposed_by WHERE 1 = 1")
+           " LEFT JOIN household_members e ON e.id = i.proposed_by WHERE 1 = 1")
     if show == "open":
         sql += " AND i.status = 'Backlog'"
     sql += " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at DESC"
     ideas = db.execute(sql).fetchall()
     employees = db.execute(
-        "SELECT id, name FROM employees ORDER BY name").fetchall()
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
     open_count = db.execute(
         "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'"
     ).fetchone()[0]
@@ -4214,12 +3726,12 @@ def backlog_detail(idea_id):
     db = get_db()
     idea = db.execute(
         "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
-        " LEFT JOIN employees e ON e.id = i.proposed_by WHERE i.id = ?",
+        " LEFT JOIN household_members e ON e.id = i.proposed_by WHERE i.id = ?",
         (idea_id,)).fetchone()
     if idea is None:
         abort(404)
     employees = db.execute(
-        "SELECT id, name FROM employees ORDER BY name").fetchall()
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("backlog_detail.html", idea=idea,
                            employees=employees, statuses=BACKLOG_STATUSES)
 
@@ -4557,13 +4069,13 @@ def project_detail(project_id):
 
     # Piece 10: tasks for this project, plus the crew list for the assignee
     # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
-    # (employee_id NULL) still show.
+    # (household_member_id NULL) still show.
     tasks = db.execute(
         "SELECT t.*, e.name AS assignee_name FROM project_tasks t"
-        " LEFT JOIN employees e ON e.id = t.employee_id"
+        " LEFT JOIN household_members e ON e.id = t.household_member_id"
         " WHERE t.project_id = ? ORDER BY t.sort_order, t.id", (project_id,)
     ).fetchall()
-    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
     stage = stage_info(db, project, groups, filed_labels)
     progress = build_project_progress(db, project)
 
@@ -5089,196 +4601,6 @@ def estimate_pricing(db, project_id):
             "lines": lines}
 
 
-def _pay_period():
-    """Default pay period: the most recent full **Sunday → Saturday** week — the
-    one that ended on the latest Saturday (today included when today is Saturday).
-    Pay periods run Sunday to Saturday. Overridable via ?start/?end."""
-    today = datetime.now().date()
-    # weekday(): Mon=0 … Sat=5, Sun=6 → step back to the most recent Saturday.
-    days_since_sat = (today.weekday() - 5) % 7
-    default_end = today - timedelta(days=days_since_sat)   # a Saturday
-    default_start = default_end - timedelta(days=6)        # the Sunday before it
-    end = request.args.get("end") or default_end.strftime("%Y-%m-%d")
-    start = request.args.get("start") or default_start.strftime("%Y-%m-%d")
-    return start, end
-
-
-# Payroll runs Tuesday–Thursday each week (weekday() 1,2,3).
-PAYROLL_DAYS = (1, 2, 3)
-_WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-
-def payroll_status(db, start, end):
-    """Piece 26.7: the state of this pay period for the Finance dashboard's
-    payroll reminder. Two steps must both be done before payroll is put to bed:
-    (1) hours *confirmed* — nothing left awaiting approval in the period — and
-    (2) *exported* to QuickBooks. The export is only counted as current if it
-    happened after the newest approval, so approving more hours re-opens it. The
-    reminder nags Tuesday–Thursday until both are done."""
-    pending = db.execute(
-        "SELECT COUNT(*) FROM time_entries WHERE status = 'Pending'"
-        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
-    approved = db.execute(
-        "SELECT COUNT(*) FROM time_entries WHERE status = 'Approved'"
-        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
-    last_approved = db.execute(
-        "SELECT MAX(approved_at) FROM time_entries WHERE status = 'Approved'"
-        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
-    exported_at = _meta_get(db, f"payroll_exported:{start}..{end}", "")
-    confirmed = pending == 0
-    exported = bool(exported_at) and (not last_approved or exported_at >= last_approved)
-    today = datetime.now()
-    weekday = today.weekday()
-    return {
-        "start": start, "end": end, "pending": pending, "approved": approved,
-        "confirmed": confirmed, "exported": exported, "exported_at": exported_at,
-        "in_window": weekday in PAYROLL_DAYS, "today_abbr": _WEEKDAY_ABBR[weekday],
-        "days": [_WEEKDAY_ABBR[d] for d in PAYROLL_DAYS],
-        "done": confirmed and exported,
-    }
-
-
-@app.route("/payroll")
-@payroll_required
-def payroll():
-    db = get_db()
-    start, end = _pay_period()
-    types, rollup, totals = payroll_summary(db, start, end)
-    entries = db.execute(
-        "SELECT te.*, e.name AS emp_name, pt.name AS type_name, j.job_name"
-        " FROM time_entries te"
-        " JOIN employees e ON e.id = te.employee_id"
-        " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-        " LEFT JOIN projects j ON j.id = te.project_id"
-        " WHERE te.work_date >= ? AND te.work_date <= ? AND te.status = 'Approved'"
-        " ORDER BY te.work_date DESC, te.id DESC", (start, end)).fetchall()
-    # Supervisor approval queue: hours employees logged that await review.
-    pending = db.execute(
-        "SELECT te.*, e.name AS emp_name, pt.name AS type_name,"
-        " pt.is_leave AS is_leave, j.job_name"
-        " FROM time_entries te"
-        " JOIN employees e ON e.id = te.employee_id"
-        " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-        " LEFT JOIN projects j ON j.id = te.project_id"
-        " WHERE te.status = 'Pending' ORDER BY te.work_date, e.name").fetchall()
-    ot_threshold, ot_mult = ot_rules(db)
-    return render_template(
-        "payroll.html", start=start, end=end, types=types, rollup=rollup,
-        totals=totals, entries=entries, pending=pending,
-        ot_threshold=ot_threshold, ot_mult=ot_mult,
-        can_edit_rates=_can_edit_pay_rates(),
-        today=datetime.now().strftime("%Y-%m-%d"))
-
-
-@app.route("/payroll/time/add", methods=["POST"])
-@payroll_required
-def add_time_entry():
-    db = get_db()
-    emp_id = request.form.get("employee_id", "")
-    if not emp_id.isdigit():
-        flash("Pick an employee for the time entry.", "error")
-        return redirect(url_for("payroll"))
-    who = current_user()
-    db.execute(
-        "INSERT INTO time_entries"
-        " (employee_id, work_date, project_id, pay_type_id, hours, note, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (int(emp_id), request.form.get("work_date", "").strip(),
-         int(request.form["project_id"]) if request.form.get("project_id", "").isdigit() else None,
-         int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
-         _to_float(request.form.get("hours")) or 0.0,
-         request.form.get("note", "").strip(), who["name"] if who else ""))
-    db.commit()
-    flash("Hours logged.")
-    return redirect(url_for("payroll", start=request.form.get("start"),
-                            end=request.form.get("end")))
-
-
-@app.route("/payroll/time/<int:entry_id>/delete", methods=["POST"])
-@payroll_required
-def delete_time_entry(entry_id):
-    db = get_db()
-    db.execute("DELETE FROM time_entries WHERE id = ?", (entry_id,))
-    db.commit()
-    flash("Time entry deleted.")
-    return redirect(url_for("payroll", start=request.form.get("start"),
-                            end=request.form.get("end")))
-
-
-@app.route("/payroll/time/<int:entry_id>/approve", methods=["POST"])
-@payroll_required
-def approve_time_entry(entry_id):
-    who = current_user()
-    db = get_db()
-    entry = db.execute(
-        "SELECT te.*, pt.is_leave AS is_leave, pt.name AS type_name"
-        " FROM time_entries te LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-        " WHERE te.id = ?", (entry_id,)).fetchone()
-    if entry is None:
-        abort(404)
-    # Piece 26.7: the leave/vacation cap. Leave hours (PTO/vacation/sick) can't be
-    # used to take a week past the weekly OT threshold — no one earns overtime on
-    # leave. Approving a leave entry that would push the employee's already-approved
-    # hours for that ISO week over the cap is blocked, UNLESS a GM ticks the manual
-    # override on this form. Worked hours are untouched (they still earn OT).
-    override = bool(request.form.get("gm_override")) and is_gm()
-    if entry["is_leave"] and not override:
-        threshold, _mult = ot_rules(db)
-        wk = _iso_week(entry["work_date"])
-        already = 0.0
-        if wk is not None:
-            for r in db.execute(
-                    "SELECT work_date, hours FROM time_entries"
-                    " WHERE employee_id = ? AND status = 'Approved' AND id != ?",
-                    (entry["employee_id"], entry_id)).fetchall():
-                if _iso_week(r["work_date"]) == wk:
-                    already += r["hours"] or 0.0
-        add = entry["hours"] or 0.0
-        if already + add > threshold + 1e-9:
-            room = max(threshold - already, 0.0)
-            emp = db.execute("SELECT name FROM employees WHERE id = ?",
-                             (entry["employee_id"],)).fetchone()
-            flash(
-                f"{(emp['name'] if emp else 'This employee')} already has "
-                f"{already:.2f} approved hours that week — approving {add:.2f} h of "
-                f"{entry['type_name'] or 'leave'} would pass the {threshold:.0f} h weekly "
-                f"cap (leave can't earn overtime). Only {room:.2f} h of leave fit; reduce "
-                f"the hours, or the GM can override on this row.", "error")
-            return redirect(url_for("payroll"))
-    db.execute("UPDATE time_entries SET status = 'Approved', approved_by = ?,"
-               " approved_at = datetime('now') WHERE id = ?",
-               (who["name"] if who else "", entry_id))
-    db.commit()
-    if entry["is_leave"] and override:
-        flash("Hours approved — GM override applied (leave beyond the weekly cap).")
-    else:
-        flash("Hours approved.")
-    return redirect(url_for("payroll"))
-
-
-@app.route("/payroll/time/<int:entry_id>/reject", methods=["POST"])
-@payroll_required
-def reject_time_entry(entry_id):
-    db = get_db()
-    db.execute("DELETE FROM time_entries WHERE id = ? AND status = 'Pending'", (entry_id,))
-    db.commit()
-    flash("Time entry rejected — the employee can re-submit it.")
-    return redirect(url_for("payroll"))
-
-
-@app.route("/payroll/ot-rules", methods=["POST"])
-@pay_rates_required
-def save_ot_rules():
-    db = get_db()
-    _meta_set(db, "payroll_ot_threshold",
-              _to_float(request.form.get("ot_threshold")) or OT_THRESHOLD_DEFAULT)
-    _meta_set(db, "payroll_ot_multiplier",
-              _to_float(request.form.get("ot_multiplier")) or OT_MULTIPLIER_DEFAULT)
-    db.commit()
-    flash("Overtime rules saved.")
-    return redirect(url_for("payroll_settings"))
-
-
 def _workbag_redirect(anchor=None):
     """Piece 27.7: Work-Bag POSTs now come from a project's own page, so return
     there (using the form's project_id) instead of the landing. Falls back to the
@@ -5287,142 +4609,6 @@ def _workbag_redirect(anchor=None):
     if jid.isdigit():
         return redirect(url_for("work_bag_job", project_id=int(jid), _anchor=anchor))
     return redirect(url_for("work_bag"))
-
-
-@app.route("/work-bag/hours", methods=["POST"])
-def log_my_hours():
-    """An employee logs their own hours from the Work Bag — saved as Pending
-    until a supervisor approves them for payroll."""
-    user = current_user()
-    if user is None:
-        abort(403)
-    db = get_db()
-    db.execute(
-        "INSERT INTO time_entries (employee_id, work_date, project_id, pay_type_id,"
-        " hours, note, status, created_by) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
-        (user["id"], request.form.get("work_date", "").strip(),
-         int(request.form["project_id"]) if request.form.get("project_id", "").isdigit() else None,
-         int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
-         _to_float(request.form.get("hours")) or 0.0,
-         request.form.get("note", "").strip(), user["name"]))
-    db.commit()
-    flash("Hours submitted for approval.")
-    return _workbag_redirect(anchor="hours")
-
-
-@app.route("/work-bag/hours/<int:entry_id>/delete", methods=["POST"])
-def delete_my_hours(entry_id):
-    user = current_user()
-    if user is None:
-        abort(403)
-    db = get_db()
-    db.execute("DELETE FROM time_entries WHERE id = ? AND employee_id = ?"
-               " AND status = 'Pending'", (entry_id, user["id"]))
-    db.commit()
-    return _workbag_redirect(anchor="hours")
-
-
-# ---------------------- Piece 25.1: timesheets --------------------------------
-def build_timesheet(db, start, end, employee_ids=None):
-    """A per-employee timesheet for [start, end]: every logged time entry
-    (Approved and Pending) grouped by employee, then by work date, with day
-    subtotals and per-person Approved / Pending / total hours. `employee_ids`
-    None means everyone; a list scopes it (used to lock a worker to their own)."""
-    q = ("SELECT te.*, pt.name AS type_name, j.job_name, e.name AS emp_name"
-         " FROM time_entries te JOIN employees e ON e.id = te.employee_id"
-         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-         " LEFT JOIN projects j ON j.id = te.project_id"
-         " WHERE te.work_date >= ? AND te.work_date <= ?")
-    params = [start, end]
-    if employee_ids is not None:
-        if not employee_ids:
-            return [], {"approved": 0.0, "pending": 0.0, "total": 0.0}
-        q += " AND te.employee_id IN (%s)" % ",".join("?" * len(employee_ids))
-        params += list(employee_ids)
-    q += " ORDER BY e.name, te.work_date, te.id"
-    rows = db.execute(q, params).fetchall()
-
-    def weekday(d):
-        try:
-            return datetime.strptime(d, "%Y-%m-%d").strftime("%a")
-        except (ValueError, TypeError):
-            return ""
-
-    sheets = {}
-    for r in rows:
-        sh = sheets.setdefault(r["employee_id"], {
-            "employee_id": r["employee_id"], "name": r["emp_name"],
-            "days": {}, "approved": 0.0, "pending": 0.0, "total": 0.0})
-        day = sh["days"].setdefault(r["work_date"], {
-            "date": r["work_date"], "weekday": weekday(r["work_date"]),
-            "rows": [], "hours": 0.0})
-        hrs = r["hours"] or 0.0
-        day["rows"].append(r)
-        day["hours"] += hrs
-        sh["total"] += hrs
-        sh[("approved" if r["status"] == "Approved" else "pending")] += hrs
-    out = []
-    for sh in sorted(sheets.values(), key=lambda s: s["name"].lower()):
-        sh["days"] = [sh["days"][d] for d in sorted(sh["days"])]
-        out.append(sh)
-    totals = {"approved": sum(s["approved"] for s in out),
-              "pending": sum(s["pending"] for s in out),
-              "total": sum(s["total"] for s in out)}
-    return out, totals
-
-
-def _timesheet_scope():
-    """Resolve (start, end, employee_ids, manager, selected) for the timesheet
-    from the request. Managers may pick any employee or 'all'; everyone else is
-    locked to their own hours."""
-    user = current_user()
-    start, end = _pay_period()
-    manager = _can_payroll()
-    selected = request.args.get("employee", "all" if manager else "")
-    if manager:
-        emp_ids = [int(selected)] if selected.isdigit() else None
-    else:
-        emp_ids = [user["id"]] if user else []
-    return start, end, emp_ids, manager, selected
-
-
-@app.route("/timesheet")
-def timesheet():
-    """A printable hours timesheet built from logged time entries. Any signed-in
-    worker sees their own; payroll (Finance / Admin / GM) can view anyone or all."""
-    db = get_db()
-    start, end, emp_ids, manager, selected = _timesheet_scope()
-    sheets, totals = build_timesheet(db, start, end, emp_ids)
-    employees = (db.execute("SELECT id, name FROM employees WHERE COALESCE(name,'')"
-                            " != '' ORDER BY name").fetchall() if manager else [])
-    user = current_user()
-    return render_template(
-        "timesheet.html", sheets=sheets, totals=totals, start=start, end=end,
-        manager=manager, employees=employees, selected=selected,
-        self_name=user["name"] if user else "")
-
-
-@app.route("/timesheet.csv")
-def timesheet_csv():
-    """CSV export of the same timesheet (payroll-ready)."""
-    db = get_db()
-    start, end, emp_ids, _manager, _sel = _timesheet_scope()
-    sheets, _totals = build_timesheet(db, start, end, emp_ids)
-    import csv
-    import io
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Employee", "Date", "Weekday", "Project", "Pay type", "Hours",
-                "Status", "Note"])
-    for sh in sheets:
-        for day in sh["days"]:
-            for r in day["rows"]:
-                w.writerow([sh["name"], r["work_date"], day["weekday"],
-                            r["job_name"] or "", r["type_name"] or "",
-                            r["hours"] or 0, r["status"], r["note"] or ""])
-    fname = f"timesheet_{start}_to_{end}.csv"
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 @app.route("/work-bag/notes", methods=["POST"])
@@ -5517,110 +4703,6 @@ def delete_project_note(note_id):
     db.commit()
     flash("Note removed.")
     return _workbag_redirect(anchor="notes")
-
-
-@app.route("/payroll/settings", methods=["GET"])
-@pay_rates_required
-def payroll_settings():
-    db = get_db()
-    types = db.execute("SELECT * FROM pay_types ORDER BY sort_order, id").fetchall()
-    employees = db.execute(
-        "SELECT id, name, base_wage FROM employees ORDER BY name").fetchall()
-    rates = {}
-    for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
-        rates[(r["employee_id"], r["pay_type_id"])] = r["value"]
-    ot_threshold, ot_mult = ot_rules(db)
-    return render_template("payroll_settings.html", types=types,
-                           employees=employees, rates=rates, pay_methods=PAY_METHODS,
-                           ot_threshold=ot_threshold, ot_mult=ot_mult)
-
-
-@app.route("/payroll/paytype/save", methods=["POST"])
-@pay_rates_required
-def save_pay_type():
-    db = get_db()
-    name = request.form.get("name", "").strip()
-    method = request.form.get("method", "multiplier")
-    method = method if method in PAY_METHODS else "multiplier"
-    value = _to_float(request.form.get("value")) or 0.0
-    ot_eligible = 1 if request.form.get("ot_eligible") else 0
-    is_leave = 1 if request.form.get("is_leave") else 0
-    tid = request.form.get("id", "")
-    if not name:
-        flash("A pay type needs a name.", "error")
-    elif tid.isdigit():
-        db.execute("UPDATE pay_types SET name = ?, method = ?, value = ?,"
-                   " ot_eligible = ?, is_leave = ? WHERE id = ?",
-                   (name, method, value, ot_eligible, is_leave, int(tid)))
-        db.commit()
-        flash("Pay type updated.")
-    else:
-        nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM pay_types").fetchone()[0]
-        db.execute("INSERT INTO pay_types (name, method, value, sort_order, ot_eligible, is_leave)"
-                   " VALUES (?, ?, ?, ?, ?, ?)", (name, method, value, nxt, ot_eligible, is_leave))
-        db.commit()
-        flash("Pay type added.")
-    return redirect(url_for("payroll_settings"))
-
-
-@app.route("/payroll/paytype/<int:type_id>/delete", methods=["POST"])
-@pay_rates_required
-def delete_pay_type(type_id):
-    db = get_db()
-    db.execute("UPDATE pay_types SET active = 0 WHERE id = ?", (type_id,))
-    db.commit()
-    flash("Pay type removed.")
-    return redirect(url_for("payroll_settings"))
-
-
-@app.route("/payroll/employee/<int:employee_id>/rates", methods=["POST"])
-@pay_rates_required
-def save_employee_rates(employee_id):
-    db = get_db()
-    db.execute("UPDATE employees SET base_wage = ? WHERE id = ?",
-               (_to_float(request.form.get("base_wage")) or 0.0, employee_id))
-    # Per-type overrides: a blank field means "use the pay type's default".
-    for t in db.execute("SELECT id FROM pay_types WHERE active = 1").fetchall():
-        raw = request.form.get(f"rate_{t['id']}", "").strip()
-        db.execute("DELETE FROM pay_rates WHERE employee_id = ? AND pay_type_id = ?",
-                   (employee_id, t["id"]))
-        if raw != "":
-            db.execute("INSERT INTO pay_rates (employee_id, pay_type_id, value)"
-                       " VALUES (?, ?, ?)", (employee_id, t["id"], _to_float(raw) or 0.0))
-    db.commit()
-    flash("Pay rates saved.")
-    return redirect(url_for("payroll_settings"))
-
-
-@app.route("/payroll/quickbooks.csv")
-@payroll_required
-def payroll_quickbooks_export():
-    """Payroll register for the pay period as a QuickBooks-importable CSV — one
-    row per employee per pay type, amounts negative (money out)."""
-    import csv
-    import io
-    db = get_db()
-    start, end = _pay_period()
-    types, rollup, _totals = payroll_summary(db, start, end)
-    type_name = {t["id"]: t["name"] for t in types}
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Date", "Description", "Amount", "Type", "Employee", "Pay Type",
-                "Hours", "Period Start", "Period End"])
-    for r in rollup:
-        for tid, cell in r["by_type"].items():
-            if not cell["hours"] and not cell["pay"]:
-                continue
-            w.writerow([end, f"Payroll · {r['employee']['name']} · {type_name.get(tid, '')}",
-                        f"{-cell['pay']:.2f}", "Expense", r["employee"]["name"],
-                        type_name.get(tid, ""), f"{cell['hours']:.2f}", start, end])
-    # Piece 26.7: stamp when this period was exported so Vanessa's payroll
-    # reminder can show "exported ✓" and stop nagging (see payroll_status()).
-    _meta_set(db, f"payroll_exported:{start}..{end}",
-              datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    db.commit()
-    return Response(buf.getvalue(), mimetype="text/csv", headers={
-        "Content-Disposition": "attachment; filename=compendium_payroll.csv"})
 
 
 @app.route("/projects/<int:project_id>/loads")
@@ -7538,13 +6620,13 @@ def delete_material(project_id, material_id):
 
 # -------------------------------------------------------------------- tasks
 def _task_assignee(project_id):
-    """Read and validate an employee_id from the form: blank means
+    """Read and validate an household_member_id from the form: blank means
     unassigned, a real employee id is kept, anything else is rejected."""
-    raw = request.form.get("employee_id", "").strip()
+    raw = request.form.get("household_member_id", "").strip()
     if not raw:
         return None
     emp = get_db().execute(
-        "SELECT id FROM employees WHERE id = ?", (raw,)).fetchone()
+        "SELECT id FROM household_members WHERE id = ?", (raw,)).fetchone()
     return emp["id"] if emp else None
 
 
@@ -7564,7 +6646,7 @@ def add_task(project_id):
         (project_id,)).fetchone()[0]
     db.execute(
         "INSERT INTO project_tasks"
-        " (project_id, employee_id, title, status, due_date, notes, sort_order,"
+        " (project_id, household_member_id, title, status, due_date, notes, sort_order,"
         "  completed_at, updated_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
         (project_id, _task_assignee(project_id), title, status,
@@ -7574,37 +6656,6 @@ def add_task(project_id):
     )
     db.commit()
     return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
-
-
-def best_assignee_for_lane(lane, employees):
-    """The most sensible employee to own a step in this lane (Piece 17.2).
-    Among everyone who holds a role mapped to the lane, prefer: a non-GM over
-    the General Manager (who holds many roles), then the better-matching role
-    (LANE_TO_ROLES is in priority order), then the most specialized person
-    (fewest roles). Deterministic; None if no one holds a mapped role."""
-    roles = LANE_TO_ROLES.get(lane, [])
-    if not roles:
-        return None
-    priority = {r.lower(): i for i, r in enumerate(roles)}
-    best_key = best_id = None
-    for e in employees:
-        emp_roles = [r.strip().lower() for r in (e["roles"] or "").split(",") if r.strip()]
-        matched = [priority[r] for r in emp_roles if r in priority]
-        if not matched:
-            continue
-        name = e["name"] if "name" in e.keys() else ""
-        # Prefer real staff over the demo employees, then a specialist over the
-        # General Manager, then the better-matching role, then fewest roles.
-        key = ("(sample)" in (name or ""), "general manager" in emp_roles,
-               min(matched), len(emp_roles), e["id"])
-        if best_key is None or key < best_key:
-            best_key, best_id = key, e["id"]
-    return best_id
-
-
-def _auto_assignee(lane, employees):
-    """Assignee for a generated step — the most sensible role-holder."""
-    return best_assignee_for_lane(lane, employees)
 
 
 def _permit_coverage(groups, filed_labels):
@@ -7639,14 +6690,10 @@ def _loads_recorded(db, project):
 
 
 def stage_info(db, project, groups, filed_labels):
-    """Piece 18: who governs the project's current stage (department + the head of
-    each staffing function), the exit criteria, and Project-Prep prerequisites."""
+    """Piece 18 (revised Piece 35): the project's current stage, its exit
+    criteria, and Project-Prep prerequisites."""
     status = project["status"] or DEFAULT_PROJECT_STATUS
-    spec = STATUS_OWNERSHIP.get(status, {"dept": "—", "exit": "", "team": []})
-    emps = db.execute("SELECT id, name, roles FROM employees").fetchall()
-    name_by_id = {e["id"]: e["name"] for e in emps}
-    team = [(label, name_by_id.get(best_assignee_for_lane(lane, emps), "— unassigned —"))
-            for label, lane in spec["team"]]
+    spec = STATUS_OWNERSHIP.get(status, {"dept": "—", "exit": ""})
     filed, total = _permit_coverage(groups, filed_labels)
     permits_ok = filed >= total
     install_date = project["install_date"] if "install_date" in project.keys() else ""
@@ -7676,7 +6723,7 @@ def stage_info(db, project, groups, filed_labels):
             pending.append("no install date set")
         ready = ready and permits_ok and bool(install_date)
     return {
-        "status": status, "dept": spec["dept"], "exit": spec["exit"], "team": team,
+        "status": status, "dept": spec["dept"], "exit": spec["exit"],
         "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
         "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
         "loads_ok": loads_ok,
@@ -7710,7 +6757,7 @@ def build_project_progress(db, project):
     if not lost and not complete:
         nxt = db.execute(
             "SELECT t.title, e.name AS who FROM project_tasks t"
-            " LEFT JOIN employees e ON e.id = t.employee_id"
+            " LEFT JOIN household_members e ON e.id = t.household_member_id"
             " WHERE t.project_id = ? AND t.status != 'Done'"
             " ORDER BY t.sort_order, t.id LIMIT 1", (project["id"],)).fetchone()
 
@@ -7794,128 +6841,6 @@ def project_billing(db, project_id, contract_amount=0.0):
     }
 
 
-def _rate_dollars(base_wage, method, value):
-    """Resolve a pay type to a $/hr rate for an employee: a multiplier type is
-    the base wage times the multiplier; a flat type is the value itself."""
-    base = _to_float(base_wage) or 0.0
-    v = value or 0.0
-    return base * v if method == "multiplier" else v
-
-
-def payroll_pay_types(db):
-    return db.execute("SELECT * FROM pay_types WHERE active = 1"
-                      " ORDER BY sort_order, id").fetchall()
-
-
-def _iso_week(date_str):
-    try:
-        y, w, _d = datetime.strptime(date_str, "%Y-%m-%d").isocalendar()
-        return (y, w)
-    except (ValueError, TypeError):
-        return None
-
-
-def payroll_summary(db, start, end):
-    """Per-employee payroll rollup for a pay period [start, end]: hours and
-    dollars per pay type, plus auto-overtime (hours over the weekly threshold of
-    OT-eligible time earn the OT premium). Only *approved* time entries count.
-    Uses each person's base wage and any per-type rate overrides."""
-    types = payroll_pay_types(db)
-    type_by_id = {t["id"]: t for t in types}
-    overrides = {}   # (employee_id, pay_type_id) -> value
-    for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
-        overrides[(r["employee_id"], r["pay_type_id"])] = r["value"]
-    ot_threshold, ot_mult = ot_rules(db)
-    entries = db.execute(
-        "SELECT * FROM time_entries WHERE work_date >= ? AND work_date <= ?"
-        " AND status = 'Approved' ORDER BY work_date, id", (start, end)).fetchall()
-    emp = {}   # employee_id -> rollup
-    week_elig = {}   # (employee_id, isoweek) -> OT-eligible hours
-    for e in entries:
-        pt = type_by_id.get(e["pay_type_id"])
-        if pt is None:
-            continue
-        row = emp.get(e["employee_id"])
-        if row is None:
-            who = db.execute("SELECT id, name, base_wage FROM employees WHERE id = ?",
-                             (e["employee_id"],)).fetchone()
-            if who is None:
-                continue
-            row = {"employee": who, "hours": 0.0, "pay": 0.0,
-                   "by_type": {t["id"]: {"hours": 0.0, "pay": 0.0} for t in types},
-                   "ot_hours": 0.0, "ot_pay": 0.0}
-            emp[e["employee_id"]] = row
-        hrs = e["hours"] or 0.0
-        val = overrides.get((e["employee_id"], e["pay_type_id"]), pt["value"])
-        rate = _rate_dollars(row["employee"]["base_wage"], pt["method"], val)
-        row["hours"] += hrs
-        row["pay"] += hrs * rate
-        cell = row["by_type"].setdefault(e["pay_type_id"], {"hours": 0.0, "pay": 0.0})
-        cell["hours"] += hrs
-        cell["pay"] += hrs * rate
-        if pt["ot_eligible"]:
-            wk = _iso_week(e["work_date"])
-            if wk is not None:
-                week_elig[(e["employee_id"], wk)] = week_elig.get((e["employee_id"], wk), 0.0) + hrs
-    # Auto-overtime: per employee per ISO week, hours over the threshold earn the
-    # OT premium (extra multiplier − 1) on the base wage, added on top.
-    for (emp_id, _wk), elig in week_elig.items():
-        if elig > ot_threshold and emp_id in emp:
-            row = emp[emp_id]
-            ot_h = elig - ot_threshold
-            base = _to_float(row["employee"]["base_wage"]) or 0.0
-            prem = ot_h * base * (ot_mult - 1.0)
-            row["ot_hours"] += ot_h
-            row["ot_pay"] += prem
-            row["pay"] += prem
-    rollup = sorted(emp.values(), key=lambda r: r["employee"]["name"].lower())
-    totals = {"hours": sum(r["hours"] for r in rollup),
-              "ot_hours": sum(r["ot_hours"] for r in rollup),
-              "pay": sum(r["pay"] for r in rollup)}
-    return types, rollup, totals
-
-
-def _lane_from_task(notes, title):
-    """The responsible lane for an existing task: from its 'Process step ·
-    <lane>' note if present, else inferred from title keywords."""
-    n = (notes or "").strip()
-    if "·" in n and n.lower().startswith("process step"):
-        return n.split("·", 1)[1].strip()
-    t = (title or "").lower()
-    for keyword, lane in TITLE_LANE_KEYWORDS:
-        if keyword in t:
-            return lane
-    return None
-
-
-def assign_tasks_by_role(db):
-    """One-time (Piece 17.2): give every existing task a sensible assignee by
-    role. Runs once per DB; leaves tasks already assigned to real staff alone,
-    and (re)assigns unassigned or sample-assigned tasks."""
-    if db.execute("SELECT 1 FROM meta WHERE key = 'tasks_role_assigned'").fetchone():
-        return
-    db.row_factory = sqlite3.Row  # init_db's connection isn't Row-based
-    employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
-    if employees:
-        tasks = db.execute(
-            "SELECT t.id, t.title, t.notes, t.employee_id, e.name AS assignee"
-            " FROM project_tasks t LEFT JOIN employees e ON e.id = t.employee_id"
-        ).fetchall()
-        for t in tasks:
-            if t["employee_id"] and t["assignee"] and "(sample)" not in (t["assignee"] or ""):
-                continue  # keep deliberate assignments to real staff
-            lane = _lane_from_task(t["notes"], t["title"])
-            aid = best_assignee_for_lane(lane, employees) if lane else None
-            if aid:
-                db.execute(
-                    "UPDATE project_tasks SET employee_id = ?,"
-                    " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
-                    (aid, t["id"]))
-    db.execute("INSERT INTO meta (key, value) VALUES ('tasks_role_assigned', '1')"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    db.commit()
-
-
 def _status_from_title(title):
     t = (title or "").lower()
     for keyword, status in TITLE_STATUS_KEYWORDS:
@@ -7942,16 +6867,18 @@ def tag_tasks_by_stage(db):
 
 
 def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
-    """Piece 31.5: core of the task auto-generator — materialize a project's process
-    steps into To-do tasks, auto-assigned by role/lane and scheduled, skipping
-    steps already on the list (safe to re-run). When `only_status` is given,
-    only steps tagged for that pipeline stage are inserted (used to auto-fill the
-    stage a project just entered); otherwise every actionable step is generated.
-    Returns (added, assigned, scheduled). Does not commit."""
+    """Piece 31.5 (revised Piece 35): core of the task auto-generator —
+    materialize a project's process steps into To-do tasks, scheduled and
+    left unassigned (Piece 35 dropped role-based auto-assignment — a human
+    picks who does it), skipping steps already on the list (safe to re-run).
+    When `only_status` is given, only steps tagged for that pipeline stage
+    are inserted (used to auto-fill the stage a project just entered);
+    otherwise every actionable step is generated. Returns
+    (added, assigned, scheduled) — `assigned` is always 0 now, kept in the
+    return shape so call sites don't need to change. Does not commit."""
     project_id = project["id"]
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     _xml, details = build_project_bpmn(project, match_rules(project, rules))
-    employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
 
     # Actionable workflow steps in order (no start/end events, gateways, or
     # automatic system steps like "Compendium generates tasks" — those stay on the
@@ -7995,7 +6922,7 @@ def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
         if title.lower() in existing:
             continue
         note = f"Process step · {step['lane']}" if step.get("lane") else "Process step"
-        assignee = _auto_assignee(step["lane"], employees)
+        assignee = None
         due = ""
         if base_date is not None and install_idx is not None:
             offset = (pos - install_idx) * TASK_DUE_SPACING_DAYS
@@ -8006,7 +6933,7 @@ def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
                 days=default_seq * TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
         db.execute(
             "INSERT INTO project_tasks"
-            " (project_id, employee_id, title, status, due_date, notes, sort_order,"
+            " (project_id, household_member_id, title, status, due_date, notes, sort_order,"
             "  pipeline_status, updated_at)"
             " VALUES (?, ?, ?, 'To do', ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (project_id, assignee, title, due, note, base + added,
@@ -8024,9 +6951,8 @@ def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
 def generate_tasks(project_id):
     """Pre-load a project's task list from its process: run the same per-project
     BPMN the Process chart uses, then turn each workflow step (skipping
-    start/end events and gateways) into a To-do task, in order. Each step
-    auto-assigns to the employee whose role matches its lane (when
-    unambiguous), and — if a target install date is given — gets a due date
+    start/end events and gateways) into a To-do task, in order, left
+    unassigned. If a target install date is given, each task gets a due date
     spaced around the Site Installation step. Skips steps already on the
     list, so it's safe to re-run after the project's fields change."""
     project = fetch_project(project_id)
@@ -8100,7 +7026,7 @@ def set_task_status(project_id, task_id):
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/assign", methods=["POST"])
 def set_task_assignee(project_id, task_id):
     db = get_db()
-    db.execute("UPDATE project_tasks SET employee_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+    db.execute("UPDATE project_tasks SET household_member_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
                " WHERE id = ? AND project_id = ?",
                (_task_assignee(project_id), task_id, project_id))
     db.commit()
@@ -8145,19 +7071,19 @@ def tasks_dashboard():
     person (or the unassigned pile) and to open vs. all. The home for
     'what am I supposed to be doing' across every project."""
     db = get_db()
-    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
     who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
     show = request.args.get("show", "open")  # open / all
     sql = ("SELECT t.*, j.job_name, j.id AS project_id,"
            " e.name AS assignee_name FROM project_tasks t"
            " JOIN projects j ON j.id = t.project_id"
-           " LEFT JOIN employees e ON e.id = t.employee_id"
+           " LEFT JOIN household_members e ON e.id = t.household_member_id"
            " WHERE j.status != 'Abandoned'")   # Piece 30.2: hide cancelled-project tasks
     params = []
     if who == "unassigned":
-        sql += " AND t.employee_id IS NULL"
+        sql += " AND t.household_member_id IS NULL"
     elif who.isdigit():
-        sql += " AND t.employee_id = ?"
+        sql += " AND t.household_member_id = ?"
         params.append(int(who))
     if show == "open":
         sql += " AND t.status != 'Done'"
@@ -8201,17 +7127,17 @@ def tasks_dashboard():
 
 
 # ------------------------------------------- Piece 14: Work Bag (offline sync)
-def _my_tasks_rows(db, employee_id):
+def _my_tasks_rows(db, household_member_id):
     # Piece 21.6: also surface pipeline_status + install_date so the Work Bag
     # can group tasks by project (with the install date) and show only field work.
     return db.execute(
         "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
         " t.pipeline_status, j.id AS project_id, j.job_name, j.install_date"
         " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
-        " WHERE t.employee_id = ? AND j.status != 'Abandoned'"   # Piece 30.2
+        " WHERE t.household_member_id = ? AND j.status != 'Abandoned'"   # Piece 30.2
         " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
         " j.id, (t.due_date = ''), t.due_date, t.id",
-        (employee_id,)).fetchall()
+        (household_member_id,)).fetchall()
 
 
 def _to_float(v):
@@ -8238,15 +7164,11 @@ def work_bag_job(project_id):
     db = get_db()
     project = fetch_project(project_id)
     user = current_user()
-    pay_types = payroll_pay_types(db)
     my_entries = my_notes = my_receipts = []
     if user is not None:
         my_entries = db.execute(
-            "SELECT te.*, pt.name AS type_name FROM time_entries te"
-            " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-            " WHERE te.employee_id = ? AND te.project_id = ?"
-            " ORDER BY te.work_date DESC, te.id DESC LIMIT 12",
-            (user["id"], project_id)).fetchall()
+            "SELECT * FROM field_submissions WHERE household_member_id = ?"
+            " ORDER BY id DESC LIMIT 12", (user["id"],)).fetchall()
         my_notes = db.execute(
             "SELECT n.* FROM project_notes n WHERE n.author = ? AND n.project_id = ?"
             " ORDER BY n.id DESC LIMIT 12", (user["name"], project_id)).fetchall()
@@ -8258,8 +7180,6 @@ def work_bag_job(project_id):
     return render_template(
         "work_bag_job.html", project=project,
         task_statuses=TASK_STATUSES, today=datetime.now().strftime("%Y-%m-%d"),
-        pay_types=pay_types,
-        pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types],
         my_entries=my_entries, my_notes=my_notes,
         my_receipts=my_receipts, receipt_categories=RECEIPT_CATEGORIES)
 
@@ -8277,10 +7197,10 @@ def api_my_tasks():
         "SELECT i.task_id, i.new_status, i.new_notes"
         " FROM field_submission_items i"
         " JOIN field_submissions s ON s.id = i.submission_id"
-        " WHERE s.employee_id = ? AND s.status = 'Pending'", (user["id"],)).fetchall()
+        " WHERE s.household_member_id = ? AND s.status = 'Pending'", (user["id"],)).fetchall()
     subs = db.execute(
         "SELECT id, work_date, reported_hours, approved_hours, status, submitted_at,"
-        " reviewed_at FROM field_submissions WHERE employee_id = ?"
+        " reviewed_at FROM field_submissions WHERE household_member_id = ?"
         " ORDER BY id DESC LIMIT 8", (user["id"],)).fetchall()
     # Piece 21.7: attach any field photos already on file for photo-steps, plus
     # the link to each photo step's capture page.
@@ -8325,75 +7245,48 @@ def api_my_tasks():
     })
 
 
-def _validated_segments(db, segs, pt_names=None):
-    """Piece 27.9/28.0: clean a list of {pay_type_id, hours} time segments —
-    keep only active pay types with positive hours, and attach the pay-type name
-    for display. Shared by the Work Bag submit API and the photo-step completion."""
-    if pt_names is None:
-        pt_names = {t["id"]: t["name"] for t in payroll_pay_types(db)}
-    out = []
-    for seg in (segs or []):
-        try:
-            pid = int(seg.get("pay_type_id"))
-        except (TypeError, ValueError):
-            continue
-        hrs = _to_float(seg.get("hours"))
-        if pid not in pt_names or not hrs or hrs <= 0:
-            continue
-        out.append({"pay_type_id": pid, "pay_type_name": pt_names[pid],
-                    "hours": round(hrs, 2)})
-    return out
-
-
 @app.route("/api/work-bag/submit", methods=["POST"])
 def api_work_bag_submit():
     """Save the worker's completed field work as a PENDING submission — a
-    copy in the database that does NOT change the authoritative task data or
-    count as hours until a manager approves it."""
+    copy in the database that does NOT change the authoritative task data
+    until a manager approves it. Hours are a single self-reported total
+    (display-only once approved — Piece 35 dropped the pay-type breakdown
+    along with payroll)."""
     user = current_user()
     if user is None:
         return jsonify({"error": "not signed in"}), 401
     payload = request.get_json(silent=True) or {}
     db = get_db()
-    # Piece 27.9: each change is a completed (or blocked) task, optionally with
-    # the time it took split by pay type. Validate segments against active pay
-    # types; store them on the item so approval can post payroll entries.
-    pt_names = {t["id"]: t["name"] for t in payroll_pay_types(db)}
     valid = []
-    total_hours = 0.0
     for ch in payload.get("changes", []) or []:
         row = db.execute(
-            "SELECT * FROM project_tasks WHERE id = ? AND employee_id = ?",
+            "SELECT * FROM project_tasks WHERE id = ? AND household_member_id = ?",
             (ch.get("id"), user["id"])).fetchone()
         if row is None:
             continue
         status = ch.get("status", row["status"])
         if status not in TASK_STATUSES:
             status = row["status"]
-        segments = _validated_segments(db, ch.get("segments"), pt_names)
-        total_hours += sum(s["hours"] for s in segments)
         work_date = (ch.get("work_date") or payload.get("work_date") or "").strip()
         valid.append((row["id"], row["title"], status,
                       ch.get("notes", row["notes"]), ch.get("base_updated_at") or "",
-                      json.dumps(segments), work_date))
+                      work_date))
     reported_hours = _to_float(payload.get("reported_hours"))
-    if reported_hours is None and total_hours > 0:
-        reported_hours = round(total_hours, 2)
     if not valid and reported_hours is None:
         return jsonify({"error": "nothing to submit"}), 400
     cur = db.execute(
-        "INSERT INTO field_submissions (employee_id, work_date, reported_hours, note)"
+        "INSERT INTO field_submissions (household_member_id, work_date, reported_hours, note)"
         " VALUES (?, ?, ?, ?)",
         (user["id"], (payload.get("work_date") or "").strip(), reported_hours,
          (payload.get("note") or "").strip()))
     sub_id = cur.lastrowid
-    for task_id, title, status, notes, base, hours_json, work_date in valid:
+    for task_id, title, status, notes, base, work_date in valid:
         db.execute(
             "INSERT INTO field_submission_items"
             " (submission_id, task_id, task_title, new_status, new_notes,"
-            "  base_updated_at, hours_json, work_date)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (sub_id, task_id, title, status, notes, base, hours_json, work_date))
+            "  base_updated_at, work_date)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sub_id, task_id, title, status, notes, base, work_date))
     db.commit()
     return jsonify({"submission_id": sub_id, "status": "Pending",
                     "items": len(valid)})
@@ -8409,7 +7302,7 @@ def submissions_page():
     where = "WHERE s.status = 'Pending'" if show == "pending" else ""
     subs = db.execute(
         "SELECT s.*, e.name AS emp_name FROM field_submissions s"
-        " JOIN employees e ON e.id = s.employee_id"
+        " JOIN household_members e ON e.id = s.household_member_id"
         f" {where} ORDER BY (s.status='Pending') DESC, s.id DESC LIMIT 100"
     ).fetchall()
     items_by_sub = {}
@@ -8418,13 +7311,7 @@ def submissions_page():
         q = ("SELECT * FROM field_submission_items WHERE submission_id IN (%s)"
              " ORDER BY id" % ",".join("?" * len(ids)))
         for it in db.execute(q, ids).fetchall():
-            d = dict(it)
-            try:
-                d["segments"] = json.loads(it["hours_json"]) if ("hours_json" in it.keys()
-                                and it["hours_json"]) else []
-            except (ValueError, TypeError):
-                d["segments"] = []
-            items_by_sub.setdefault(it["submission_id"], []).append(d)
+            items_by_sub.setdefault(it["submission_id"], []).append(dict(it))
     return render_template("submissions.html", subs=subs, items_by_sub=items_by_sub,
                            show=show)
 
@@ -8460,28 +7347,6 @@ def approve_submission(sub_id):
         # Field-approved completions re-anchor the next open step's deadline too.
         if status == "Done" and row["status"] != "Done":
             _redefault_next_due(db, row["project_id"], completed)
-        # Piece 27.9: post the task's time (split by pay type) as PENDING payroll
-        # entries for this project — Finance approves them on the payroll page. Two
-        # sign-offs: the supervisor confirms the work here, Finance approves pay.
-        segments = []
-        if "hours_json" in it.keys() and it["hours_json"]:
-            try:
-                segments = json.loads(it["hours_json"])
-            except (ValueError, TypeError):
-                segments = []
-        wd = (it["work_date"] if "work_date" in it.keys() and it["work_date"]
-              else sub["work_date"] or datetime.now().strftime("%Y-%m-%d"))
-        for seg in segments:
-            hrs = _to_float(seg.get("hours"))
-            pid = seg.get("pay_type_id")
-            if not hrs or hrs <= 0 or pid is None:
-                continue
-            db.execute(
-                "INSERT INTO time_entries (employee_id, work_date, project_id,"
-                " pay_type_id, hours, note, status, created_by)"
-                " VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
-                (sub["employee_id"], wd, row["project_id"], pid, round(hrs, 2),
-                 f"Field: {it['task_title']}", who["name"] if who else ""))
     db.execute(
         "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"
         " reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?",
@@ -8628,11 +7493,9 @@ def task_photos(task_id):
     photos = db.execute(
         "SELECT * FROM project_files WHERE project_id = ? AND rule_label = ? AND task_id = ?"
         " ORDER BY id DESC", (project_id, FIELD_PHOTO_LABEL, str(task_id))).fetchall()
-    pay_types = payroll_pay_types(db)
     return render_template(
         "work_bag_photos.html", task=task, photos=photos,
-        today=datetime.now().strftime("%Y-%m-%d"),
-        pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types])
+        today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/work-bag/tasks/<int:task_id>/complete", methods=["POST"])
@@ -8644,7 +7507,7 @@ def complete_photo_task(task_id):
     if user is None:
         abort(403)
     db = get_db()
-    task = db.execute("SELECT * FROM project_tasks WHERE id = ? AND employee_id = ?",
+    task = db.execute("SELECT * FROM project_tasks WHERE id = ? AND household_member_id = ?",
                       (task_id, user["id"])).fetchone()
     if task is None:
         flash("That task isn't in your bag.", "error")
@@ -8663,24 +7526,19 @@ def complete_photo_task(task_id):
     if status == "Blocked" and not notes:
         flash("Add a note about what's blocking it.", "error")
         return redirect(url_for("task_photos", task_id=task_id))
-    try:
-        raw_segs = json.loads(request.form.get("segments") or "[]")
-    except (ValueError, TypeError):
-        raw_segs = []
-    segments = _validated_segments(db, raw_segs) if status == "Done" else []
-    total = sum(s["hours"] for s in segments)
+    reported_hours = _to_float(request.form.get("hours"))
     cur = db.execute(
-        "INSERT INTO field_submissions (employee_id, work_date, reported_hours, note)"
+        "INSERT INTO field_submissions (household_member_id, work_date, reported_hours, note)"
         " VALUES (?, ?, ?, ?)",
-        (user["id"], work_date, round(total, 2) if total else None, ""))
+        (user["id"], work_date, reported_hours, ""))
     sub_id = cur.lastrowid
     db.execute(
         "INSERT INTO field_submission_items"
         " (submission_id, task_id, task_title, new_status, new_notes,"
-        "  base_updated_at, hours_json, work_date)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  base_updated_at, work_date)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (sub_id, task_id, task["title"], status, notes,
-         task["updated_at"] or "", json.dumps(segments), work_date))
+         task["updated_at"] or "", work_date))
     db.commit()
     flash(f"“{task['title']}” submitted for approval."
           if status == "Done" else f"“{task['title']}” flagged as blocked for the office.")
@@ -9025,81 +7883,53 @@ def delete_rule(rule_id):
                             from_job=request.form.get("from_job") or None))
 
 
-# ---------------------------------------------------------------- employees
-def read_employee_form():
-    """Validate and normalize a submitted employee form (create or edit).
-    Names come in as first/last (+ optional nickname) and compose into `name`;
-    roles come in as checkboxes plus an optional free-typed 'other' field."""
+# ---------------------------------------------------------- household members
+def read_household_member_form():
+    """Validate and normalize a submitted household member form (create or
+    edit). Names come in as first/last (+ optional nickname) and compose
+    into `name`; role is a single Parent/Child/Assistant selection."""
     first = request.form.get("first_name", "").strip()
     last = request.form.get("last_name", "").strip()
+    role = request.form.get("role", "").strip()
     values = {
         "first_name": first, "last_name": last,
         "nickname": request.form.get("nickname", "").strip(),
         "name": (first + " " + last).strip(),
         "schedule": request.form.get("schedule", "").strip(),
+        "role": role if role in HOUSEHOLD_ROLES else "Parent",
     }
-    selected = request.form.getlist("roles")
-    roles = [r for r in EMPLOYEE_ROLES if r in selected]
-    for extra in request.form.get("roles_other", "").split(","):
-        extra = extra.strip()
-        if extra and extra not in roles:
-            roles.append(extra)
-    values["roles"] = ", ".join(roles)
     errors = []
     if not first:
         errors.append("First name is required.")
     return values, errors
 
 
-def render_employee_form(values, employee_id=None, username="", access_level="",
-                         duplicate_warning=None, is_supervisor="",
-                         onboarding_owner_id=None):
-    """Render the shared new/edit form, splitting stored roles back into
-    the known checkbox roles and any free-typed extras. Legacy fallback: an
-    existing employee with no first/last gets its `name` split into the fields."""
+def render_household_member_form(values, household_member_id=None, username="",
+                                  is_admin_checked="", duplicate_warning=None):
+    """Render the shared new/edit form. Legacy fallback: an existing member
+    with no first/last gets its `name` split into the fields."""
     values = dict(values)
     if not values.get("first_name") and values.get("name"):
         parts = values["name"].split(" ", 1)
         values["first_name"] = parts[0]
         values["last_name"] = parts[1] if len(parts) > 1 else ""
-    stored = [ROLE_RENAMES.get(r.strip(), r.strip())
-              for r in (values.get("roles") or "").split(",") if r.strip()]
-    selected = [r for r in stored if r in EMPLOYEE_ROLES]
-    roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
-    # Piece 31.2: onboarding is initiated inside the New-employee form. Show the
-    # checklist preview + who's accountable only when creating (edit keeps it on
-    # the profile). Default owner = the GM.
-    db = get_db()
-    onboarding_preview, owner_candidates = [], []
-    if employee_id is None:
-        onboarding_preview = db.execute(
-            "SELECT title, description, category FROM onboarding_steps"
-            " WHERE active = '1' ORDER BY sort_order, id").fetchall()
-        owner_candidates = onboarding_owner_candidates(db)
-        if onboarding_owner_id is None:
-            onboarding_owner_id = default_onboarding_owner_id(db)
     return render_template(
-        "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
-        role_tree=ROLE_TREE,
-        selected=selected, roles_other=roles_other, employee_id=employee_id,
-        username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
+        "employee_form.html", values=values, roles=HOUSEHOLD_ROLES,
+        household_member_id=household_member_id, username=username,
+        is_admin_checked=(str(is_admin_checked or "") == "1"),
         duplicate_warning=duplicate_warning,
-        supervisor_checked=(str(is_supervisor or "") == "1"),
-        onboarding_preview=onboarding_preview,
-        onboarding_owner_candidates=owner_candidates,
-        onboarding_owner_id=str(onboarding_owner_id or ""),
     )
 
 
-@app.route("/employees")
-def employees_page():
+@app.route("/household-members")
+def household_members_page():
     db = get_db()
-    employees = db.execute("SELECT * FROM employees ORDER BY name").fetchall()
-    # Per-employee credential tally, with expiry warnings, for the list.
+    members = db.execute("SELECT * FROM household_members ORDER BY name").fetchall()
+    # Per-member credential tally, with expiry warnings, for the list.
     summary = {}
     for c in db.execute(
-            "SELECT employee_id, expires FROM employee_credentials").fetchall():
-        s = summary.setdefault(c["employee_id"],
+            "SELECT household_member_id, expires FROM household_member_credentials").fetchall():
+        s = summary.setdefault(c["household_member_id"],
                                {"count": 0, "expired": 0, "soon": 0})
         s["count"] += 1
         state, _ = credential_status(c["expires"])
@@ -9107,30 +7937,31 @@ def employees_page():
             s["expired"] += 1
         elif state == "soon":
             s["soon"] += 1
-    return render_template("employees.html", employees=employees, summary=summary)
+    return render_template("employees.html", employees=members, summary=summary)
 
 
 @app.route("/accounts")
 @admin_required
 def accounts_page():
-    """Admin roster of who can sign in and at what level, the employees
-    who don't have a login yet, and any pending password-change requests."""
+    """Admin roster of who can sign in and who's an admin, the household
+    members who don't have a login yet, and any pending password-change
+    requests."""
     db = get_db()
-    employees = db.execute(
-        "SELECT id, name, username, access_level, COALESCE(password_hash,'') AS pw"
-        " FROM employees ORDER BY name").fetchall()
-    with_login = [e for e in employees if (e["username"] or "")]
-    without_login = [e for e in employees if not (e["username"] or "")]
-    admin_count = sum(1 for e in with_login if e["access_level"] == "Admin")
+    members = db.execute(
+        "SELECT id, name, username, is_admin, COALESCE(password_hash,'') AS pw"
+        " FROM household_members ORDER BY name").fetchall()
+    with_login = [m for m in members if (m["username"] or "")]
+    without_login = [m for m in members if not (m["username"] or "")]
+    admin_count = sum(1 for m in with_login if str(m["is_admin"] or "") == "1")
     pending = db.execute(
-        "SELECT pr.*, e.name AS emp_name, e.username FROM password_requests pr"
-        " JOIN employees e ON e.id = pr.employee_id"
+        "SELECT pr.*, m.name AS emp_name, m.username FROM password_requests pr"
+        " JOIN household_members m ON m.id = pr.household_member_id"
         " WHERE pr.status = 'Pending' ORDER BY pr.requested_at").fetchall()
     # Piece 19.2: flag usernames that collide case-insensitively — now that
     # login ignores case, two such accounts would be ambiguous.
     by_lower = {}
-    for e in with_login:
-        by_lower.setdefault((e["username"] or "").lower(), []).append(e)
+    for m in with_login:
+        by_lower.setdefault((m["username"] or "").lower(), []).append(m)
     dup_usernames = [group for group in by_lower.values() if len(group) > 1]
     return render_template("accounts.html", with_login=with_login,
                            without_login=without_login, admin_count=admin_count,
@@ -9145,8 +7976,8 @@ def approve_password_change(req_id):
         "SELECT * FROM password_requests WHERE id = ? AND status = 'Pending'",
         (req_id,)).fetchone()
     if req:
-        db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
-                   (req["new_hash"], req["employee_id"]))
+        db.execute("UPDATE household_members SET password_hash = ? WHERE id = ?",
+                   (req["new_hash"], req["household_member_id"]))
         who = current_user()
         db.execute(
             "UPDATE password_requests SET status = 'Approved',"
@@ -9172,40 +8003,40 @@ def reject_password_change(req_id):
     return redirect(url_for("accounts_page"))
 
 
-def _apply_employee_auth(db, employee_id):
-    """Set or clear this employee's login from the form's Login & access
-    fields. A blank/None level or blank username removes the login; the
+def _apply_household_member_auth(db, household_member_id):
+    """Set or clear this household member's login from the form's Login
+    fields, and their is_admin flag. A blank username removes the login; the
     password hash is rewritten only when a new password is supplied, so
     editing other fields never disturbs an existing password. Guards against
     leaving accounts configured with no admin (which would lock everyone out
     of admin functions)."""
-    level = request.form.get("access_level", "").strip()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    setting_login = level in ACCESS_LEVELS and bool(username)
+    is_admin_flag = "1" if request.form.get("is_admin") else ""
+    setting_login = bool(username)
 
     if setting_login:
         # Case-insensitive uniqueness so "Trish" and "trish" can't both exist.
         clash = db.execute(
-            "SELECT id FROM employees WHERE LOWER(username) = LOWER(?) AND id != ?",
-            (username, employee_id)).fetchone()
+            "SELECT id FROM household_members WHERE LOWER(username) = LOWER(?) AND id != ?",
+            (username, household_member_id)).fetchone()
         if clash:
             flash(f"Username “{username}” is already taken — login unchanged.", "error")
             return
 
     existing_hash = db.execute(
-        "SELECT COALESCE(password_hash,'') FROM employees WHERE id = ?",
-        (employee_id,)).fetchone()[0]
+        "SELECT COALESCE(password_hash,'') FROM household_members WHERE id = ?",
+        (household_member_id,)).fetchone()[0]
     this_usable = setting_login and (bool(password) or bool(existing_hash))
-    this_admin = this_usable and level == "Admin"
+    this_admin = this_usable and is_admin_flag == "1"
     other_accounts = db.execute(
-        "SELECT COUNT(*) FROM employees WHERE id != ?"
+        "SELECT COUNT(*) FROM household_members WHERE id != ?"
         " AND COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''",
-        (employee_id,)).fetchone()[0]
+        (household_member_id,)).fetchone()[0]
     other_admins = db.execute(
-        "SELECT COUNT(*) FROM employees WHERE id != ? AND access_level = 'Admin'"
+        "SELECT COUNT(*) FROM household_members WHERE id != ? AND is_admin = '1'"
         " AND COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''",
-        (employee_id,)).fetchone()[0]
+        (household_member_id,)).fetchone()[0]
     total_accounts = other_accounts + (1 if this_usable else 0)
     total_admins = other_admins + (1 if this_admin else 0)
     if total_accounts > 0 and total_admins == 0:
@@ -9213,129 +8044,68 @@ def _apply_employee_auth(db, employee_id):
               " back to open access. Login unchanged.", "error")
         return
 
+    db.execute("UPDATE household_members SET is_admin = ? WHERE id = ?",
+               (is_admin_flag, household_member_id))
     if setting_login:
-        db.execute("UPDATE employees SET username = ?, access_level = ? WHERE id = ?",
-                   (username, level, employee_id))
+        db.execute("UPDATE household_members SET username = ? WHERE id = ?",
+                   (username, household_member_id))
         if password:
-            db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
-                       (generate_password_hash(password, method="pbkdf2:sha256"), employee_id))
+            db.execute("UPDATE household_members SET password_hash = ? WHERE id = ?",
+                       (generate_password_hash(password, method="pbkdf2:sha256"), household_member_id))
         elif not existing_hash:
             flash("Login saved — set a password to activate it.", "error")
     else:
         db.execute(
-            "UPDATE employees SET username = '', password_hash = '', access_level = ''"
-            " WHERE id = ?", (employee_id,))
+            "UPDATE household_members SET username = '', password_hash = ''"
+            " WHERE id = ?", (household_member_id,))
 
 
-@app.route("/employees/new", methods=["GET", "POST"])
+@app.route("/household-members/new", methods=["GET", "POST"])
 @admin_required
-def new_employee():
+def new_household_member():
     if request.method == "POST":
-        values, errors = read_employee_form()
+        values, errors = read_household_member_form()
         username = request.form.get("username", "").strip()
-        access_level = request.form.get("access_level", "").strip()
         if errors:
             flash(" ".join(errors), "error")
-            return render_employee_form(values, username=username,
-                                        access_level=access_level), 400
+            return render_household_member_form(values, username=username), 400
         db = get_db()
         # Guard against accidental duplicates: same composed name already on the
         # roster. Allow it only when the user confirms it's a different person.
-        dup = db.execute("SELECT name FROM employees WHERE LOWER(name) = LOWER(?)",
+        dup = db.execute("SELECT name FROM household_members WHERE LOWER(name) = LOWER(?)",
                          (values["name"],)).fetchone()
         if dup and not request.form.get("confirm_duplicate"):
-            return render_employee_form(values, username=username,
-                                        access_level=access_level,
-                                        duplicate_warning=values["name"]), 400
+            return render_household_member_form(
+                values, username=username, duplicate_warning=values["name"]), 400
         cur = db.execute(
-            f"INSERT INTO employees ({', '.join(EMPLOYEE_FIELDS)})"
-            f" VALUES ({', '.join('?' * len(EMPLOYEE_FIELDS))})",
-            [values[f] for f in EMPLOYEE_FIELDS],
+            f"INSERT INTO household_members ({', '.join(HOUSEHOLD_MEMBER_FIELDS)})"
+            f" VALUES ({', '.join('?' * len(HOUSEHOLD_MEMBER_FIELDS))})",
+            [values[f] for f in HOUSEHOLD_MEMBER_FIELDS],
         )
-        _apply_employee_auth(db, cur.lastrowid)
-        if is_gm():  # only the GM designates Supervisors (Piece 29.0)
-            db.execute("UPDATE employees SET is_supervisor = ? WHERE id = ?",
-                       ("1" if request.form.get("is_supervisor") else "",
-                        cur.lastrowid))
-        # Piece 31.2: put someone on the hook for finishing onboarding. Use the
-        # chosen owner if it's a valid GM/Supervisor, else fall back to the GM.
-        chosen_owner = request.form.get("onboarding_owner_id", "")
-        owner_id, owner_rejected = _resolve_onboarding_owner(db, chosen_owner)
-        db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
-                   (owner_id, cur.lastrowid))
+        _apply_household_member_auth(db, cur.lastrowid)
         db.commit()
-        if owner_rejected:
-            _flash_owner_override(db, chosen_owner, owner_id)
-        if owner_id:
-            _, done, total = onboarding_overview(db, cur.lastrowid)
-            notify_employees(
-                db, [int(owner_id)],
-                f"You're responsible for onboarding {values['name']} — "
-                f"{total} step{'s' if total != 1 else ''} to complete.",
-                link=url_for("employee_detail", employee_id=cur.lastrowid,
-                             welcome=1, _anchor="onboarding"),
-                kind="onboarding")
-            db.commit()
-        flash(f"Employee added: {values['name']} — now complete their onboarding.")
-        return redirect(url_for("employee_detail", employee_id=cur.lastrowid,
-                                welcome=1, _anchor="onboarding"))
-    return render_employee_form({})
+        flash(f"Household member added: {values['name']}")
+        return redirect(url_for("household_member_detail", household_member_id=cur.lastrowid))
+    return render_household_member_form({})
 
 
-def _resolve_onboarding_owner(db, raw):
-    """Validate a submitted onboarding-owner id: it must be a current GM or
-    Supervisor with a login. Returns (owner_id, rejected) — `rejected` is True
-    only when a specific person was chosen but doesn't qualify, so callers can
-    tell the user their choice wasn't applied. A blank choice (no selection) or
-    an already-valid one is not a rejection. Invalid/blank falls back to the
-    default owner (the GM)."""
-    valid = {str(r["id"]) for r in onboarding_owner_candidates(db)}
-    raw = str(raw or "").strip()
-    if raw in valid:
-        return raw, False
-    return default_onboarding_owner_id(db), bool(raw)
-
-
-def _flash_owner_override(db, chosen_raw, owner_id):
-    """Piece 31.2: warn that a submitted onboarding owner was overridden.
-    Names both the rejected pick (if we can still find them) and who ended up
-    responsible, so the notice is actionable."""
-    chosen = db.execute("SELECT name FROM employees WHERE id = ?",
-                        (chosen_raw,)).fetchone() if str(chosen_raw).strip() else None
-    who = chosen["name"] if chosen else "That person"
-    if owner_id:
-        landed = db.execute("SELECT name FROM employees WHERE id = ?",
-                            (owner_id,)).fetchone()
-        landed_name = landed["name"] if landed else "the General Manager"
-        flash(f"{who} can't be made responsible for onboarding — only a General "
-              f"Manager or a Supervisor can. Responsibility went to {landed_name} "
-              "instead; reassign it on the Onboarding tab if that's not right.",
-              "error")
-    else:
-        flash(f"{who} can't be made responsible for onboarding — only a General "
-              "Manager or a Supervisor can, and none is set up yet. No one is "
-              "assigned; set up a Supervisor or GM, then assign it on the "
-              "Onboarding tab.", "error")
-
-
-@app.route("/employees/<int:employee_id>")
-def employee_detail(employee_id):
+@app.route("/household-members/<int:household_member_id>")
+def household_member_detail(household_member_id):
     db = get_db()
-    employee = db.execute(
-        "SELECT * FROM employees WHERE id = ?", (employee_id,)
+    member = db.execute(
+        "SELECT * FROM household_members WHERE id = ?", (household_member_id,)
     ).fetchone()
-    if employee is None:
+    if member is None:
         abort(404)
-    roles = [r.strip() for r in (employee["roles"] or "").split(",") if r.strip()]
     files = db.execute(
-        "SELECT * FROM employee_files WHERE employee_id = ? ORDER BY id",
-        (employee_id,)
+        "SELECT * FROM household_member_files WHERE household_member_id = ? ORDER BY id",
+        (household_member_id,)
     ).fetchall()
     documented = {f["credential_name"] for f in files if f["credential_name"]}
     credentials = []
     for c in db.execute(
-            "SELECT * FROM employee_credentials WHERE employee_id = ?"
-            " ORDER BY name", (employee_id,)).fetchall():
+            "SELECT * FROM household_member_credentials WHERE household_member_id = ?"
+            " ORDER BY name", (household_member_id,)).fetchall():
         state, text = credential_status(c["expires"])
         credentials.append({"row": c, "state": state, "status_text": text,
                             "documented": c["name"] in documented})
@@ -9349,350 +8119,123 @@ def employee_detail(employee_id):
         "SELECT t.*, j.job_name, j.id AS project_id"
         " FROM project_tasks t"
         " JOIN projects j ON j.id = t.project_id"
-        " WHERE t.employee_id = ?"
+        " WHERE t.household_member_id = ?"
         " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
-        (employee_id,)).fetchall()
-    onboarding_rows, onboarding_done, onboarding_total = onboarding_overview(
-        db, employee_id)  # Piece 29.2
-    # Piece 31.2: who's accountable for finishing this person's onboarding.
-    owner_id = str(employee["onboarding_owner_id"]
-                   if "onboarding_owner_id" in employee.keys() else "") or ""
-    onboarding_owner = None
-    if owner_id:
-        onboarding_owner = db.execute(
-            "SELECT id, name FROM employees WHERE id = ?", (owner_id,)).fetchone()
+        (household_member_id,)).fetchall()
     # Piece 25.0: in-place edit — ?edit_credential pre-fills the add form.
     edit_credential = None
     if request.args.get("edit_credential", type=int):
         edit_credential = db.execute(
-            "SELECT * FROM employee_credentials WHERE id = ? AND employee_id = ?",
-            (request.args.get("edit_credential", type=int), employee_id)).fetchone()
+            "SELECT * FROM household_member_credentials WHERE id = ? AND household_member_id = ?",
+            (request.args.get("edit_credential", type=int), household_member_id)).fetchone()
     return render_template(
-        "employee_detail.html", employee=employee, roles=roles,
+        "employee_detail.html", employee=member, role=member["role"],
         credentials=credentials, files=files, license_labels=license_labels,
         cred_names=[c["row"]["name"] for c in credentials],
         assigned_tasks=assigned_tasks, task_statuses=TASK_STATUSES,
         edit_credential=edit_credential,
         today=datetime.now().strftime("%Y-%m-%d"),
-        access_revoked=is_access_revoked(employee),  # Piece 29.0
-        can_revoke_this=can_revoke_target(current_user(), employee),
-        onboarding=onboarding_rows, onboarding_done=onboarding_done,  # Piece 29.2
-        onboarding_total=onboarding_total,
-        onboarding_owner=onboarding_owner,  # Piece 31.2
-        onboarding_owner_candidates=onboarding_owner_candidates(db),
-        onboarding_owner_id=owner_id,
-        onboarding_just_created=bool(request.args.get("welcome")),
     )
 
 
-@app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+@app.route("/household-members/<int:household_member_id>/edit", methods=["GET", "POST"])
 @admin_required
-def edit_employee(employee_id):
+def edit_household_member(household_member_id):
     db = get_db()
-    employee = db.execute(
-        "SELECT * FROM employees WHERE id = ?", (employee_id,)
+    member = db.execute(
+        "SELECT * FROM household_members WHERE id = ?", (household_member_id,)
     ).fetchone()
-    if employee is None:
+    if member is None:
         abort(404)
     if request.method == "POST":
-        values, errors = read_employee_form()
+        values, errors = read_household_member_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_employee_form(values, employee_id=employee_id), 400
+            return render_household_member_form(values, household_member_id=household_member_id), 400
         db.execute(
-            f"UPDATE employees SET {', '.join(f + ' = ?' for f in EMPLOYEE_FIELDS)}"
+            f"UPDATE household_members SET {', '.join(f + ' = ?' for f in HOUSEHOLD_MEMBER_FIELDS)}"
             " WHERE id = ?",
-            [values[f] for f in EMPLOYEE_FIELDS] + [employee_id],
+            [values[f] for f in HOUSEHOLD_MEMBER_FIELDS] + [household_member_id],
         )
-        _apply_employee_auth(db, employee_id)
-        if is_gm():  # only the GM designates Supervisors (Piece 29.0)
-            db.execute("UPDATE employees SET is_supervisor = ? WHERE id = ?",
-                       ("1" if request.form.get("is_supervisor") else "",
-                        employee_id))
+        _apply_household_member_auth(db, household_member_id)
         db.commit()
-        flash(f"Employee updated: {values['name']}")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
-    values = {f: employee[f] for f in EMPLOYEE_FIELDS}
-    return render_employee_form(
-        values, employee_id=employee_id,
-        username=employee["username"] or "",
-        access_level=employee["access_level"] or "",
-        is_supervisor=(employee["is_supervisor"]
-                       if "is_supervisor" in employee.keys() else ""))
+        flash(f"Household member updated: {values['name']}")
+        return redirect(url_for("household_member_detail", household_member_id=household_member_id))
+    values = {f: member[f] for f in HOUSEHOLD_MEMBER_FIELDS}
+    return render_household_member_form(
+        values, household_member_id=household_member_id,
+        username=member["username"] or "",
+        is_admin_checked=member["is_admin"] or "")
 
 
-@app.route("/employees/<int:employee_id>/revoke-access", methods=["POST"])
-def revoke_employee_access(employee_id):
-    """Piece 29.0: emergency lockout. A GM or Supervisor instantly suspends all
-    of this person's access — they're signed out and can't sign back in until
-    reinstated. The account, login and data are left intact."""
+@app.route("/household-members/<int:household_member_id>/delete", methods=["GET", "POST"])
+@admin_required
+def delete_household_member(household_member_id):
+    """Admin offboarding. GET shows a confirmation page that asks for a
+    reason (captured in the audit log); POST detaches their live work
+    (unassigns tasks), removes their login / access grants / licenses /
+    documents, then sends them to the Trash (an admin can restore or
+    permanently delete). Blocked if they have field-work submissions on
+    record, so approved-hours history isn't lost."""
     db = get_db()
-    target = db.execute("SELECT * FROM employees WHERE id = ?",
-                        (employee_id,)).fetchone()
-    if target is None:
+    member = db.execute("SELECT * FROM household_members WHERE id = ?",
+                        (household_member_id,)).fetchone()
+    if member is None:
         abort(404)
-    actor = current_user()
-    if not can_control_access() or not can_revoke_target(actor, target):
-        flash("You can't suspend this person's access.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
-    if not (target["username"] or ""):
-        flash(f"{target['name']} has no login to suspend.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
-    if is_access_revoked(target):
-        flash(f"{target['name']}'s access is already suspended.")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
-    reason = request.form.get("reason", "").strip()
-    db.execute(
-        "UPDATE employees SET access_revoked = '1', access_revoked_at = ?,"
-        " access_revoked_by = ?, access_revoked_reason = ? WHERE id = ?",
-        (datetime.now().isoformat(timespec="seconds"),
-         actor["name"] if actor else "", reason, employee_id))
-    db.commit()
-    flash(f"⛔ Emergency lockout applied — {target['name']} is signed out and "
-          "can't sign in until reinstated.")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
-
-
-@app.route("/employees/<int:employee_id>/reinstate-access", methods=["POST"])
-def reinstate_employee_access(employee_id):
-    """Piece 29.0: lift an emergency lockout, restoring the person's access."""
-    db = get_db()
-    target = db.execute("SELECT * FROM employees WHERE id = ?",
-                        (employee_id,)).fetchone()
-    if target is None:
-        abort(404)
-    actor = current_user()
-    if not can_control_access() or not can_revoke_target(actor, target):
-        flash("You can't change this person's access.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
-    db.execute(
-        "UPDATE employees SET access_revoked = '', access_revoked_at = '',"
-        " access_revoked_by = '', access_revoked_reason = '' WHERE id = ?",
-        (employee_id,))
-    db.commit()
-    flash(f"✓ Access reinstated — {target['name']} can sign in again.")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
-
-
-@app.route("/onboarding")
-@admin_required
-def onboarding_checklist():
-    """Piece 29.2: the company-wide new-hire checklist template editor."""
-    db = get_db()
-    steps = db.execute(
-        "SELECT * FROM onboarding_steps WHERE active = '1'"
-        " ORDER BY sort_order, id").fetchall()
-    edit_id = request.args.get("edit", type=int)
-    return render_template("onboarding_steps.html", steps=steps, edit_id=edit_id)
-
-
-@app.route("/onboarding/steps/add", methods=["POST"])
-@admin_required
-def onboarding_step_add():
-    title = request.form.get("title", "").strip()
-    if not title:
-        flash("Give the onboarding step a title.", "error")
-        return redirect(url_for("onboarding_checklist"))
-    db = get_db()
-    nxt = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM onboarding_steps").fetchone()[0]
-    db.execute(
-        "INSERT INTO onboarding_steps (title, description, category, sort_order)"
-        " VALUES (?, ?, ?, ?)",
-        (title, request.form.get("description", "").strip(),
-         request.form.get("category", "").strip(), nxt))
-    db.commit()
-    flash("Onboarding step added.")
-    return redirect(url_for("onboarding_checklist"))
-
-
-@app.route("/onboarding/steps/<int:step_id>/edit", methods=["POST"])
-@admin_required
-def onboarding_step_edit(step_id):
-    title = request.form.get("title", "").strip()
-    if not title:
-        flash("Give the onboarding step a title.", "error")
-        return redirect(url_for("onboarding_checklist"))
-    db = get_db()
-    db.execute(
-        "UPDATE onboarding_steps SET title = ?, description = ?, category = ?"
-        " WHERE id = ?",
-        (title, request.form.get("description", "").strip(),
-         request.form.get("category", "").strip(), step_id))
-    db.commit()
-    flash("Onboarding step updated.")
-    return redirect(url_for("onboarding_checklist"))
-
-
-@app.route("/onboarding/steps/<int:step_id>/delete", methods=["POST"])
-@admin_required
-def onboarding_step_delete(step_id):
-    # Archive (keep past completion history intact) rather than hard-delete.
-    db = get_db()
-    db.execute("UPDATE onboarding_steps SET active = '' WHERE id = ?", (step_id,))
-    db.commit()
-    flash("Onboarding step removed from the checklist.")
-    return redirect(url_for("onboarding_checklist"))
-
-
-@app.route("/onboarding/steps/<int:step_id>/move", methods=["POST"])
-@admin_required
-def onboarding_step_move(step_id):
-    db = get_db()
-    ids = [r["id"] for r in db.execute(
-        "SELECT id FROM onboarding_steps WHERE active = '1'"
-        " ORDER BY sort_order, id").fetchall()]
-    if step_id in ids:
-        i = ids.index(step_id)
-        j = i - 1 if request.form.get("dir") == "up" else i + 1
-        if 0 <= j < len(ids):
-            ids[i], ids[j] = ids[j], ids[i]
-            for order, sid in enumerate(ids):
-                db.execute("UPDATE onboarding_steps SET sort_order = ? WHERE id = ?",
-                           (order, sid))
-            db.commit()
-    return redirect(url_for("onboarding_checklist"))
-
-
-@app.route("/employees/<int:employee_id>/onboarding/<int:step_id>/toggle",
-           methods=["POST"])
-@admin_required
-def employee_onboarding_toggle(employee_id, step_id):
-    """Check / uncheck one onboarding step for one employee, stamping who and
-    when. An optional note rides along with the toggle."""
-    db = get_db()
-    if not db.execute("SELECT 1 FROM employees WHERE id = ?",
-                      (employee_id,)).fetchone():
-        abort(404)
-    if not db.execute("SELECT 1 FROM onboarding_steps WHERE id = ?",
-                      (step_id,)).fetchone():
-        abort(404)
-    row = db.execute(
-        "SELECT * FROM employee_onboarding WHERE employee_id = ? AND step_id = ?",
-        (employee_id, step_id)).fetchone()
-    now_done = not (row and row["done"] == "1")
-    who = current_user()
-    stamp = datetime.now().isoformat(timespec="seconds") if now_done else ""
-    by = (who["name"] if who else "") if now_done else ""
-    note = request.form.get("note", "").strip()
-    if row:
-        db.execute(
-            "UPDATE employee_onboarding SET done = ?, done_at = ?, done_by = ?,"
-            " note = ? WHERE id = ?",
-            ("1" if now_done else "", stamp, by, note, row["id"]))
-    else:
-        db.execute(
-            "INSERT INTO employee_onboarding (employee_id, step_id, done, done_at,"
-            " done_by, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (employee_id, step_id, "1" if now_done else "", stamp, by, note))
-    db.commit()
-    return redirect(url_for("employee_detail", employee_id=employee_id,
-                            _anchor="onboarding"))
-
-
-@app.route("/employees/<int:employee_id>/onboarding/owner", methods=["POST"])
-@admin_required
-def employee_onboarding_owner(employee_id):
-    """Piece 31.2: reassign who's accountable for finishing this person's
-    onboarding. Only a current GM/Supervisor is accepted; the new owner is
-    notified of what's still outstanding."""
-    db = get_db()
-    emp = db.execute("SELECT id, name FROM employees WHERE id = ?",
-                     (employee_id,)).fetchone()
-    if not emp:
-        abort(404)
-    chosen_owner = request.form.get("onboarding_owner_id", "")
-    owner_id, owner_rejected = _resolve_onboarding_owner(db, chosen_owner)
-    db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
-               (owner_id, employee_id))
-    db.commit()
-    if owner_id:  # notify whoever ended up responsible — keeps accountability held
-        _, done, total = onboarding_overview(db, employee_id)
-        notify_employees(
-            db, [int(owner_id)],
-            f"You're now responsible for onboarding {emp['name']} — "
-            f"{done}/{total} steps complete.",
-            link=url_for("employee_detail", employee_id=employee_id,
-                         _anchor="onboarding"),
-            kind="onboarding")
-        db.commit()
-    if owner_rejected:
-        _flash_owner_override(db, chosen_owner, owner_id)
-    elif owner_id:
-        flash("Onboarding responsibility updated.")
-    return redirect(url_for("employee_detail", employee_id=employee_id,
-                            _anchor="onboarding"))
-
-
-@app.route("/employees/<int:employee_id>/delete", methods=["GET", "POST"])
-@admin_required
-def delete_employee(employee_id):
-    """Piece 19.4: admin offboarding. GET shows a confirmation page that asks
-    for a reason (captured in the audit log); POST detaches their live work
-    (unassigns tasks, clears sales-rep/follow-up assignments), removes their
-    login / access grants / licenses / documents, then sends them to the Trash
-    (a GM can restore or permanently delete). Blocked if they have field-work
-    submissions on record, so approved-hours history isn't lost."""
-    db = get_db()
-    emp = db.execute("SELECT * FROM employees WHERE id = ?",
-                     (employee_id,)).fetchone()
-    if emp is None:
-        abort(404)
-    task_count = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE employee_id = ?", (employee_id,))
-    sub_count = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (employee_id,))
+    task_count = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE household_member_id = ?", (household_member_id,))
+    sub_count = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE household_member_id = ?", (household_member_id,))
     if request.method == "POST":
         reason = request.form.get("reason", "").strip()
         if not reason:
-            flash("A reason is required to remove an employee.", "error")
-            return render_template("employee_remove.html", employee=emp,
+            flash("A reason is required to remove a household member.", "error")
+            return render_template("employee_remove.html", employee=member,
                                    task_count=task_count,
                                    sub_count=sub_count), 400
         if sub_count:
-            flash("This employee has field-work submissions on record (approved "
-                  "hours) — handle those first. Removal cancelled.", "error")
-            return redirect(url_for("employee_detail", employee_id=employee_id))
-        db.execute("UPDATE project_tasks SET employee_id = NULL,"
+            flash("This household member has field-work submissions on record "
+                  "(approved hours) — handle those first. Removal cancelled.", "error")
+            return redirect(url_for("household_member_detail", household_member_id=household_member_id))
+        db.execute("UPDATE project_tasks SET household_member_id = NULL,"
                    " updated_at = strftime('%Y-%m-%d %H:%M:%f','now')"
-                   " WHERE employee_id = ?", (employee_id,))
-        db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
-        db.execute("DELETE FROM password_requests WHERE employee_id = ?", (employee_id,))
-        db.execute("DELETE FROM security_answers WHERE employee_id = ?", (employee_id,))
-        db.execute("DELETE FROM employee_onboarding WHERE employee_id = ?", (employee_id,))
-        for f in db.execute("SELECT stored_name FROM employee_files"
-                            " WHERE employee_id = ?", (employee_id,)).fetchall():
-            (employee_upload_dir(employee_id) / f["stored_name"]).unlink(missing_ok=True)
-        db.execute("DELETE FROM employee_files WHERE employee_id = ?", (employee_id,))
-        db.execute("DELETE FROM employee_credentials WHERE employee_id = ?", (employee_id,))
-        db.execute("UPDATE employees SET username = '', password_hash = '',"
-                   " access_level = '' WHERE id = ?", (employee_id,))
+                   " WHERE household_member_id = ?", (household_member_id,))
+        db.execute("DELETE FROM permission_grants WHERE household_member_id = ?", (household_member_id,))
+        db.execute("DELETE FROM password_requests WHERE household_member_id = ?", (household_member_id,))
+        db.execute("DELETE FROM security_answers WHERE household_member_id = ?", (household_member_id,))
+        for f in db.execute("SELECT stored_name FROM household_member_files"
+                            " WHERE household_member_id = ?", (household_member_id,)).fetchall():
+            (household_member_upload_dir(household_member_id) / f["stored_name"]).unlink(missing_ok=True)
+        db.execute("DELETE FROM household_member_files WHERE household_member_id = ?", (household_member_id,))
+        db.execute("DELETE FROM household_member_credentials WHERE household_member_id = ?", (household_member_id,))
+        db.execute("UPDATE household_members SET username = '', password_hash = '',"
+                   " is_admin = '' WHERE id = ?", (household_member_id,))
         db.commit()
-        ok, msg = trash_item("employee", employee_id)  # tasks/rep detached above
-        flash(f"{emp['name']} removed — reason recorded in the audit log. {msg}"
+        ok, msg = trash_item("employee", household_member_id)  # tasks detached above
+        flash(f"{member['name']} removed — reason recorded in the audit log. {msg}"
               if ok else msg, "" if ok else "error")
-        return redirect(url_for("employees_page") if ok
-                        else url_for("employee_detail", employee_id=employee_id))
-    return render_template("employee_remove.html", employee=emp,
+        return redirect(url_for("household_members_page") if ok
+                        else url_for("household_member_detail", household_member_id=household_member_id))
+    return render_template("employee_remove.html", employee=member,
                            task_count=task_count,
                            sub_count=sub_count)
 
 
-# ---- employee licenses & certifications (structured, with expiry) --------
-@app.route("/employees/<int:employee_id>/credentials/add", methods=["POST"])
+# ---- household member licenses & certifications (structured, with expiry) ----
+@app.route("/household-members/<int:household_member_id>/credentials/add", methods=["POST"])
 @admin_required
-def add_credential(employee_id):
-    if get_db().execute("SELECT id FROM employees WHERE id = ?",
-                        (employee_id,)).fetchone() is None:
+def add_credential(household_member_id):
+    if get_db().execute("SELECT id FROM household_members WHERE id = ?",
+                        (household_member_id,)).fetchone() is None:
         abort(404)
     name = request.form.get("name", "").strip()
     if not name:
         flash("A license/certification needs a name.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
+        return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="licenses"))
     db = get_db()
     db.execute(
-        "INSERT INTO employee_credentials"
-        " (employee_id, name, rule_label, number, issued, expires, notes)"
+        "INSERT INTO household_member_credentials"
+        " (household_member_id, name, rule_label, number, issued, expires, notes)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (employee_id, name,
+        (household_member_id, name,
          request.form.get("rule_label", "").strip(),
          request.form.get("number", "").strip(),
          request.form.get("issued", "").strip(),
@@ -9701,24 +8244,24 @@ def add_credential(employee_id):
     )
     db.commit()
     flash(f"Added license/certification: {name}")
-    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
+    return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="licenses"))
 
 
-@app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/edit",
+@app.route("/household-members/<int:household_member_id>/credentials/<int:credential_id>/edit",
            methods=["POST"])
 @admin_required
-def update_credential(employee_id, credential_id):
+def update_credential(household_member_id, credential_id):
     db = get_db()
-    if db.execute("SELECT 1 FROM employee_credentials WHERE id = ?"
-                  " AND employee_id = ?", (credential_id, employee_id)).fetchone() is None:
+    if db.execute("SELECT 1 FROM household_member_credentials WHERE id = ?"
+                  " AND household_member_id = ?", (credential_id, household_member_id)).fetchone() is None:
         abort(404)
     name = request.form.get("name", "").strip()
     if not name:
         flash("A license/certification needs a name.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id,
+        return redirect(url_for("household_member_detail", household_member_id=household_member_id,
                                 edit_credential=credential_id, _anchor="licenses"))
     db.execute(
-        "UPDATE employee_credentials SET name = ?, rule_label = ?, number = ?,"
+        "UPDATE household_member_credentials SET name = ?, rule_label = ?, number = ?,"
         " issued = ?, expires = ?, notes = ? WHERE id = ?",
         (name, request.form.get("rule_label", "").strip(),
          request.form.get("number", "").strip(),
@@ -9727,80 +8270,80 @@ def update_credential(employee_id, credential_id):
          request.form.get("notes", "").strip(), credential_id))
     db.commit()
     flash(f"Updated license/certification: {name}")
-    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
+    return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="licenses"))
 
 
-@app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/delete",
+@app.route("/household-members/<int:household_member_id>/credentials/<int:credential_id>/delete",
            methods=["POST"])
 @delete_required
-def delete_credential(employee_id, credential_id):
+def delete_credential(household_member_id, credential_id):
     ok, msg = trash_item("credential", credential_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
+    return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="licenses"))
 
 
-# ---- employee documents (copies of certifications, etc.) -----------------
-def employee_upload_dir(employee_id):
-    directory = UPLOADS_DIR / f"employee_{employee_id}"
+# ---- household member documents (copies of certifications, etc.) ---------
+def household_member_upload_dir(household_member_id):
+    directory = UPLOADS_DIR / f"employee_{household_member_id}"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
-@app.route("/employees/<int:employee_id>/files/upload", methods=["POST"])
+@app.route("/household-members/<int:household_member_id>/files/upload", methods=["POST"])
 @admin_required
-def upload_employee_file(employee_id):
-    if get_db().execute("SELECT id FROM employees WHERE id = ?",
-                        (employee_id,)).fetchone() is None:
+def upload_household_member_file(household_member_id):
+    if get_db().execute("SELECT id FROM household_members WHERE id = ?",
+                        (household_member_id,)).fetchone() is None:
         abort(404)
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
+        return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="documents"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if extension not in ALLOWED_EXTENSIONS:
         flash(f"File type .{extension} is not allowed.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
+        return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="documents"))
     db = get_db()
     credential_name = request.form.get("credential_name", "").strip()
-    # Piece 25.4: auto-rename to Employee_Credential_Date.ext for recordkeeping.
-    ename = db.execute("SELECT name FROM employees WHERE id = ?",
-                       (employee_id,)).fetchone()
+    # Piece 25.4: auto-rename to Member_Credential_Date.ext for recordkeeping.
+    mname = db.execute("SELECT name FROM household_members WHERE id = ?",
+                       (household_member_id,)).fetchone()
     friendly = friendly_filename(
-        [ename["name"] if ename else "", credential_name or "Document"], extension,
-        taken=_taken_names(db, "employee_files", "original_name",
-                           "employee_id", employee_id))
+        [mname["name"] if mname else "", credential_name or "Document"], extension,
+        taken=_taken_names(db, "household_member_files", "original_name",
+                           "household_member_id", household_member_id))
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-    upload.save(employee_upload_dir(employee_id) / stored)
+    upload.save(household_member_upload_dir(household_member_id) / stored)
     db.execute(
-        "INSERT INTO employee_files"
-        " (employee_id, credential_name, stored_name, original_name)"
+        "INSERT INTO household_member_files"
+        " (household_member_id, credential_name, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (employee_id, credential_name, stored, friendly),
+        (household_member_id, credential_name, stored, friendly),
     )
     db.commit()
     flash(f"Uploaded: {friendly}")
-    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
+    return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="documents"))
 
 
-@app.route("/employees/<int:employee_id>/files/<int:file_id>/download")
-def download_employee_file(employee_id, file_id):
+@app.route("/household-members/<int:household_member_id>/files/<int:file_id>/download")
+def download_household_member_file(household_member_id, file_id):
     record = get_db().execute(
-        "SELECT * FROM employee_files WHERE id = ? AND employee_id = ?",
-        (file_id, employee_id)).fetchone()
+        "SELECT * FROM household_member_files WHERE id = ? AND household_member_id = ?",
+        (file_id, household_member_id)).fetchone()
     if record is None:
         abort(404)
     return send_from_directory(
-        employee_upload_dir(employee_id), record["stored_name"],
+        household_member_upload_dir(household_member_id), record["stored_name"],
         as_attachment=True, download_name=record["original_name"])
 
 
-@app.route("/employees/<int:employee_id>/files/<int:file_id>/delete",
+@app.route("/household-members/<int:household_member_id>/files/<int:file_id>/delete",
            methods=["POST"])
 @delete_required
-def delete_employee_file(employee_id, file_id):
+def delete_household_member_file(household_member_id, file_id):
     ok, msg = trash_item("employee_file", file_id)
     flash(msg, "" if ok else "error")
-    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
+    return redirect(url_for("household_member_detail", household_member_id=household_member_id, _anchor="documents"))
 
 
 @app.route("/audit")
@@ -9951,13 +8494,11 @@ def build_assistant_snapshot(db, user):
     and payroll figures are only included for those who can already view them."""
     lines = []
     name = user["name"] if user else "the user"
-    roles = (user["roles"] or "") if user else ""
-    lines.append(f"Signed-in user: {name} — roles: {roles or 'none'}.")
+    role = (user["role"] or "") if user else ""
+    lines.append(f"Signed-in user: {name} — role: {role or 'none'}.")
     can_price = _can_see_pricing()
-    can_pay = _can_payroll()
     lines.append("Viewer may see internal pricing/margins: "
-                 f"{'yes' if can_price else 'no'}. Payroll: "
-                 f"{'yes' if can_pay else 'no'}.")
+                 f"{'yes' if can_price else 'no'}.")
     today = datetime.now().strftime("%Y-%m-%d")
     lines.append(f"Today is {today}.")
 
@@ -9986,7 +8527,7 @@ def build_assistant_snapshot(db, user):
         mine = db.execute(
             "SELECT t.title, t.status, t.due_date, j.job_name"
             " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
-            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Abandoned'"
+            " WHERE t.household_member_id = ? AND t.status != 'Done' AND j.status != 'Abandoned'"
             " ORDER BY (t.due_date = ''), t.due_date LIMIT 25", (user["id"],)
         ).fetchall()
         if mine:
@@ -10157,7 +8698,7 @@ def build_assistant_tools(db, user):
         where = ["t.status != 'Done'", "j.status != 'Abandoned'"]
         params = []
         if assignee.lower() in ("me", "mine") and user:
-            where.append("t.employee_id = ?"); params.append(user["id"])
+            where.append("t.household_member_id = ?"); params.append(user["id"])
         elif assignee:
             where.append("e.name LIKE ?"); params.append(f"%{assignee}%")
         if stage:
@@ -10170,7 +8711,7 @@ def build_assistant_tools(db, user):
             "SELECT t.title, t.status, t.due_date, j.job_name,"
             "  COALESCE(e.name,'') AS who"
             " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
-            " LEFT JOIN employees e ON e.id = t.employee_id"
+            " LEFT JOIN household_members e ON e.id = t.household_member_id"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY (t.due_date=''), t.due_date LIMIT ?",
             params + [limit]).fetchall()
@@ -10187,13 +8728,13 @@ def build_assistant_tools(db, user):
         role = (args.get("role") or "").strip()
         where, params = ["1=1"], []
         if role:
-            where.append("roles LIKE ?"); params.append(f"%{role}%")
+            where.append("role LIKE ?"); params.append(f"%{role}%")
         rows = db.execute(
-            f"SELECT name, COALESCE(roles,'') AS roles FROM employees"
+            f"SELECT name, COALESCE(role,'') AS role FROM household_members"
             f" WHERE {' AND '.join(where)} ORDER BY name LIMIT 60", params).fetchall()
         if not rows:
-            return "No staff match."
-        return "\n".join(f"• {r['name']} — {r['roles'] or 'no roles'}" for r in rows)
+            return "No household members match."
+        return "\n".join(f"• {r['name']} — {r['role'] or 'no role'}" for r in rows)
 
     stages = ", ".join(PROJECT_STATUSES)
     return [
@@ -10227,7 +8768,8 @@ def build_assistant_tools(db, user):
              "limit": {"type": "integer", "description": "max rows (default 30)"}}},
          "run": list_tasks},
         {"name": "staff_directory",
-         "description": "List employees and their roles (no pay info). Optional role filter.",
+         "description": "List household members and their role. Optional role filter"
+                        " (Parent/Child/Assistant).",
          "parameters": {"type": "object", "properties": {
              "role": {"type": "string", "description": "filter by role name"}}},
          "run": staff_directory},
