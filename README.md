@@ -90,12 +90,6 @@ can confirm a pull/update took effect.
   it. This is an **explicit, editable field** in the Requirements Editor (a
   dropdown: none / Verify / Unverified) — add or remove the callout on any rule
   at will.
-- **County → utility auto-matching**: picking a county on the project form filters
-  the utility-provider dropdown to the providers that serve it (verified doc-03
-  table). If one utility serves the county it's auto-selected; if several do,
-  they're all listed so you pick the one on the customer's bill. A **Manual
-  override** button opens the full statewide list for non-standard cases. The
-  utility field is kept even for off-grid projects (the meter/account ties to it).
 - **Project edit history / versioning** for recordkeeping.
 - **Per-project BPMN process charts**: an in-app viewer plus `.bpmn` export, with
   each step tagged by pipeline status.
@@ -456,6 +450,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.8** — retired `nm_directory.py`. `HANDOFF.md`'s plan was to repurpose
+  it as a vendor/contractor directory, but that need turned out to already
+  be covered: the **External Helpers** roster (v0.4) is the same shape
+  (name, specialty, phone, email, notes). Its remaining live content — the
+  county→utility auto-match on the project form (pick a county, it
+  suggests which of ~30 statewide NM utilities serve it) — was solar-business
+  logic for matching a job site to its utility; cut, since the household has
+  one property and one utility. **Utility provider** is now a plain text
+  field. The county field keeps its NM-county datalist for convenience (now
+  inlined in `app.py`); the file's dead NM AHJ/utility rule-batch data (unused
+  since v0.7) went with it.
 
 - **v0.7** — redesigned the Rules Editor into a household **Requirements
   Engine**. `RULE_CATEGORIES` renamed for household use (License →

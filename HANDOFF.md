@@ -197,6 +197,33 @@ standalone requirement create → reminder fires once → mark-done advances
 `next_due` and clears `reminder_sent`, project create/edit round-trips
 `project_category`/`project_type`), and a 42-route GET sweep.
 
+**The `nm_directory.py` vendor/contractor directory repurpose (seventh
+reorg piece, Piece 39 / v0.8) is done — turned out to need no new code.**
+This doc's own plan (below, "Cut entirely" section) was to repurpose
+`nm_directory.py`'s shape into a household vendor/contractor directory.
+Investigating before building surfaced that the need was already met: the
+**External Helpers** roster from Piece 35 (`external_helpers` — name,
+specialty, phone, email, notes) is the identical shape, down to its own
+example placeholder being an electrician contact ("Sandia Electric —
+Mike"). Confirmed with the user rather than building a duplicate table.
+That left `nm_directory.py` itself with nothing worth repurposing:
+- Its NM AHJ/utility rule-batch data (`NEW_RULES_V10`, `CORRECTIONS_V10/11`)
+  had been dead code since Piece 38 dropped the import.
+- Its remaining live use — `COUNTIES_ALL`/`UTILITIES_ALL`/`COUNTY_UTILITIES`
+  driving the project form's county→utility auto-match dropdown — was
+  solar-business logic for matching a job site's county to its serving
+  utility across NM. The user confirmed cutting it: a household has one
+  property and one utility, so `utility_provider` is now a plain text
+  field, and the matching JS (`mappedUtilities`/`buildUtilOptions`, the
+  "Manual override" button) is gone from `project_form.html`.
+
+The county field keeps its NM-county datalist for convenience — that list
+is now inlined in `app.py` as `COUNTIES`, the one thing worth keeping.
+`nm_directory.py` is deleted outright. Verified via compile, a Jinja parse
+sweep, fresh-DB boot, a project create/edit round-trip confirming
+free-text `utility_provider` saves and edits exactly as typed (and that no
+leftover select/JS remains in the rendered form), and a 42-route sweep.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -205,13 +232,9 @@ standalone requirement create → reminder fires once → mark-done advances
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   **after every feature/file/database reorg piece below is done**, not incrementally
-  per piece.
-- **The vendor/contractor directory repurpose of `nm_directory.py`** — its
-  AHJ/utility contact data (33 counties, every utility) is still sitting
-  there unused now that the Requirements Engine no longer imports its rule
-  batches. Repurposing it into a household vendor/contractor directory is
-  its own not-yet-started piece.
-- **A manual browser click-through of Pieces 35–38** — verification so
+  per piece. **This is now the only remaining item on this list** — the
+  structural/domain reorg itself is done.
+- **A manual browser click-through of Pieces 35–39** — verification so
   far is automated (Flask test-client route sweeps + POST flows); no one has
   clicked through the new household-member/dashboard/access/inventory/
   requirements UI in a real browser yet.
