@@ -450,6 +450,16 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.6** — added **Chores** (`/chores`): a new `routine_tasks` table for
+  recurring household tasks that aren't tied to any project (trash day,
+  watering, a weekly clean) — the split between project-driven steps and
+  standalone recurring tasks that the household reorg called for. Recurrence
+  is a plain day-interval (`recurrence_days`, with Daily/Weekly/Biweekly/
+  Monthly presets plus a custom option); no status workflow — "Mark done"
+  logs it and advances the next-due date by the interval. Reminders reuse
+  the household-idea backlog's exact idempotent notification pattern. A "My
+  chores" card on the dashboard sits alongside "My tasks."
+
 - **v0.5** — cut the barcode/asset-tag registry entirely: register/print tags,
   scan-in/out, checkout/checkin/retire, the truck-loading scan flow, and stock
   audits are gone — built for a multi-person crew truck-loading parts, doesn't

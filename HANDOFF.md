@@ -131,6 +131,24 @@ pre-cleanup database with populated barcode tables (confirms the migration
 drops them), and a Flask test-client route sweep + a live inventory-item
 creation POST.
 
+**The `routine_tasks`/`project_tasks` split (fifth piece of the structural
+reorg, Piece 37 / v0.6) is done.** Added `routine_tasks` — recurring
+household chores not tied to any project — as a new "Chores" feature
+(`/chores`); `project_tasks` itself is unchanged. Modeled on `boards`
+(nullable assignee, its own routes, an assign→notify helper) rather than
+`project_tasks`' BPMN-generated, chain-rescheduled model, since a chore has
+no natural "next step" to chain off. Recurrence is a plain day-interval
+(`recurrence_days`, with Daily/Weekly/Biweekly/Monthly presets plus custom);
+no status workflow — a chore is either due or not, and "Mark done" advances
+`next_due` by the interval. Reminders reuse `ensure_backlog_reminders()`'s
+exact idempotent pattern (a `reminder_sent` flag against `next_due`, wired
+into both `dashboard()` and `run_maintenance()`). A "My chores" dashboard
+card sits next to "My tasks." Delete goes through the standard trash flow.
+Verified via fresh-DB boot, a full create/edit/mark-done/delete POST cycle
+(confirmed `next_due` advances by the right interval and the reminder fires
+exactly once per cycle, no duplicates on a second call), delete correctly
+blocked until granted, and a ~30-route sweep.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -140,11 +158,10 @@ creation POST.
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   **after every feature/file/database reorg piece below is done**, not incrementally
   per piece.
-- **The rest of the structural/domain reorg** — the `routine_tasks`/
-  `project_tasks` split, the Requirements Engine relabel, and the
-  vendor/contractor directory repurpose of `nm_directory.py`. See below — the
-  open questions on all of these are already resolved.
-- **A manual browser click-through of Pieces 35 and 36** — verification so
+- **The rest of the structural/domain reorg** — the Requirements Engine
+  relabel and the vendor/contractor directory repurpose of `nm_directory.py`.
+  See below — the open questions on both are already resolved.
+- **A manual browser click-through of Pieces 35–37** — verification so
   far is automated (Flask test-client route sweeps + POST flows); no one has
   clicked through the new household-member/dashboard/access/inventory UI in
   a real browser yet.
