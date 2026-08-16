@@ -77,6 +77,39 @@ exercising `pre_lost_status`, task generation, BPMN view/export, dashboard, task
 board, Work Bag, help page) with zero server errors, plus the same fresh-DB +
 simulated-pre-rename-DB migration test used for Piece 33.
 
+**The `employees`→`household_members` rename + role/access-control reorg (third
+piece of the structural reorg, Piece 35 / v0.4) is done.** `employees` and its
+`employee_credentials`/`employee_files` child tables are now `household_members`/
+`household_member_credentials`/`household_member_files` throughout `schema.sql`,
+`app.py`, and every template. The 28-role solar org chart (`reports_to`
+hierarchy, Sales/Design/Warehouse/Install departments) is gone, replaced by a
+flat **Parent / Child / Assistant** role — Assistant is a real `household_members`
+row with its own login and task assignments, distinct from an **External
+helper** (a new `external_helpers` table: name/phone/email/specialty/notes,
+reusable contact roster, no FK from tasks). Access control is now a flat
+**`is_admin`** flag plus per-permission grants with no expiry and no GM/Admin
+tiers — admins get everything except **Delete**, which still always needs an
+explicit grant even for admins (unchanged safety rail). **Cut entirely**:
+payroll (pay types, rates, time entries, the payroll reminder, QuickBooks
+export), the new-member onboarding checklist, and emergency access lockout —
+the Work Bag's hours logging is now a single self-reported number,
+display-only, with no supervisor/Finance two-sign-off chain. Task
+auto-assignment by role is gone (`LANE_TO_ROLES`, `best_assignee_for_lane()`);
+generated tasks land unassigned — a 5-person household roster is small enough
+to hand-pick from. The **dashboard drops its department mode-switcher
+entirely** — every section (My tasks, active projects grouped by stage,
+backlog, procurement, permits-filed, install-date buckets, company overview,
+payments) now renders unconditionally for every signed-in member, matching the
+access-control resolution above (no more role-gated viewports). A
+meta-guarded `household_reorg_v1` migration in `init_db()` upgrades an
+existing pre-rename database the same way — table/column renames run *before*
+`schema.sql`'s `executescript()` (same collision-avoidance reasoning as
+Piece 34), and `is_admin` is backfilled from the old `access_level`/GM-role
+text *before* the role remap overwrites it. Verified via a Flask test-client
+sweep of ~28 routes (fresh DB + a logged-in admin session, zero failures)
+plus live create/edit/grant-access/delete POST flows against both a fresh DB
+and a simulated pre-reorg DB — not yet a manual browser click-through.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -85,11 +118,14 @@ simulated-pre-rename-DB migration test used for Piece 33.
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   after the schema/feature reorg below is done.
-- **The rest of the structural/domain reorg** — `employees`→`household_members`,
-  the `routine_tasks`/`project_tasks` split, the Requirements Engine relabel,
-  inventory (barcode cut + empty starter catalog), and the vendor/contractor
-  directory repurpose of `nm_directory.py`. See below — the open questions on all
-  of these are already resolved.
+- **The rest of the structural/domain reorg** — the `routine_tasks`/
+  `project_tasks` split, the Requirements Engine relabel, inventory (barcode
+  cut + empty starter catalog), and the vendor/contractor directory repurpose
+  of `nm_directory.py`. See below — the open questions on all of these are
+  already resolved.
+- **A manual browser click-through of Piece 35** — the route sweep and POST
+  flows above are automated (Flask test client); no one has clicked through
+  the new household-member/dashboard/access UI in a real browser yet.
 
 ---
 

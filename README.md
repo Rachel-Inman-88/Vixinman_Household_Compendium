@@ -450,6 +450,30 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.4** — renamed the app's other central entity: `employees` and its
+  `employee_credentials`/`employee_files` child tables become
+  `household_members`/`household_member_credentials`/`household_member_files`,
+  every Python identifier and `/employees/` URL follows suit, and the 28-role
+  solar org chart collapses to **Parent / Child / Assistant**. Access control is
+  now a flat **`is_admin`** flag plus per-permission grants — no more GM/Admin
+  tiers, no more roles auto-conferring permissions, and grants no longer expire.
+  **Delete still always needs an explicit grant, even for admins** (that safety
+  rail carries over unchanged). **Payroll, the onboarding checklist, and
+  emergency access lockout are cut entirely** — a household doesn't run payroll
+  or onboard new hires; the Work Bag's hours logging is now a single
+  self-reported number, display-only, with no supervisor/Finance two-sign-off
+  chain. The **dashboard drops its department mode-switcher** — every section
+  (My tasks, active projects grouped by stage, backlog, procurement, permits,
+  install-date buckets, company overview, payments) now renders for every
+  signed-in member, all the time. Task auto-assignment by role is gone;
+  generated tasks land unassigned on a roster small enough to hand-pick from.
+  Added a reusable **External Helpers** contact roster (`/external-helpers`) for
+  contractors/tutors/coaches who aren't household members. A meta-guarded
+  `init_db()` migration upgrades an existing pre-rename database the same way,
+  including backfilling `is_admin` from the old access-level/GM-role signal
+  before the role text gets overwritten. See `HANDOFF.md` for the remaining
+  reorg pieces (the `routine_tasks`/`project_tasks` split, etc.).
+
 - **v0.3** — renamed the app's central entity end-to-end: the `jobs` table and its
   11 `job_*` child tables/14 `job_id` FK columns become `projects`/`project_*`, every
   Python identifier and `/jobs/` URL follows suit, and the pipeline stages are
@@ -463,7 +487,7 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   removed the client→job-list path) and its own nav entry. `job_name` (the database
   column) and the on-disk `uploads/job_<id>/` folder naming are deliberately left
   as-is — internal storage detail, not user-facing. See `HANDOFF.md` for the
-  remaining reorg pieces (`employees`→`household_members`, etc.).
+  remaining reorg pieces — `employees`→`household_members` landed in v0.4.
 
 - **Pieces 1–7** — Flask + SQLite skeleton; clients & jobs; rules engine;
   resource catalog; job versioning; per-job BPMN; materials & document filing.
@@ -624,8 +648,8 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   QuickBooks export, since there's no customer to invoice — the plain
   income/expense ledger on each job's Billing tab stays. Home (`/`) merged into
   `/dashboard` (one view, two routes) since there's no more client roster to
-  land on. See `HANDOFF.md` for the remaining reorg pieces
-  (employees→household_members, etc.) — `jobs`→`projects` landed in v0.3.
+  land on. See `HANDOFF.md` for the remaining reorg pieces —
+  `jobs`→`projects` landed in v0.3, `employees`→`household_members` in v0.4.
 
 - **v0.1** — reset the footer build counter from the solar-business "Piece N.N" scheme
   to plain semantic versioning, starting at `0.1`, coinciding with the rebrand to
