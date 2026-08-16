@@ -1,4 +1,4 @@
-"""Compendium — household task/project manager for the Vixinman household.
+﻿"""Compendium — household task/project manager for the Vixinman household.
 
 Piece 1: Flask skeleton backed by SQLite; home page lists client profiles.
 Piece 2: "New client" form and individual client profile pages.
@@ -36,10 +36,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from bpmn_export import build_project_bpmn
-from nm_directory import (
-    COUNTIES_ALL, CORRECTIONS_V10, CORRECTIONS_V11, COUNTY_UTILITIES,
-    NEW_RULES_V10, UTILITIES_ALL,
-)
+# Piece 38: only the reference data (counties/utilities) is still used — the
+# rule-batch content (NEW_RULES_V10, CORRECTIONS_V10/11) was solar-specific
+# and is gone along with the rest of SEED_RULES/SEED_BATCHES below. The rest
+# of nm_directory.py (AHJ/utility contact data) is untouched, reserved for a
+# future vendor/contractor directory piece.
+from nm_directory import COUNTIES_ALL, COUNTY_UTILITIES, UTILITIES_ALL
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 from inventory_seed import INVENTORY_CATEGORY_SPECS
 from inventory_research import (
@@ -132,18 +134,61 @@ def ensure_routine_task_reminders(db):
         db.commit()
 
 
+# ------------------------------------------------- Piece 38: standalone requirements
+def ensure_requirement_reminders(db):
+    """Due-date reminders for standalone recurring requirements (resource_rules
+    rows with no project field_name) — the same mechanics as
+    ensure_routine_task_reminders, just against a different table. Called both
+    on dashboard load and from the background scheduler (run_maintenance)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    all_members = [r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    made = False
+    for req in db.execute(
+            "SELECT * FROM resource_rules WHERE field_name = '' AND next_due != ''"
+            " AND next_due <= ? AND COALESCE(reminder_sent, '') != '1'",
+            (today,)).fetchall():
+        recipients = ([req["household_member_id"]] if req["household_member_id"]
+                      else all_members)
+        if not recipients:
+            continue
+        notify_employees(
+            db, recipients, f"📋 Requirement due: {req['label']}",
+            link="/rules", kind="requirement")
+        db.execute("UPDATE resource_rules SET reminder_sent = '1' WHERE id = ?",
+                   (req["id"],))
+        made = True
+    if made:
+        db.commit()
+
+
 # Project profile columns (products is stored as a comma-separated list).
+# Piece 38: project_category/project_type are the household-appropriate fields
+# a Requirements Engine rule matches against (Home Improvement / Personal
+# Improvement projects). The solar-specific fields below them are kept as-is
+# — inert for a household project, not worth ripping out in this piece — so
+# any rule someone already wrote against them still works.
 PROJECT_FIELDS = [
-    "job_name", "site_location", "county", "electric_loads", "utility_provider",
+    "job_name", "project_category", "project_type", "site_location", "county",
+    "electric_loads", "utility_provider",
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
     "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
     "generator_utility_connection", "battery_utility_connection", "service_type",
     "property_type",
 ]
 
+# Piece 38: the two household project kinds the user actually undertakes —
+# home-improvement work and personal-improvement pursuits (a skill, a
+# certification, a course). project_type is free text describing the specific
+# project within whichever category.
+PROJECT_CATEGORIES = ["Home Improvement", "Personal Improvement"]
+
 # Labels used on the report and anywhere a field needs a human name.
 PROJECT_FIELD_LABELS = {
-    "job_name": "Project name", "site_location": "Site location",
+    "job_name": "Project name",
+    "project_category": "Project category",
+    "project_type": "Project type",
+    "site_location": "Site location",
     "county": "County", "electric_loads": "Electric loads",
     "utility_provider": "Utility provider", "warranty_type": "Warranty type",
     "cost_method": "Payment", "tax_credit": "Tax credit",
@@ -449,420 +494,41 @@ COST_MODEL_SEED = {
     ],
 }
 
-RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
+# Piece 38: renamed from the solar-shop taxonomy (License/Compliance) to fit
+# household requirements — a cert earned for a personal-improvement project,
+# a prerequisite/inspection a home-improvement project needs before it can
+# proceed. Permit/Link/Phone/Doc carry over unchanged.
+RULE_CATEGORIES = ["Certification", "Permit", "Prerequisite", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
-    "License": "Technician licenses",
+    "Certification": "Certifications",
     "Permit": "Permits",
-    "Compliance": "Compliance notes",
+    "Prerequisite": "Prerequisites",
     "Link": "Online Portals",
     "Phone": "Phone numbers",
     "Doc": "Documents",
 }
 
-# Vixinman's requirement rules, seeded once into the editable resource_rules
-# table: (field_name, field_value, match_type, category, label, notes).
-SEED_RULES = [
-    # Mini Split Air Conditioners
-    ("products", "Mini Split Air Conditioners", "contains", "License", "MM-2 or MM-3 Contractor License", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "License", "Journeyman HVAC (JH) Certificate", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "License", "EPA Section 608 — Type II or Universal", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "Permit", "Mechanical permit", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "Permit", "Electrical permit", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "Compliance", "AIM Act refrigerant (R-454B or R-32)", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "Compliance", "Rough-in Inspection", ""),
-    ("products", "Mini Split Air Conditioners", "contains", "Compliance", "Final Inspection", ""),
-    # Generators
-    ("products", "Generators", "contains", "License", "EE-98 or ER-1 Electrical License", ""),
-    ("products", "Generators", "contains", "Permit", "Electrical permit", ""),
-    ("products", "Generators", "contains", "Compliance", "Rough-in Inspection", ""),
-    ("products", "Generators", "contains", "Compliance", "Final Inspection", ""),
-    # Well Pumps
-    ("products", "Well Pumps", "contains", "License", "ES-10R Contractor License", ""),
-    ("products", "Well Pumps", "contains", "License", "ES-10RJ Journeyman", "per tech"),
-    ("products", "Well Pumps", "contains", "Permit", "Electrical permit", ""),
-    ("products", "Well Pumps", "contains", "Compliance", "Electrical Inspection", ""),
-    # PV Systems
-    ("products", "PV Systems", "contains", "License", "EE-98 Contractor License", ""),
-    ("products", "PV Systems", "contains", "License", "EE-98J Journeyman", "per tech on site"),
-    ("products", "PV Systems", "contains", "Permit", "Electrical permit", ""),
-    ("products", "PV Systems", "contains", "Compliance", "Full NEC 690 One-Line Package", ""),
-    # Battery Banks
-    ("products", "Battery Banks", "contains", "License", "EE-98 Contractor License", ""),
-    ("products", "Battery Banks", "contains", "License", "EE-98J Journeyman", "per tech on site"),
-    ("products", "Battery Banks", "contains", "Permit", "Electrical permit", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "Updated One-Line w/ ESS Disconnect", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "UL 9540 Equipment Listing", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "NEC 706 Disconnect + Labeling", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "Exterior Emergency Shutdown", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "IFC Chapter 12 / Fire Code", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "NFPA 855 Clearances + Spacing", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "Ventilation Plan", ""),
-    ("products", "Battery Banks", "contains", "Compliance", "Smoke/Heat Detection (if enclosed)", ""),
-]
-
-# Batch 2 — PV Systems variant matrix (roof/ground × grid-tie/off-grid).
-# Seed batches are applied once per database via the meta.seed_version key,
-# so existing databases pick up new batches without duplicating rules.
-SEED_RULES_V2 = [
-    # All PV variants
-    ("products", "PV Systems", "contains", "Compliance", "SMDTC Application", "client files"),
-    ("products", "PV Systems", "contains", "Compliance", "GRT Exemption on Invoice", ""),
-    # Roof mounted
-    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Rapid Shutdown (NEC 690.12)", ""),
-    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Structural Analysis / NM PE Letter", "situational"),
-    ("pv_mounting_type", "Roof mounted", "equals", "Permit", "Building Permit (structural)", "if reinforcement needed"),
-    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Fire Code Roof Access Clearances", ""),
-    # Roof mounted on a manufactured house
-    ("pv_manufactured_house", "Yes", "equals", "Permit", "MHD Permit", "manufactured homes"),
-    # Ground mount
-    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Rapid Shutdown (NEC 690.12) — exception", "ground mounts typically qualify for the exception"),
-    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Structural Analysis / NM PE Letter", ""),
-    ("pv_mounting_type", "Ground mount", "equals", "Permit", "Building Permit (structural)", ""),
-    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Underground Wiring Plan + Depths", ""),
-    # Grid-tie (either mounting)
-    ("pv_utility_connection", "Grid-tie", "equals", "Permit", "Utility Interconnection Application", ""),
-    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "IEEE 1547-2018 Inverter Listing", ""),
-    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Lockable Load-Break Disconnect", ""),
-    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Signed Interconnection Agreement", ""),
-    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Final Inspection + Anti-Island", ""),
-]
-
-# Batch 3 — backup systems follow grid-tie rules (per Vixinman general rule;
-# specifics to be refined later, hence the note on each).
-SEED_RULES_V3 = [
-    ("pv_utility_connection", "Backup system", "equals", "Permit", "Utility Interconnection Application", "follows grid-tie rules for now"),
-    ("pv_utility_connection", "Backup system", "equals", "Compliance", "IEEE 1547-2018 Inverter Listing", "follows grid-tie rules for now"),
-    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Lockable Load-Break Disconnect", "follows grid-tie rules for now"),
-    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Signed Interconnection Agreement", "follows grid-tie rules for now"),
-    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Utility Final Inspection + Anti-Island", "follows grid-tie rules for now"),
-]
-
-# Batch 4 — Battery Banks matrix (Res. Solar+Bat / Off-Grid / Grid-Tied /
-# Commercial). 9-item rows carry a second AND condition. Backup system
-# mirrors grid-tie per the Vixinman general rule (battery table has no
-# standby column).
-SEED_RULES_V4 = [
-    ("products", "Battery Banks", "contains", "Compliance", "Fire Authority Plan Review", "situational", "property_type", "Residential", "equals"),
-    ("products", "Battery Banks", "contains", "Compliance", "Fire Authority Plan Review", "likely required", "property_type", "Commercial", "equals"),
-    ("products", "Battery Banks", "contains", "Compliance", "Hazard Mitigation Analysis (HMA)", "confirm with AHJ", "property_type", "Residential", "equals"),
-    ("products", "Battery Banks", "contains", "Compliance", "Hazard Mitigation Analysis (HMA)", "likely required", "property_type", "Commercial", "equals"),
-    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Interconnection Update", "if export"),
-    ("battery_utility_connection", "Backup system", "equals", "Compliance", "Utility Interconnection Update", "if export; follows grid-tie rules for now"),
-    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", ""),
-    ("battery_utility_connection", "Backup system", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", "follows grid-tie rules for now"),
-    ("battery_utility_connection", "Off-grid", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", "if generator coupled"),
-    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "Arc Flash Label", "commercial"),
-    ("battery_utility_connection", "Backup system", "equals", "Compliance", "Arc Flash Label", "commercial; follows grid-tie rules for now"),
-    ("products", "Battery Banks", "contains", "Compliance", "Arc Flash Label", "", "property_type", "Commercial", "equals"),
-    ("products", "Battery Banks", "contains", "Compliance", "SMDTC 20% Credit", "client files; if with solar", "products", "PV Systems", "contains"),
-    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "GRT Exemption on Invoice", "confirm"),
-]
-
-# Batch 5 — Generators matrix (Off-Grid / Standby / Grid-Tied). Their
-# "Standby" is our "Backup system". Note: per the table, standby
-# generators do NOT get the grid-tie interconnection items — the table
-# overrides the backup-follows-grid-tie general rule for generators.
-SEED_RULES_V5 = [
-    ("products", "Generators", "contains", "License", "LP-4/LP-5 or MM-2 Gas License", "if gas-fueled"),
-    ("products", "Generators", "contains", "Compliance", "NFPA 37 Clearances", ""),
-    ("generator_utility_connection", "Backup system", "equals", "Compliance", "Transfer Switch (NEC 702)", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Transfer Switch (NEC 702)", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Permit", "Utility Interconnection Application", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "NMPRC Rule 568 Compliance", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Utility-Accessible Lockable Disconnect", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Signed Interconnection Agreement", ""),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "NM PE Stamp", "if >10 kVA grid-tied"),
-    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Interconnection Inspection", ""),
-]
-
-# Batch 6 — corrections per Vixinman: Arc Flash is commercial-only, and the
-# two SMDTC rules merge into one.
-SEED_RULES_V6 = [
-    ("products", "PV Systems", "contains", "Compliance", "SMDTC 20% Credit Application",
-     "client files; batteries qualify when paired with solar"),
-]
-
-# Batch 7 — authoritative links from the "NM Solar Contractor Website
-# Reference List" (June 2026), attached to the rules they support, plus
-# utility-specific interconnection links keyed on the project's utility
-# provider. The source document contains no phone numbers.
-_CID_LICENSING = "https://www.rld.nm.gov/construction-industries-public-works/construction-industries/"
-_CID_PORTAL = "https://nmrld.my.site.com/MHD/s/"
-_NEC = "https://www.nfpa.org/codes-and-standards/nfpa-70-standard-for-electrical-installations/70"
-_IFC = "https://codes.iccsafe.org/content/IFC2021"
-_NFPA855 = "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=855"
-_PE_BOARD = "https://www.rld.nm.gov/engineering-and-land-surveying/"
-_PNM_SOLAR = "https://www.pnm.com/solar"
-_PNM_INTERCONNECT = "https://www.pnm.com/interconnection"
-
-# (label, url, optional field_name filter for labels shared across products)
-RULE_LINKS = [
-    ("MM-2 or MM-3 Contractor License", _CID_LICENSING, None),
-    ("Journeyman HVAC (JH) Certificate", _CID_LICENSING, None),
-    ("EE-98 or ER-1 Electrical License", _CID_LICENSING, None),
-    ("ES-10R Contractor License", _CID_LICENSING, None),
-    ("ES-10RJ Journeyman", _CID_LICENSING, None),
-    ("EE-98 Contractor License", _CID_LICENSING, None),
-    ("EE-98J Journeyman", _CID_LICENSING, None),
-    ("LP-4/LP-5 or MM-2 Gas License", "https://www.rld.nm.gov/lp-gas/", None),
-    ("EPA Section 608 — Type II or Universal", "https://www.epa.gov/section608", None),
-    ("AIM Act refrigerant (R-454B or R-32)", "https://www.epa.gov/climate-hfcs-reduction", None),
-    ("Mechanical permit", _CID_PORTAL, None),
-    ("Electrical permit", _CID_PORTAL, None),
-    ("Building Permit (structural)", _CID_PORTAL, None),
-    ("Rough-in Inspection", _CID_PORTAL, None),
-    ("Final Inspection", _CID_PORTAL, None),
-    ("Electrical Inspection", _CID_PORTAL, None),
-    ("MHD Permit", "https://www.rld.nm.gov/manufactured-housing/", None),
-    ("Transfer Switch (NEC 702)", _NEC, None),
-    ("NFPA 37 Clearances", "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=37", None),
-    ("Full NEC 690 One-Line Package", _NEC, None),
-    ("Rapid Shutdown (NEC 690.12)", _NEC, None),
-    ("Rapid Shutdown (NEC 690.12) — exception", _NEC, None),
-    ("Underground Wiring Plan + Depths", _NEC, None),
-    ("Updated One-Line w/ ESS Disconnect", _NEC, None),
-    ("NEC 706 Disconnect + Labeling", _NEC, None),
-    ("Exterior Emergency Shutdown", _NEC, None),
-    ("NEC 705 Interconnection (multi-source)", _NEC, None),
-    ("Arc Flash Label", _NEC, None),
-    ("Structural Analysis / NM PE Letter", _PE_BOARD, None),
-    ("NM PE Stamp", _PE_BOARD, None),
-    ("Fire Code Roof Access Clearances", _IFC, None),
-    ("IFC Chapter 12 / Fire Code", _IFC, None),
-    ("Smoke/Heat Detection (if enclosed)", _IFC, None),
-    ("NFPA 855 Clearances + Spacing", _NFPA855, None),
-    ("Ventilation Plan", _NFPA855, None),
-    ("Hazard Mitigation Analysis (HMA)", _NFPA855, None),
-    ("Fire Authority Plan Review", "https://www.dhsem.nm.gov/state-fire-marshal/", None),
-    ("UL 9540 Equipment Listing", "https://www.ul.com/resources/ul-9540-standard-for-energy-storage-systems-and-equipment", None),
-    ("IEEE 1547-2018 Inverter Listing", "https://standards.ieee.org/ieee/1547/6341/", None),
-    ("NMPRC Rule 568 Compliance", "https://www.nmprc.state.nm.us/utilities/elec.html", None),
-    ("SMDTC 20% Credit Application", "https://www.emnrd.nm.gov/sed/renewable-energy/solar-market-development-tax-credit/", None),
-    ("GRT Exemption on Invoice", "https://www.tax.newmexico.gov/businesses/gross-receipts-tax/", None),
-    # Shared labels: PV items point at PNM's solar program, generator
-    # items at PNM's general interconnection page (per the document).
-    ("Utility Interconnection Application", _PNM_SOLAR, "pv_utility_connection"),
-    ("Signed Interconnection Agreement", _PNM_SOLAR, "pv_utility_connection"),
-    ("Lockable Load-Break Disconnect", _PNM_SOLAR, "pv_utility_connection"),
-    ("Utility Final Inspection + Anti-Island", _PNM_SOLAR, "pv_utility_connection"),
-    ("Utility Interconnection Application", _PNM_INTERCONNECT, "generator_utility_connection"),
-    ("Signed Interconnection Agreement", _PNM_INTERCONNECT, "generator_utility_connection"),
-    ("Utility-Accessible Lockable Disconnect", _PNM_INTERCONNECT, "generator_utility_connection"),
-    ("Utility Interconnection Inspection", _PNM_INTERCONNECT, "generator_utility_connection"),
-    ("Utility Interconnection Update", _PNM_INTERCONNECT, "battery_utility_connection"),
-]
-
-
-def _link_sql(label, url, field=None):
-    where = f"label = '{label}'"
-    if field:
-        where += f" AND field_name = '{field}'"
-    return f"UPDATE resource_rules SET url = '{url}' WHERE {where}"
-
-
-# Utility-specific portals become Link rules keyed on the project's utility
-# provider (both utilities appear in the document).
-SEED_RULES_V7 = [
-    ("utility_provider", "PNM", "equals", "Link",
-     "PNM — Solar Interconnection & Net Metering", "", "", "", "equals"),
-    ("utility_provider", "Kit Carson Electric Cooperative", "equals", "Link",
-     "Kit Carson Electric Cooperative", "", "", "", "equals"),
-]
+# Piece 38: the solar-shop seed content that used to live here (License/
+# Permit/Compliance rules for PV/generator/battery/well-pump installs, NM
+# county AHJ contacts, utility interconnection links) is gone -- none of it
+# describes a household project. A fresh install now starts with an empty
+# Requirements Engine; seed_version watermarking means an existing database
+# that already ran these batches is unaffected, and any rule rows it still
+# has are left in place for the user to review/delete via the Requirements Editor.
+SEED_RULES = []
+SEED_BATCHES = {}
+SEED_BATCH_SQL = {}
 
 # Canonical values suggested on the project form so free-typed utilities and
-# counties actually match the rules below.
+# counties actually match whatever rules someone writes against them.
 UTILITIES = UTILITIES_ALL
+COUNTIES = COUNTIES_ALL
 
 # These products share one utility-connection choice on the project form.
-GRID_PRODUCTS = ["PV Systems", "Battery Banks", "Generators"]
 GRID_CONNECTION_FIELDS = {
     "PV Systems": "pv_utility_connection",
     "Generators": "generator_utility_connection",
     "Battery Banks": "battery_utility_connection",
-}
-COUNTIES = COUNTIES_ALL
-
-# Batch 8 — from the Utility Interconnection Forms & AHJ Building Permit
-# Forms documents (June 2026): per-utility forms/contacts and quirks,
-# per-county AHJ permits, and new-well drilling subcontract notes.
-SEED_RULES_V8 = [
-    # --- Utility contacts & forms (fire on the project's utility provider) ---
-    dict(field_name="utility_provider", field_value="MSMEC", category="Link",
-         label="MSMEC — Interconnection Forms Hub",
-         url="https://morasanmiguel.coop/forms",
-         phone="575-383-4270 / 800-421-6773",
-         notes="two tiers (≤10 kW / >10 kW); customer signs; approval before construction; rebates: thernandez@morasanmiguel.coop"),
-    dict(field_name="utility_provider", field_value="KCEC", category="Compliance",
-         label="KCEC Solar Net-Metering Pre-Screening — required FIRST",
-         url="https://kitcarson.com/solar-net-metering-pre-screening-application",
-         phone="575-758-2258",
-         notes="mandatory first gate before the full application; systems >25 kW: email rmartinez@kitcarson.com"),
-    dict(field_name="utility_provider", field_value="KCEC", category="Link",
-         label="KCEC — Net-Metering Hub & Applications",
-         url="https://kitcarson.com/electric/electric-info/net-metering/",
-         phone="575-758-2258",
-         notes="full application after pre-screening approval; NM Interconnection Manual p.24"),
-    dict(field_name="utility_provider", field_value="Springer Electric", category="Link",
-         label="Springer Electric — Forms Hub",
-         url="https://www.springercoop.com/service-application-and-forms",
-         phone="575-483-2421 / 800-288-1353",
-         notes="submit by mail (PO Box 698, Springer) or fax 575-483-2692; closed Fridays; site blocks automated access — navigate from hub"),
-    dict(field_name="utility_provider", field_value="JMEC", category="Link",
-         label="JMEC — Solar Applications & Requirements Packet",
-         url="https://www.jemezcoop.org/sites/default/files/2025-07/solar-applications-and-requirements.pdf",
-         phone="505-753-2105 / 888-755-2105",
-         notes="all-in-one packet; net metering up to 30 kW, April settle-up"),
-    dict(field_name="utility_provider", field_value="JMEC", category="Compliance",
-         label="JMEC Letter of Compliance (electrician closeout)",
-         url="https://www.jemezcoop.org/forms",
-         phone="888-755-2105",
-         notes="JMEC-specific: licensed electrician's letter required before written authorization"),
-    dict(field_name="utility_provider", field_value="PNM", category="Compliance",
-         label="PNM portal application — customer-signed, $50 fee (<100 kW)",
-         url="https://www.pnm.com/interconnection",
-         phone="888-342-5766",
-         notes="visible-air-gap lockable disconnect required (breakers/software modes do not qualify); permanent weatherproof one-line at point of service"),
-    # --- AHJ building/structural permits (fire on the project's county) ---
-    dict(field_name="county", field_value="Santa Fe County", category="Permit",
-         label="Santa Fe County Development Permit (PV Solar)",
-         url="https://www.santafecountynm.gov/growth-management/building-development/permitpackets",
-         phone="505-986-6225",
-         notes="unincorporated county: required for PV even without structural work; online via geocivix; expedited ~5 days; David Ruiz 505-986-6371",
-         field_name2="products", field_value2="PV Systems", match_type2="contains"),
-    dict(field_name="county", field_value="Taos County", category="Permit",
-         label="Taos County Solar Array Zoning Clearance — FIRST",
-         url="https://www.taoscounty.org/DocumentCenter/View/1914/Solar--Building-Permit-Application",
-         phone="575-737-6300",
-         notes="unincorporated county: required before the building permit; call office after online submittal; $80 re-inspection fee",
-         field_name2="products", field_value2="PV Systems", match_type2="contains"),
-    dict(field_name="county", field_value="Taos County", category="Permit",
-         label="Taos County Building Permit (after zoning clearance)",
-         url="https://www.taoscounty.org/DocumentCenter/View/2927/Building-Permit-Application",
-         phone="575-737-6300",
-         notes="use the 2024 revision",
-         field_name2="products", field_value2="PV Systems", match_type2="contains"),
-    dict(field_name="county", field_value="Rio Arriba County", category="Permit",
-         label="Rio Arriba County Development Permit",
-         url="https://www.rio-arriba.org/Departments/Departments-Divisions/Planning-and-Zoning/Forms-and-Permit-Applications",
-         phone="505-685-8000",
-         notes="single form covers solar/residential; 3–5 days; site visit arranged; NMDOT access permit if state road involved"),
-] + [
-    dict(field_name="county", field_value=county, category="Link",
-         label="CID is your AHJ — structural permits via CID portal",
-         url="https://nmrld.my.site.com/MHD/s/",
-         phone="505-476-4700 / 877-CID-0979",
-         notes="unincorporated areas; within city limits confirm the municipal building dept (Las Vegas 505-454-1401, Raton 575-445-9551)")
-    for county in ("Mora County", "San Miguel County", "Colfax County",
-                   "Harding County", "Guadalupe County")
-] + [
-    # --- New wells: drilling is subcontracted, outside Vixinman scope ---
-    dict(field_name="products", field_value="Well Pumps", match_type="contains",
-         category="Compliance",
-         label="New well? OSE well drilling permit — SUBCONTRACT",
-         url="https://www.ose.nm.gov/WR/well_drilling.php",
-         notes="well drilling is outside Vixinman scope — subcontract to an OSE-licensed driller; applies to new wells only, not pump replacement"),
-    dict(field_name="products", field_value="Well Pumps", match_type="contains",
-         category="Compliance",
-         label="New well? NMED water quality testing — subcontracted scope",
-         url="https://www.env.nm.gov/drinking-water/",
-         notes="new wells only; belongs to the drilling contractor's scope"),
-]
-
-# Batch 9 — named link sources, and state-run pages preferred: NEC and
-# IFC rules point at New Mexico's own code-adoption pages (NMAC) instead
-# of the publishers; standards bodies (UL/IEEE/NFPA) and utility/county
-# sites remain the original sources.
-_NMAC_NEC = "https://www.srca.nm.gov/parts/title14/14.010.0004.htm"
-_NMAC_IFC = "https://www.srca.nm.gov/parts/title10/10.025.0005.htm"
-
-LINK_TEXTS = {
-    _CID_LICENSING: "NM CID — Contractor & Journeyman Licensing",
-    _CID_PORTAL: "NM CID Online Permit Portal",
-    "https://www.rld.nm.gov/lp-gas/": "NM RLD — LP Gas Bureau",
-    "https://www.epa.gov/section608": "EPA Section 608 Certification",
-    "https://www.epa.gov/climate-hfcs-reduction": "EPA AIM Act — HFC Phasedown",
-    "https://www.rld.nm.gov/manufactured-housing/": "NM Manufactured Housing Division",
-    _NMAC_NEC: "NMAC 14.10.4 — NM Adoption of NEC 2020",
-    _NMAC_IFC: "NMAC 10.25.5 — NM Adoption of IFC 2021",
-    "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=37": "NFPA 37 — Stationary Combustion Engines",
-    _NFPA855: "NFPA 855 — Stationary Energy Storage Systems",
-    _PE_BOARD: "NM PE Board — Engineering & Surveying",
-    "https://www.dhsem.nm.gov/state-fire-marshal/": "NM State Fire Marshal Office",
-    "https://www.ul.com/resources/ul-9540-standard-for-energy-storage-systems-and-equipment": "UL 9540 — Energy Storage Systems Standard",
-    "https://standards.ieee.org/ieee/1547/6341/": "IEEE 1547-2018 Standard",
-    "https://www.nmprc.state.nm.us/utilities/elec.html": "NMPRC — Electric Utility Rules (17.9.568)",
-    "https://www.emnrd.nm.gov/sed/renewable-energy/solar-market-development-tax-credit/": "NM EMNRD — Solar Market Development Tax Credit",
-    "https://www.tax.newmexico.gov/businesses/gross-receipts-tax/": "NM Taxation & Revenue — Gross Receipts Tax",
-    _PNM_SOLAR: "PNM — Solar & Net Metering",
-    _PNM_INTERCONNECT: "PNM Interconnection Portal",
-    "https://www.kitcarson.com": "Kit Carson Electric Cooperative",
-    "https://morasanmiguel.coop/forms": "MSMEC Forms Hub",
-    "https://kitcarson.com/solar-net-metering-pre-screening-application": "KCEC Pre-Screening Application",
-    "https://kitcarson.com/electric/electric-info/net-metering/": "KCEC Net-Metering Hub",
-    "https://www.springercoop.com/service-application-and-forms": "Springer Electric Forms Hub",
-    "https://www.jemezcoop.org/sites/default/files/2025-07/solar-applications-and-requirements.pdf": "JMEC Solar Applications Packet (PDF)",
-    "https://www.jemezcoop.org/forms": "JMEC Forms Hub",
-    "https://www.santafecountynm.gov/growth-management/building-development/permitpackets": "Santa Fe County Permit Packets",
-    "https://www.taoscounty.org/DocumentCenter/View/1914/Solar--Building-Permit-Application": "Taos County Zoning Clearance Application (PDF)",
-    "https://www.taoscounty.org/DocumentCenter/View/2927/Building-Permit-Application": "Taos County Building Permit Application (PDF)",
-    "https://www.rio-arriba.org/Departments/Departments-Divisions/Planning-and-Zoning/Forms-and-Permit-Applications": "Rio Arriba County Planning & Zoning Forms",
-    "https://www.ose.nm.gov/WR/well_drilling.php": "NM OSE — Well Drilling & Licensing",
-    "https://www.env.nm.gov/drinking-water/": "NMED Drinking Water Bureau",
-}
-
-SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
-                5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7,
-                8: SEED_RULES_V8, 9: [], 10: NEW_RULES_V10, 11: []}
-
-# One-off SQL applied alongside a batch (same once-only guarantee).
-SEED_BATCH_SQL = {
-    # Exterior Emergency Shutdown is residential-only per the battery
-    # matrix; scope the original unconditional rule.
-    4: ["UPDATE resource_rules SET field_name2 = 'property_type',"
-        " field_value2 = 'Residential', match_type2 = 'equals'"
-        " WHERE field_name = 'products' AND field_value = 'Battery Banks'"
-        " AND label = 'Exterior Emergency Shutdown' AND field_name2 = ''"],
-    # Residential grid-tie needs no Arc Flash Label (commercial-only
-    # compound rule remains); old SMDTC rules replaced by the merged one.
-    6: ["DELETE FROM resource_rules WHERE label = 'Arc Flash Label'"
-        " AND field_name = 'battery_utility_connection'",
-        "DELETE FROM resource_rules WHERE label = 'SMDTC Application'",
-        "DELETE FROM resource_rules WHERE label = 'SMDTC 20% Credit'"],
-    # Attach the June 2026 reference-list links to their rules.
-    7: [_link_sql(label, url, field) for label, url, field in RULE_LINKS] + [
-        _link_sql("PNM — Solar Interconnection & Net Metering", _PNM_SOLAR),
-        _link_sql("Kit Carson Electric Cooperative", "https://www.kitcarson.com"),
-    ],
-    # The generic interconnection rules were PNM-linked but apply to all
-    # six providers: point them at governing NMPRC Rule 568 instead; the
-    # serving utility's own forms come from the utility_provider rules.
-    # Also normalize the batch-7 utility Link rules to canonical values.
-    8: [_link_sql(label, "https://www.nmprc.state.nm.us/utilities/elec.html")
-        for label in ("Utility Interconnection Application",
-                      "Signed Interconnection Agreement",
-                      "Lockable Load-Break Disconnect",
-                      "Utility-Accessible Lockable Disconnect",
-                      "Utility Final Inspection + Anti-Island",
-                      "Utility Interconnection Inspection",
-                      "Utility Interconnection Update")] + [
-        "UPDATE resource_rules SET field_value = 'KCEC', phone = '575-758-2258'"
-        " WHERE label = 'Kit Carson Electric Cooperative'",
-        "UPDATE resource_rules SET phone = '888-342-5766'"
-        " WHERE label = 'PNM — Solar Interconnection & Net Metering'",
-    ],
-    # State-run code pages replace publisher links, then every known url
-    # gets its display name.
-    9: [f"UPDATE resource_rules SET url = '{_NMAC_NEC}' WHERE url = '{_NEC}'",
-        f"UPDATE resource_rules SET url = '{_NMAC_IFC}' WHERE url = '{_IFC}'"] + [
-        f"UPDATE resource_rules SET link_text = '{text}' WHERE url = '{url}'"
-        for url, text in LINK_TEXTS.items()
-    ],
-    # July 2026 verified reference set: corrections from the Manual
-    # Review Log (dead NMPRC domain, EMNRD path, phones, SMDTC tier...).
-    10: CORRECTIONS_V10,
-    # Reconcile against the verified body of docs 01-03: county phones from
-    # doc 02, and promote items the docs now show verified.
-    11: CORRECTIONS_V11,
 }
 
 # Vixinman's main products/services — the multi-select on the project form.
@@ -2372,12 +2038,31 @@ def init_db():
     db.commit()
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
-    # Piece 26.9: verbatim source text for a rule (esp. compliance) — the exact
-    # wording from the code/source, shown above the shorthand in the L/P/C Directory.
+    # Piece 26.9: verbatim source text for a rule (esp. a prerequisite) — the exact
+    # wording from the code/source, shown above the shorthand in the Requirements Library.
     ensure_columns(db, "resource_rules", ["source_text"])
     # Piece 30.1: the ⚠ Verify / ⚠ Unverified callout is an explicit editable
     # field now (was inferred from caution words in the notes).
     ensure_columns(db, "resource_rules", ["verify_status"])
+    # Piece 38: optional descriptive fields (time/cost/upkeep, informational
+    # only) plus the columns a "standalone" requirement needs — one with no
+    # project field_name, reminded on its own recurrence like a Chore.
+    ensure_columns(db, "resource_rules",
+                   ["est_cost", "est_time", "maintenance_note",
+                    "household_member_id", "recurrence_days", "next_due",
+                    "last_completed_at", "last_completed_by", "reminder_sent"])
+    # Piece 38: License/Compliance were the solar-shop's category names;
+    # remap any pre-existing rows so they land under a heading that still
+    # exists (RULE_CATEGORIES no longer has "License"/"Compliance").
+    if not db.execute(
+            "SELECT 1 FROM meta WHERE key = 'rule_category_relabel_v1'").fetchone():
+        db.execute("UPDATE resource_rules SET category = 'Certification'"
+                   " WHERE category = 'License'")
+        db.execute("UPDATE resource_rules SET category = 'Prerequisite'"
+                   " WHERE category = 'Compliance'")
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('rule_category_relabel_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     # Piece 27.1: sample client/project seed removed for production. A fresh
     # database now starts with NO clients, projects, tasks, or sample employees
     # — only the reference databases (staff roster, inventory, calculator
@@ -2636,7 +2321,7 @@ def group_rules(matched, dedupe=True):
 
 
 def consolidate_rules(rules):
-    """Piece 26.9: the L/P/C Directory view. Collapse every rule that shares a
+    """Piece 26.9: the Requirements Library view. Collapse every rule that shares a
     (category, label) into ONE entry, listing each triggering scenario as a
     bullet beneath it — so a requirement like "EE-98 Contractor License" shows
     once with all its scenarios, instead of a fresh listing per scenario. The
@@ -3308,6 +2993,7 @@ def dashboard():
     db = get_db()
     ensure_backlog_reminders(db)
     ensure_routine_task_reminders(db)
+    ensure_requirement_reminders(db)
 
     my_tasks = []
     if user is not None:
@@ -3334,6 +3020,14 @@ def dashboard():
     if user is not None:
         my_chores = db.execute(
             "SELECT * FROM routine_tasks WHERE household_member_id = ?"
+            " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
+
+    # Piece 38: this member's standalone recurring requirements, soonest-due first.
+    my_requirements = []
+    if user is not None:
+        my_requirements = db.execute(
+            "SELECT * FROM resource_rules WHERE field_name = ''"
+            " AND household_member_id = ?"
             " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
 
     # Active-projects overview: every non-terminal project, grouped by stage
@@ -3495,6 +3189,7 @@ def dashboard():
     return render_template(
         "dashboard.html", user=user,
         stale_stock=stale_stock, task_groups=task_groups, my_chores=my_chores,
+        my_requirements=my_requirements,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
         payments=payments, pay_totals=pay_totals,
         today=today_s,
@@ -3999,6 +3694,7 @@ def render_project_form(values, selected, existing_jobs=False,
     return render_template(
         "project_form.html", values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
+        project_categories=PROJECT_CATEGORIES,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         payment_terms=PAYMENT_TERMS,                       # Piece 31.8
         utilities=UTILITIES, counties=COUNTIES,
@@ -4139,7 +3835,7 @@ def project_detail(project_id):
     doc_req_groups = [
         (heading, sorted({r["label"] for r in items}))
         for heading, items in groups
-        if items and items[0]["category"] in ("Permit", "Compliance", "Doc")
+        if items and items[0]["category"] in ("Permit", "Prerequisite", "Doc")
     ]
     doc_sections = [("General", STANDARD_JOB_DOCS)] + doc_req_groups
     needed_labels = set(STANDARD_JOB_DOCS)
@@ -7231,53 +6927,116 @@ def rules_page():
                                (request.args.get("edit", type=int),)).fetchone()
     # Piece 26.8: group the editor by category (same helper the Directory uses),
     # so the long flat list reads by section and carries the same ⚠ verify chips.
-    groups = group_rules(rules, dedupe=False)
+    project_rules = [r for r in rules if r["field_name"]]
+    groups = group_rules(project_rules, dedupe=False)
+    # Piece 38: standalone recurring requirements — not tied to any project,
+    # reminded on their own interval (household paperwork like taxes,
+    # homeschool registration). Distinguished by having no field_name.
+    recurring = db.execute(
+        "SELECT r.*, e.name AS assignee_name FROM resource_rules r"
+        " LEFT JOIN household_members e ON e.id = r.household_member_id"
+        " WHERE r.field_name = '' AND COALESCE(r.recurrence_days, '') != ''"
+        " ORDER BY (r.next_due = ''), r.next_due"
+    ).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template(
-        "rules.html", rules=rules, groups=groups, from_job=from_job,
+        "rules.html", rules=project_rules, groups=groups, from_job=from_job,
         edit_rule=edit_rule, category_headings=CATEGORY_HEADINGS,
         job_fields=[f for f in PROJECT_FIELDS if f != "job_name"],
         field_labels=PROJECT_FIELD_LABELS, categories=RULE_CATEGORIES,
+        recurring=recurring, employees=employees,
+        today=datetime.now().strftime("%Y-%m-%d"),
     )
+
+
+def _rule_form_values():
+    """Shared parsing for the rule form: either a project-triggered condition
+    (field_name/field_value, optionally AND'd with a second) or a standalone
+    recurring requirement (no project field — reminded on its own interval,
+    the way a Chore is)."""
+    standalone = request.form.get("standalone") == "1"
+    values = {
+        "label": request.form.get("label", "").strip(),
+        "category": request.form.get("category", "Prerequisite"),
+        "url": request.form.get("url", "").strip(),
+        "phone": request.form.get("phone", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "link_text": request.form.get("link_text", "").strip(),
+        "source_text": request.form.get("source_text", "").strip(),
+        "verify_status": _clean_verify_status(request.form.get("verify_status")),
+        "est_cost": request.form.get("est_cost", "").strip(),
+        "est_time": request.form.get("est_time", "").strip(),
+        "maintenance_note": request.form.get("maintenance_note", "").strip(),
+    }
+    if standalone:
+        assignee = request.form.get("household_member_id", "")
+        days = int(_to_float(request.form.get("recurrence_days")) or 7)
+        values.update(
+            field_name="", field_value="", match_type="equals",
+            field_name2="", field_value2="", match_type2="equals",
+            allowed_formats="",
+            household_member_id=int(assignee) if assignee.isdigit() else None,
+            recurrence_days=max(1, days),
+            next_due=request.form.get("next_due", "").strip()
+                     or datetime.now().strftime("%Y-%m-%d"),
+        )
+    else:
+        field_name = request.form.get("field_name", "").strip()
+        field_name2 = request.form.get("field_name2", "").strip()
+        values.update(
+            field_name=field_name,
+            field_value=request.form.get("field_value", "").strip(),
+            match_type="contains" if field_name == "products" else "equals",
+            field_name2=field_name2,
+            field_value2=request.form.get("field_value2", "").strip(),
+            match_type2="contains" if field_name2 == "products" else "equals",
+            allowed_formats=",".join(sorted(_parse_formats(
+                request.form.get("allowed_formats")))),
+            household_member_id=None, recurrence_days=None, next_due="",
+        )
+    return standalone, values
+
+
+def _rule_form_errors(standalone, v):
+    if not v["label"]:
+        return "A rule needs a label."
+    if standalone:
+        return None
+    if v["field_name"] not in PROJECT_FIELDS or not v["field_value"]:
+        return "A rule needs a project field and a value to match."
+    if v["field_name2"] and (v["field_name2"] not in PROJECT_FIELDS
+                              or not v["field_value2"]):
+        return "The second condition needs both a field and a value."
+    return None
 
 
 @app.route("/rules/new", methods=["POST"])
 @admin_required
 def add_rule():
-    field_name = request.form.get("field_name", "").strip()
-    field_value = request.form.get("field_value", "").strip()
-    label = request.form.get("label", "").strip()
     from_job = request.form.get("from_job") or None
-    field_name2 = request.form.get("field_name2", "").strip()
-    field_value2 = request.form.get("field_value2", "").strip()
-    if field_name not in PROJECT_FIELDS or not field_value or not label:
-        flash("A rule needs a project field, a value to match, and a label.", "error")
-        return redirect(url_for("rules_page", from_job=from_job))
-    if field_name2 and (field_name2 not in PROJECT_FIELDS or not field_value2):
-        flash("The second condition needs both a field and a value.", "error")
+    standalone, v = _rule_form_values()
+    error = _rule_form_errors(standalone, v)
+    if error:
+        flash(error, "error")
         return redirect(url_for("rules_page", from_job=from_job))
     db = get_db()
     db.execute(
         "INSERT INTO resource_rules"
         " (field_name, field_value, match_type, category, label, url, phone, notes,"
         "  field_name2, field_value2, match_type2, link_text, allowed_formats,"
-        "  source_text, verify_status)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (field_name, field_value,
-         "contains" if field_name == "products" else "equals",
-         request.form.get("category", "Compliance"),
-         label,
-         request.form.get("url", "").strip(),
-         request.form.get("phone", "").strip(),
-         request.form.get("notes", "").strip(),
-         field_name2, field_value2,
-         "contains" if field_name2 == "products" else "equals",
-         request.form.get("link_text", "").strip(),
-         ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
-         request.form.get("source_text", "").strip(),
-         _clean_verify_status(request.form.get("verify_status"))),
+        "  source_text, verify_status, est_cost, est_time, maintenance_note,"
+        "  household_member_id, recurrence_days, next_due)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (v["field_name"], v["field_value"], v["match_type"], v["category"],
+         v["label"], v["url"], v["phone"], v["notes"], v["field_name2"],
+         v["field_value2"], v["match_type2"], v["link_text"],
+         v["allowed_formats"], v["source_text"], v["verify_status"],
+         v["est_cost"], v["est_time"], v["maintenance_note"],
+         v["household_member_id"], v["recurrence_days"], v["next_due"]),
     )
     db.commit()
-    flash(f"Rule added: {label}")
+    flash(f"Rule added: {v['label']}")
     return redirect(url_for("rules_page", from_job=from_job))
 
 
@@ -7288,38 +7047,28 @@ def update_rule(rule_id):
     if db.execute("SELECT 1 FROM resource_rules WHERE id = ?",
                   (rule_id,)).fetchone() is None:
         abort(404)
-    field_name = request.form.get("field_name", "").strip()
-    field_value = request.form.get("field_value", "").strip()
-    label = request.form.get("label", "").strip()
     from_job = request.form.get("from_job") or None
-    field_name2 = request.form.get("field_name2", "").strip()
-    field_value2 = request.form.get("field_value2", "").strip()
-    if field_name not in PROJECT_FIELDS or not field_value or not label:
-        flash("A rule needs a project field, a value to match, and a label.", "error")
-        return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
-    if field_name2 and (field_name2 not in PROJECT_FIELDS or not field_value2):
-        flash("The second condition needs both a field and a value.", "error")
+    standalone, v = _rule_form_values()
+    error = _rule_form_errors(standalone, v)
+    if error:
+        flash(error, "error")
         return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
     db.execute(
         "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
         " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
         " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?,"
-        " source_text = ?, verify_status = ? WHERE id = ?",
-        (field_name, field_value,
-         "contains" if field_name == "products" else "equals",
-         request.form.get("category", "Compliance"), label,
-         request.form.get("url", "").strip(),
-         request.form.get("phone", "").strip(),
-         request.form.get("notes", "").strip(),
-         field_name2, field_value2,
-         "contains" if field_name2 == "products" else "equals",
-         request.form.get("link_text", "").strip(),
-         ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
-         request.form.get("source_text", "").strip(),
-         _clean_verify_status(request.form.get("verify_status")),
+        " source_text = ?, verify_status = ?, est_cost = ?, est_time = ?,"
+        " maintenance_note = ?, household_member_id = ?, recurrence_days = ?,"
+        " next_due = ? WHERE id = ?",
+        (v["field_name"], v["field_value"], v["match_type"], v["category"],
+         v["label"], v["url"], v["phone"], v["notes"], v["field_name2"],
+         v["field_value2"], v["match_type2"], v["link_text"],
+         v["allowed_formats"], v["source_text"], v["verify_status"],
+         v["est_cost"], v["est_time"], v["maintenance_note"],
+         v["household_member_id"], v["recurrence_days"], v["next_due"],
          rule_id))
     db.commit()
-    flash(f"Rule updated: {label}")
+    flash(f"Rule updated: {v['label']}")
     return redirect(url_for("rules_page", from_job=from_job))
 
 
@@ -7392,6 +7141,27 @@ def delete_rule(rule_id):
     flash(msg, "" if ok else "error")
     return redirect(url_for("rules_page",
                             from_job=request.form.get("from_job") or None))
+
+
+@app.route("/rules/<int:rule_id>/done", methods=["POST"])
+def requirement_done(rule_id):
+    """Mark a standalone recurring requirement done — advances next_due by
+    its recurrence_days, mirroring chore_done()."""
+    db = get_db()
+    rule = db.execute("SELECT * FROM resource_rules WHERE id = ?",
+                      (rule_id,)).fetchone()
+    if rule is None or rule["field_name"] or not rule["recurrence_days"]:
+        abort(404)
+    me = current_user()
+    today = datetime.now()
+    next_due = (today + timedelta(days=int(rule["recurrence_days"]))).strftime("%Y-%m-%d")
+    db.execute(
+        "UPDATE resource_rules SET last_completed_at = ?, last_completed_by = ?,"
+        " next_due = ?, reminder_sent = '' WHERE id = ?",
+        (today.strftime("%Y-%m-%d"), me["name"] if me else "", next_due, rule_id))
+    db.commit()
+    flash(f"Marked done: {rule['label']} — next due {next_due}.")
+    return redirect(url_for("rules_page"))
 
 
 # ---------------------------------------------------------- household members
@@ -7620,9 +7390,9 @@ def household_member_detail(household_member_id):
         state, text = credential_status(c["expires"])
         credentials.append({"row": c, "state": state, "status_text": text,
                             "documented": c["name"] in documented})
-    # License requirement labels, for the "satisfies requirement" dropdown.
+    # Certification requirement labels, for the "satisfies requirement" dropdown.
     license_labels = [r["label"] for r in db.execute(
-        "SELECT DISTINCT label FROM resource_rules WHERE category = 'License'"
+        "SELECT DISTINCT label FROM resource_rules WHERE category = 'Certification'"
         " ORDER BY label").fetchall()]
     # Piece 10: everything assigned to this person, across all projects. Open
     # (not-Done) tasks first, then by due date, so what's pending is on top.
@@ -7911,6 +7681,7 @@ def run_maintenance():
     try:
         ensure_backlog_reminders(conn)
         ensure_routine_task_reminders(conn)
+        ensure_requirement_reminders(conn)
     finally:
         conn.close()
 

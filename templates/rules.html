@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Rules Editor{% endblock %}
+{% block title %}Requirements Editor{% endblock %}
 {% block content %}
 <div style="margin-bottom: 0.8rem;">
   {% if from_job %}
@@ -9,35 +9,34 @@
   {% endif %}
 </div>
 <div class="toolbar" style="align-items:flex-start;">
-  <h1 style="margin:0;">⚙️ Rules Editor</h1>
-  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse the L/P/C Directory →</a>
+  <h1 style="margin:0;">⚙️ Requirements Editor</h1>
+  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse the Requirements Library →</a>
 </div>
-<p class="muted" style="margin-top:0.4rem;">Each rule says: when a project's
-<strong>field</strong> matches a <strong>value</strong>, the project needs this license,
-permit, compliance item, link, or phone number. Projects read these rules live — add one
-here and every matching project page updates immediately, no code changes.
+<p class="muted" style="margin-top:0.4rem;">A rule is either <strong>project-triggered</strong> —
+when a project's field matches a value, it needs this certification, permit, prerequisite,
+link, or phone number — or a <strong>standalone recurring requirement</strong>: an internal
+household obligation not tied to any project (taxes, homeschool registration), reminded on
+its own interval. Projects and the dashboard read these live — add one here and everything
+updates immediately, no code changes.
 To look up what applies to a given project type instead of editing, use the read-only
-<a href="{{ url_for('rule_directory') }}">L/P/C Directory</a>.</p>
+<a href="{{ url_for('rule_directory') }}">Requirements Library</a>.</p>
 
 {% if can('rules.manage') %}
 {% set er = edit_rule %}
+{% set er_standalone = er and not er['field_name'] %}
 <form method="post" id="rule-form"
       action="{{ url_for('update_rule', rule_id=er['id']) if er else url_for('add_rule') }}" class="card">
   {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
   <h2 style="margin-top:0; font-size:1.05rem;">{{ "Edit rule" if er else "Add a rule" }}</h2>
+  <label class="check" style="margin-bottom:0.6rem;">
+    <input type="checkbox" id="standalone" name="standalone" value="1" {% if er_standalone %}checked{% endif %}>
+    Recurring, not tied to a project <span class="muted">(household paperwork like taxes or homeschool registration)</span>
+  </label>
   <div class="form-grid">
-    <div class="field">
-      <label for="field_name">When this project field…</label>
-      <select id="field_name" name="field_name">
-        {% for f in job_fields %}
-        <option value="{{ f }}" {% if er and er['field_name'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="field_value">…matches this value</label>
-      <input id="field_value" name="field_value" required value="{{ er['field_value'] if er else '' }}"
-             placeholder="e.g. PV Systems, Torrance County, Off-grid">
+    <div class="field wide">
+      <label for="label">{{ "This requirement is…" if er_standalone else "The project needs… (label)" }} *</label>
+      <input id="label" name="label" required value="{{ er['label'] if er else '' }}"
+             placeholder="e.g. County flood-plain permit, or File homeschool registration">
     </div>
     <div class="field">
       <label for="category">Category</label>
@@ -57,28 +56,86 @@ To look up what applies to a given project type instead of editing, use the read
       </select>
     </div>
     <div class="field">
-      <label for="field_name2">AND this field (optional)</label>
-      <select id="field_name2" name="field_name2">
-        <option value="">— no second condition —</option>
-        {% for f in job_fields %}
-        <option value="{{ f }}" {% if er and er['field_name2'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
-        {% endfor %}
-      </select>
+      <label for="est_cost">Estimated cost (optional)</label>
+      <input id="est_cost" name="est_cost" value="{{ er['est_cost'] if er and 'est_cost' in er.keys() else '' }}"
+             placeholder="e.g. $50–150 depending on materials">
     </div>
     <div class="field">
-      <label for="field_value2">…matches this value</label>
-      <input id="field_value2" name="field_value2" value="{{ er['field_value2'] if er else '' }}"
-             placeholder="only if a second field is chosen">
+      <label for="est_time">Time investment (optional)</label>
+      <input id="est_time" name="est_time" value="{{ er['est_time'] if er and 'est_time' in er.keys() else '' }}"
+             placeholder="e.g. 2 weekends">
     </div>
     <div class="field wide">
-      <label for="label">The project needs… (label) *</label>
-      <input id="label" name="label" required value="{{ er['label'] if er else '' }}"
-             placeholder="e.g. County flood-plain permit">
+      <label for="maintenance_note">Ongoing maintenance (optional)</label>
+      <input id="maintenance_note" name="maintenance_note"
+             value="{{ er['maintenance_note'] if er and 'maintenance_note' in er.keys() else '' }}"
+             placeholder="e.g. Reseal annually">
     </div>
+  </div>
+
+  <div id="project-condition-fields">
+    <div class="form-grid">
+      <div class="field">
+        <label for="field_name">When this project field…</label>
+        <select id="field_name" name="field_name">
+          {% for f in job_fields %}
+          <option value="{{ f }}" {% if er and er['field_name'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="field_value">…matches this value</label>
+        <input id="field_value" name="field_value" value="{{ er['field_value'] if er else '' }}"
+               placeholder="e.g. Home Improvement, PV Systems, Torrance County">
+      </div>
+      <div class="field">
+        <label for="field_name2">AND this field (optional)</label>
+        <select id="field_name2" name="field_name2">
+          <option value="">— no second condition —</option>
+          {% for f in job_fields %}
+          <option value="{{ f }}" {% if er and er['field_name2'] == f %}selected{% endif %}>{{ field_labels[f] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="field_value2">…matches this value</label>
+        <input id="field_value2" name="field_value2" value="{{ er['field_value2'] if er else '' }}"
+               placeholder="only if a second field is chosen">
+      </div>
+      <div class="field">
+        <label for="allowed_formats">Accepted file formats (optional)</label>
+        <input id="allowed_formats" name="allowed_formats" list="format-list"
+               value="{{ er['allowed_formats'] if er and 'allowed_formats' in er.keys() else '' }}"
+               placeholder="blank = any · e.g. pdf, jpg, png">
+        <datalist id="format-list">
+          <option value="pdf"><option value="pdf, jpg, png"><option value="jpg, png, heic">
+          <option value="kmz, kml"><option value="docx, pdf"><option value="xlsx, csv">
+        </datalist>
+      </div>
+    </div>
+  </div>
+
+  <div id="recurring-fields" class="form-grid">
+    <div class="field"><label for="household_member_id">Assign to (optional)</label>
+      <select id="household_member_id" name="household_member_id">
+        <option value="">— unassigned —</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {% if er and (er['household_member_id'] or 0)|int == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="field"><label for="recurrence_days">Repeats every (days)</label>
+      <input id="recurrence_days" name="recurrence_days" type="number" min="1"
+             value="{{ (er['recurrence_days'] if er and er['recurrence_days'] else 7)|int }}"></div>
+    <div class="field"><label for="next_due">Next due</label>
+      <input id="next_due" name="next_due" type="date"
+             value="{{ er['next_due'] if er and er['next_due'] else today }}"></div>
+  </div>
+
+  <div class="form-grid" style="margin-top:0.8rem;">
     <div class="field wide">
       <label for="source_text">Verbatim source text (optional)</label>
       <textarea id="source_text" name="source_text" rows="2"
-                placeholder="Exact wording from the code/source — shown above the shorthand in the L/P/C Directory (esp. for compliance rules)">{{ er['source_text'] if er and 'source_text' in er.keys() else '' }}</textarea>
+                placeholder="Exact wording from the code/source — shown above the shorthand in the Requirements Library">{{ er['source_text'] if er and 'source_text' in er.keys() else '' }}</textarea>
     </div>
     <div class="field">
       <label for="url">Link (optional)</label>
@@ -96,26 +153,67 @@ To look up what applies to a given project type instead of editing, use the read
       <label for="notes">Notes (optional)</label>
       <input id="notes" name="notes" value="{{ er['notes'] if er else '' }}" placeholder="e.g. per tech on site">
     </div>
-    <div class="field">
-      <label for="allowed_formats">Accepted file formats (optional)</label>
-      <input id="allowed_formats" name="allowed_formats" list="format-list"
-             value="{{ er['allowed_formats'] if er and 'allowed_formats' in er.keys() else '' }}"
-             placeholder="blank = any · e.g. pdf, jpg, png">
-      <datalist id="format-list">
-        <option value="pdf"><option value="pdf, jpg, png"><option value="jpg, png, heic">
-        <option value="kmz, kml"><option value="docx, pdf"><option value="xlsx, csv">
-      </datalist>
-    </div>
   </div>
   <div class="actions">
     <button type="submit" class="btn">{{ "Save changes" if er else "Add rule" }}</button>
     {% if er %}<a href="{{ url_for('rules_page', from_job=from_job['id'] if from_job else none) }}" class="btn btn-secondary">Cancel</a>{% endif %}
   </div>
 </form>
+<script>
+  (function() {
+    const box = document.getElementById("standalone");
+    const projectFields = document.getElementById("project-condition-fields");
+    const recurringFields = document.getElementById("recurring-fields");
+    function sync() {
+      const on = box.checked;
+      projectFields.style.display = on ? "none" : "";
+      recurringFields.style.display = on ? "" : "none";
+    }
+    box.addEventListener("change", sync);
+    sync();
+  })();
+</script>
+{% endif %}
+
+{% if recurring %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">🔁 Recurring requirements ({{ recurring|length }})</h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Requirement</th><th>Assigned to</th><th>Next due</th><th>Every</th><th></th></tr></thead>
+    <tbody>
+      {% for r in recurring %}
+      {% set overdue = r["next_due"] and r["next_due"] < today %}
+      <tr>
+        <td>{{ r["label"] }}{% if r["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ r["notes"] }}</span>{% endif %}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ r["assignee_name"] or "— unassigned —" }}</td>
+        <td style="white-space:nowrap;">{{ r["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
+          </form>
+          {% if can('rules.manage') %}
+          <a href="{{ url_for('rules_page', edit=r['id']) }}#rule-form"
+             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+          {% endif %}
+          {% if can('delete') %}
+          <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
+                onsubmit="return confirm('Send this requirement to the trash?');" style="margin:0; display:inline;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.05rem;">Current rules ({{ rules|length }})</h2>
+  <h2 style="margin-top:0; font-size:1.05rem;">Project-triggered rules ({{ rules|length }})</h2>
   {% if groups %}
   <div style="overflow-x:auto;">
     {% for heading, items in groups %}
@@ -140,6 +238,13 @@ To look up what applies to a given project type instead of editing, use the read
             {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
             {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
             {% if 'allowed_formats' in r.keys() and r["allowed_formats"] %}<br><span class="muted" style="font-size:0.78rem;">📎 accepts: {{ r["allowed_formats"] }}</span>{% endif %}
+            {% if 'est_cost' in r.keys() and (r["est_cost"] or r["est_time"] or r["maintenance_note"]) %}
+            <br><span class="muted" style="font-size:0.78rem;">
+              {% if r["est_cost"] %}💵 {{ r["est_cost"] }}{% endif %}
+              {% if r["est_time"] %}{% if r["est_cost"] %} · {% endif %}⏱ {{ r["est_time"] }}{% endif %}
+              {% if r["maintenance_note"] %}{% if r["est_cost"] or r["est_time"] %} · {% endif %}🔧 {{ r["maintenance_note"] }}{% endif %}
+            </span>
+            {% endif %}
           </td>
           <td class="muted" style="font-size:0.85rem;">{{ r["notes"] }}</td>
           <td style="white-space:nowrap;">
@@ -162,7 +267,7 @@ To look up what applies to a given project type instead of editing, use the read
     {% endfor %}
   </div>
   {% else %}
-  <p class="empty">No rules yet.</p>
+  <p class="empty">No project-triggered rules yet.</p>
   {% endif %}
 </div>
 {% endblock %}

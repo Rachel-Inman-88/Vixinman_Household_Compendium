@@ -50,7 +50,7 @@ Modeler for the visual diagram.</p>
                     <span class="muted">{{ f["uploaded_at"][:10] }}</span></li>
                 {% endfor %}
               </ul>
-              {% elif item.category in ("Permit", "License", "Compliance") %}
+              {% elif item.category in ("Permit", "Certification", "Prerequisite") %}
               <div class="muted" style="font-size:0.8rem;">no document on file yet — upload on the project page</div>
               {% endif %}
             </li>

@@ -16,6 +16,19 @@ recordkeeping.</p>
              placeholder="e.g. 8kW PV + battery"
              value="{{ values.get('job_name', '') }}" required>
     </div>
+    <div class="field">
+      <label for="project_category">Project category</label>
+      <select id="project_category" name="project_category">
+        <option value="" {% if not values.get('project_category') %}selected{% endif %}>— unset —</option>
+        {% for c in project_categories %}
+        <option value="{{ c }}" {% if values.get('project_category') == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="project_type">Project type <span class="muted">(optional — e.g. "Chicken coop", "EMT certification")</span></label>
+      <input id="project_type" name="project_type" value="{{ values.get('project_type', '') }}">
+    </div>
     <div class="field" style="grid-column: 1 / -2;">
       <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
       <input id="site_location" name="site_location"

@@ -407,4 +407,33 @@
   <p class="empty">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
   {% endif %}
 </details>
+
+{# ---- My requirements (standalone recurring, not tied to a project) ---- #}
+<details class="card sect" open>
+  <summary>📋 My requirements <span class="sect-count">{{ my_requirements|length }}</span></summary>
+  {% if my_requirements %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Requirement</th><th>Next due</th><th>Every</th><th></th></tr></thead>
+    <tbody>
+      {% for r in my_requirements %}
+      {% set overdue = r["next_due"] and r["next_due"] < today %}
+      <tr>
+        <td>{{ r["label"] }}{% if r["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ r["notes"] }}</span>{% endif %}</td>
+        <td>{{ r["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
+        <td>
+          <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="margin:0;">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No requirements assigned to you. <a href="{{ url_for('rules_page') }}">Set one up →</a></p>
+  {% endif %}
+</details>
 {% endblock %}

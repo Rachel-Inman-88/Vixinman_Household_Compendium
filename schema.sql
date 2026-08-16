@@ -79,10 +79,15 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 4: the rules engine. Each row: "when project.<field_name> matches
--- <field_value>, this project needs <label>". Categories group the output
--- (License / Permit / Compliance / Link / Phone / Doc). match_type
--- 'contains' is for list fields like products; 'equals' for single values.
+-- Piece 4 (revised Piece 38): the requirements engine. Each row either:
+--  - is project-triggered — "when project.<field_name> matches <field_value>,
+--    this project needs <label>" — or
+--  - is standalone/recurring (field_name = '', recurrence_days set) — an
+--    internal household obligation not tied to any project (taxes, homeschool
+--    registration), reminded the same way Chores are.
+-- Categories group the output (Certification / Permit / Prerequisite / Link /
+-- Phone / Doc). match_type 'contains' is for list fields like products;
+-- 'equals' for single values.
 -- Prior states of edited projects, kept for recordkeeping. data is a JSON
 -- snapshot of every project field at the moment it was replaced.
 CREATE TABLE IF NOT EXISTS project_versions (
@@ -159,8 +164,8 @@ CREATE TABLE IF NOT EXISTS household_members (
 
 -- Piece 8.1: each license/certification a household member holds as its own
 -- row, so expiry can be tracked and flagged. rule_label optionally ties the
--- credential to a License requirement in resource_rules, which lets a project
--- page show whether someone in the household holds the licenses it requires.
+-- credential to a Certification requirement in resource_rules, which lets a
+-- project page show whether someone in the household holds the certs it requires.
 CREATE TABLE IF NOT EXISTS household_member_credentials (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     household_member_id  INTEGER NOT NULL REFERENCES household_members(id),
@@ -293,7 +298,7 @@ CREATE TABLE IF NOT EXISTS resource_rules (
     field_name  TEXT NOT NULL,
     field_value TEXT NOT NULL,
     match_type  TEXT NOT NULL DEFAULT 'equals',
-    category    TEXT NOT NULL DEFAULT 'Compliance',
+    category    TEXT NOT NULL DEFAULT 'Prerequisite',
     label       TEXT NOT NULL,
     url         TEXT DEFAULT '',
     phone       TEXT DEFAULT '',

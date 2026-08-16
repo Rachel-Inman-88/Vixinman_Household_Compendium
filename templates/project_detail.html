@@ -124,7 +124,7 @@
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
   <button class="tab-btn" data-tab="general">General details</button>
-  <button class="tab-btn" data-tab="requirements" title="Licenses / Permits / Compliance">L/P/C ({{ req_total }})</button>
+  <button class="tab-btn" data-tab="requirements" title="Certifications / Permits / Prerequisites">Requirements ({{ req_total }})</button>
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
@@ -140,6 +140,10 @@
     {% endfor %}
   </div>
   <dl class="profile">
+    {% if project["project_category"] or project["project_type"] %}
+    <dt>Project category</dt>
+    <dd>{{ project["project_category"] or "—" }}{% if project["project_type"] %} · {{ project["project_type"] }}{% endif %}</dd>
+    {% endif %}
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
     <dt>County</dt><dd>{{ project["county"] or "—" }}</dd>
     <dt>Electric loads</dt>
@@ -212,11 +216,11 @@
 <div class="tab-panel" id="tab-requirements">
 <div class="card">
   <div class="toolbar" style="margin-bottom: 0.6rem;">
-    <h2 style="margin:0; font-size:1.1rem;">Licenses, permits &amp; compliance</h2>
+    <h2 style="margin:0; font-size:1.1rem;">Requirements</h2>
     <a href="{{ url_for('project_report', project_id=project['id']) }}" class="btn">⬇ Export report</a>
   </div>
   {% if groups %}
-    {% set bottom = ["Technician licenses", "Compliance notes"] %}
+    {% set bottom = ["Certifications", "Prerequisites"] %}
     {# Top: Permits (with inline filing) + portals/phones — open. #}
     {% for heading, items in groups if heading not in bottom %}
     {% set can_file = heading == "Permits" %}
@@ -233,6 +237,13 @@
           {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+          {% if 'est_cost' in r.keys() and (r["est_cost"] or r["est_time"] or r["maintenance_note"]) %}
+          <br><span class="muted" style="font-size:0.8rem;">
+            {% if r["est_cost"] %}💵 {{ r["est_cost"] }}{% endif %}
+            {% if r["est_time"] %}{% if r["est_cost"] %} · {% endif %}⏱ {{ r["est_time"] }}{% endif %}
+            {% if r["maintenance_note"] %}{% if r["est_cost"] or r["est_time"] %} · {% endif %}🔧 {{ r["maintenance_note"] }}{% endif %}
+          </span>
+          {% endif %}
           {% if r["instances"] and r["instances"]|length > 1 %}
           <ul class="instances" title="Required by these selections on this project">
             {% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}
@@ -266,8 +277,8 @@
       </ul>
     </details>
     {% endfor %}
-    {# Bottom: Technician licenses + Compliance notes — the Lead Installer owns
-       these, so they're collapsed here for the Permit Coordinator. #}
+    {# Bottom: Certifications + Prerequisites — collapsed by default since
+       they're consulted less often than the open Permits/portal items above. #}
     {% for heading, items in groups if heading in bottom %}
     <details class="req-group">
       <summary>
@@ -284,7 +295,7 @@
           {% if r["instances"] and r["instances"]|length > 1 %}
           <ul class="instances">{% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}</ul>
           {% endif %}
-          {% if r["category"] == "License" and license_staffing %}
+          {% if r["category"] == "Certification" and license_staffing %}
             {% set holders = license_staffing.get(r["label"], []) %}
             <br>
             {% if holders %}

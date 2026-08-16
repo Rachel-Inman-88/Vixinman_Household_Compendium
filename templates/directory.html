@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}L/P/C Directory{% endblock %}
+{% block title %}Requirements Library{% endblock %}
 {% block content %}
 <div class="toolbar" style="align-items:flex-start;">
-  <h1 style="margin:0;">📖 L/P/C Directory</h1>
+  <h1 style="margin:0;">📖 Requirements Library</h1>
   {% if can('rules.manage') %}
-  <a href="{{ url_for('rules_page') }}" class="btn btn-secondary">⚙️ Open the Rules Editor →</a>
+  <a href="{{ url_for('rules_page') }}" class="btn btn-secondary">⚙️ Open the Requirements Editor →</a>
   {% endif %}
 </div>
-<p class="muted" style="margin-top:0.4rem;">Look up the <strong>licenses, permits &amp;
-compliance</strong> items (and portals, phones, docs) a project needs, filtered to a project type.
+<p class="muted" style="margin-top:0.4rem;">Look up the <strong>certifications, permits &amp;
+prerequisites</strong> items (and portals, phones, docs) a project needs, filtered to a project type.
 Each requirement is listed once with every scenario it applies to beneath it.
 <strong>Read-only</strong>{% if can('rules.manage') %} — to add or change a rule, use the
-<a href="{{ url_for('rules_page') }}">Rules Editor</a>{% endif %}.</p>
+<a href="{{ url_for('rules_page') }}">Requirements Editor</a>{% endif %}.</p>
 <p class="verify-legend">Verification flags come from the NM reference set:
   <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
   <span class="flag flag-unverified">⚠ Unverified</span> couldn't be checked online — confirm by phone.</p>
@@ -98,6 +98,13 @@ Each requirement is listed once with every scenario it applies to beneath it.
           {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+          {% if 'est_cost' in r.keys() and (r["est_cost"] or r["est_time"] or r["maintenance_note"]) %}
+          <br><span class="muted" style="font-size:0.8rem;">
+            {% if r["est_cost"] %}💵 {{ r["est_cost"] }}{% endif %}
+            {% if r["est_time"] %}{% if r["est_cost"] %} · {% endif %}⏱ {{ r["est_time"] }}{% endif %}
+            {% if r["maintenance_note"] %}{% if r["est_cost"] or r["est_time"] %} · {% endif %}🔧 {{ r["maintenance_note"] }}{% endif %}
+          </span>
+          {% endif %}
         </div>
         {# Scenario(s) it applies to, one bullet each. #}
         <ul style="margin:0.2rem 0 0; padding-left:1.2rem;">
