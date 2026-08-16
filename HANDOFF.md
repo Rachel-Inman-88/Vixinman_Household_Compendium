@@ -110,6 +110,27 @@ sweep of ~28 routes (fresh DB + a logged-in admin session, zero failures)
 plus live create/edit/grant-access/delete POST flows against both a fresh DB
 and a simulated pre-reorg DB — not yet a manual browser click-through.
 
+**Inventory's barcode/asset-tag cut + empty starter catalog (fourth piece of
+the structural reorg, Piece 36 / v0.5) is done.** The barcode/asset registry
+(register/print tags, scan-in/out, checkout/checkin/retire, the truck-loading
+scan flow, stock audits) is removed entirely — built for a multi-person crew
+truck-loading parts, doesn't fit household scale. Dropped
+`inventory_assets`/`stock_audits`/`stock_audit_scans` from `schema.sql`, all
+their routes, and the `barcodes.py` Code128-SVG module; a meta-guarded
+`barcode_scanning_removed_v1` migration drops the tables from an existing
+database. The inventory catalog now ships **empty** on a fresh install
+instead of pre-seeding Vixinman's 439-item solar catalog, vendor list, tool
+kit, and vehicle fleet (confirmed the vendor list is exclusively
+solar-industry wholesalers — none of it is household-relevant). The
+category→spec-field definitions the item form still needs
+(`INVENTORY_CATEGORY_SPECS`) were kept; the actual seed data rows were cut.
+Plain on-hand/needed/ordered inventory tracking, the stock ledger, and the
+stale-stock notice all still work exactly as before. Verified via a
+fresh-DB boot (zero pre-seeded rows, barcode tables absent), a simulated
+pre-cleanup database with populated barcode tables (confirms the migration
+drops them), and a Flask test-client route sweep + a live inventory-item
+creation POST.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -117,15 +138,16 @@ and a simulated pre-reorg DB — not yet a manual browser click-through.
   borders, accent colors in blue, green, red, gold/brass, and black ("burnt wood"). This
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
-  after the schema/feature reorg below is done.
+  **after every feature/file/database reorg piece below is done**, not incrementally
+  per piece.
 - **The rest of the structural/domain reorg** — the `routine_tasks`/
-  `project_tasks` split, the Requirements Engine relabel, inventory (barcode
-  cut + empty starter catalog), and the vendor/contractor directory repurpose
-  of `nm_directory.py`. See below — the open questions on all of these are
-  already resolved.
-- **A manual browser click-through of Piece 35** — the route sweep and POST
-  flows above are automated (Flask test client); no one has clicked through
-  the new household-member/dashboard/access UI in a real browser yet.
+  `project_tasks` split, the Requirements Engine relabel, and the
+  vendor/contractor directory repurpose of `nm_directory.py`. See below — the
+  open questions on all of these are already resolved.
+- **A manual browser click-through of Pieces 35 and 36** — verification so
+  far is automated (Flask test-client route sweeps + POST flows); no one has
+  clicked through the new household-member/dashboard/access/inventory UI in
+  a real browser yet.
 
 ---
 

@@ -450,6 +450,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.5** — cut the barcode/asset-tag registry entirely: register/print tags,
+  scan-in/out, checkout/checkin/retire, the truck-loading scan flow, and stock
+  audits are gone — built for a multi-person crew truck-loading parts, doesn't
+  fit household scale. Drops `inventory_assets`/`stock_audits`/
+  `stock_audit_scans` and the `barcodes.py` Code128-SVG module; a
+  meta-guarded migration drops the tables from an existing database. Also
+  ships the inventory catalog **empty** on a fresh install instead of
+  pre-seeding Vixinman's 439-item solar catalog, vendor list, tool kit, and
+  vehicle fleet — none of it is household-relevant. Kept the
+  category→spec-field definitions the item form still needs; cut the actual
+  seed data rows.
+
 - **v0.4** — renamed the app's other central entity: `employees` and its
   `employee_credentials`/`employee_files` child tables become
   `household_members`/`household_member_credentials`/`household_member_files`,
