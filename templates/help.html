@@ -34,7 +34,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <a href="#tasks">6. Tasks &amp; the field Work Bag</a>
     <a href="#boards-help">6b. Boards (stand-alone to-dos)</a>
     <a href="#finance">7. Finance, billing &amp; pricing</a>
-    <a href="#inventory">8. Inventory, barcodes &amp; stock audit</a>
+    <a href="#inventory">8. Inventory</a>
     <a href="#people">9. People, roles &amp; permissions</a>
     <a href="#notifications">10. Notifications</a>
     <a href="#managers">11. For managers &amp; admins</a>
@@ -207,22 +207,17 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 
 <!-- 8 -->
 <div class="card" id="inventory">
-  <h2>8. Inventory, barcodes &amp; stock audit</h2>
+  <h2>8. Inventory</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <h3>Tutorial — mark an item stale</h3>
   <ol class="steps">
     <li>Open <strong>🗄 Databases → Inventory</strong> and find the item.</li>
     <li>Click the <strong>🕰</strong> toggle in its row to flag it stale (click again to clear). It shows a Stale badge and joins the review queue.</li>
   </ol>
-  <h3>Tutorial — run a stock audit</h3>
-  <ol class="steps">
-    <li>On Inventory, choose <strong>🧮 Audit stock</strong> and start a session (all stock or one category).</li>
-    <li>Scan every tag (phone camera or scanner). Compendium reconciles against what it expects to be in stock.</li>
-    <li>Finish to get a report of unaccounted / unexpected / unknown / duplicate items — exportable as CSV.</li>
-  </ol>
-  <details><summary>How do barcodes / asset tags work?</summary>
-    <p>The Warehouse Manager registers serials and prints Code-128 labels; anyone can scan items in/out to load a
-    truck (including from a phone). Two installers can load the same project at once.</p></details>
+  <details><summary>Where does inventory come from?</summary>
+    <p>The household's inventory starts empty — add components, tools, and vehicles/equipment
+    as you actually acquire them. Each item tracks on-hand/needed/ordered status; the stale-stock
+    notice flags anything at zero on hand that hasn't been used in 6+ months.</p></details>
 </div>
 
 <!-- 9 -->

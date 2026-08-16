@@ -21,11 +21,7 @@
 <div class="toolbar">
   <h1>📦 Inventory</h1>
   <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-    <a href="{{ url_for('inventory_load') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🚚 Load</a>
-    <a href="{{ url_for('inventory_scan') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">📷 Scan</a>
     {% if can('inventory.manage') %}
-    <a href="{{ url_for('inventory_assets') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🏷 Barcodes</a>
-    <a href="{{ url_for('inventory_audit') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🧮 Audit stock</a>
     <a href="{{ url_for('inventory_stale') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕰️ Stale stock{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</a>
     {% endif %}
     <span class="muted" style="font-size:0.9rem;">{{ item_total }} items · {{ vendor_count }} vendors</span>
