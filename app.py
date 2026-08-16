@@ -104,6 +104,34 @@ def ensure_backlog_reminders(db):
         db.commit()
 
 
+# ------------------------------------------------------------------- chores
+def ensure_routine_task_reminders(db):
+    """Piece 37: due-date reminders for recurring chores (routine_tasks),
+    through the same notifications inbox as ensure_backlog_reminders. Each
+    chore reminds once per cycle (reminder_sent flag), to whoever it's
+    assigned to — or every member with a login, if unassigned. Called both
+    on dashboard load and from the background scheduler (run_maintenance)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    all_members = [r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    made = False
+    for chore in db.execute(
+            "SELECT * FROM routine_tasks WHERE next_due != '' AND next_due <= ?"
+            " AND COALESCE(reminder_sent, '') != '1'", (today,)).fetchall():
+        recipients = ([chore["household_member_id"]] if chore["household_member_id"]
+                      else all_members)
+        if not recipients:
+            continue
+        notify_employees(
+            db, recipients, f"🔁 Chore due: {chore['title']}",
+            link="/chores", kind="chore")
+        db.execute("UPDATE routine_tasks SET reminder_sent = '1' WHERE id = ?",
+                   (chore["id"],))
+        made = True
+    if made:
+        db.commit()
+
+
 # Project profile columns (products is stored as a comma-separated list).
 PROJECT_FIELDS = [
     "job_name", "site_location", "county", "electric_loads", "utility_provider",
@@ -1507,6 +1535,9 @@ TRASH_REGISTRY = {
     "household_idea": {"table": "household_ideas", "label": lambda r: r["name"],
                        "found_in": lambda db, r: "Backlog",
                        "in_use": lambda db, r: []},
+    "routine_task": {"table": "routine_tasks", "label": lambda r: r["title"],
+                     "found_in": lambda db, r: "Chores",
+                     "in_use": lambda db, r: []},
     "external_helper": {"table": "external_helpers", "label": lambda r: r["name"],
                         "found_in": lambda db, r: "External Helpers",
                         "in_use": lambda db, r: []},
@@ -3106,6 +3137,141 @@ def board_delete(board_id):
     return redirect(url_for("boards_page"))
 
 
+# ------------------------------------------------------------------- Piece 37: chores
+CHORE_RECURRENCE_PRESETS = [(1, "Daily"), (7, "Weekly"), (14, "Every 2 weeks"),
+                            (30, "Monthly")]
+
+
+def _notify_chore_assignee(db, title, assignee_id, actor):
+    """Tell a household member a chore was assigned to them (skip self / login-less)."""
+    if not assignee_id or (actor and actor["id"] == assignee_id):
+        return
+    row = db.execute("SELECT COALESCE(username,'') AS u FROM household_members WHERE id = ?",
+                     (assignee_id,)).fetchone()
+    if not row or not row["u"]:
+        return
+    notify_employees(
+        db, [assignee_id],
+        f"🔁 Chore assigned to you: “{title}”"
+        + (f" — from {actor['name']}" if actor else "") + ".",
+        link=url_for("chores_page"), kind="chore")
+
+
+@app.route("/chores")
+def chores_page():
+    """The Chores list — recurring household tasks, not tied to a project.
+    Filter by assignee (mine / unassigned / a person / all)."""
+    db = get_db()
+    me = current_user()
+    who = request.args.get("who", "mine" if me else "all")
+    sql = ("SELECT c.*, e.name AS assignee_name FROM routine_tasks c"
+           " LEFT JOIN household_members e ON e.id = c.household_member_id WHERE 1 = 1")
+    params = []
+    if who == "mine" and me:
+        sql += " AND c.household_member_id = ?"
+        params.append(me["id"])
+    elif who == "unassigned":
+        sql += " AND c.household_member_id IS NULL"
+    elif who.isdigit():
+        sql += " AND c.household_member_id = ?"
+        params.append(int(who))
+    sql += " ORDER BY (c.next_due = ''), c.next_due, c.id"
+    chores = db.execute(sql, params).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    edit_id = request.args.get("edit", type=int)
+    edit_chore = db.execute(
+        "SELECT * FROM routine_tasks WHERE id = ?", (edit_id,)
+    ).fetchone() if edit_id else None
+    return render_template("chores.html", chores=chores, employees=employees,
+                           who=who, edit_chore=edit_chore,
+                           recurrence_presets=CHORE_RECURRENCE_PRESETS,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+def _chore_form_values():
+    assignee = request.form.get("household_member_id", "")
+    days = int(_to_float(request.form.get("recurrence_days")) or 7)
+    return {
+        "title": request.form.get("title", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "household_member_id": int(assignee) if assignee.isdigit() else None,
+        "recurrence_days": max(1, days),
+        "next_due": request.form.get("next_due", "").strip()
+                   or datetime.now().strftime("%Y-%m-%d"),
+    }
+
+
+@app.route("/chores/new", methods=["POST"])
+def chore_new():
+    values = _chore_form_values()
+    if not values["title"]:
+        flash("A chore needs a title.", "error")
+        return redirect(url_for("chores_page"))
+    db = get_db()
+    me = current_user()
+    cur = db.execute(
+        "INSERT INTO routine_tasks (title, notes, household_member_id,"
+        " recurrence_days, next_due, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        (values["title"], values["notes"], values["household_member_id"],
+         values["recurrence_days"], values["next_due"], me["name"] if me else ""))
+    _notify_chore_assignee(db, values["title"], values["household_member_id"], me)
+    db.commit()
+    flash(f"Chore added: {values['title']}")
+    return redirect(url_for("chores_page"))
+
+
+@app.route("/chores/<int:chore_id>/edit", methods=["POST"])
+def chore_edit(chore_id):
+    db = get_db()
+    chore = db.execute("SELECT * FROM routine_tasks WHERE id = ?",
+                       (chore_id,)).fetchone()
+    if chore is None:
+        abort(404)
+    values = _chore_form_values()
+    if not values["title"]:
+        flash("A chore needs a title.", "error")
+        return redirect(url_for("chores_page", edit=chore_id))
+    me = current_user()
+    db.execute(
+        "UPDATE routine_tasks SET title = ?, notes = ?, household_member_id = ?,"
+        " recurrence_days = ?, next_due = ? WHERE id = ?",
+        (values["title"], values["notes"], values["household_member_id"],
+         values["recurrence_days"], values["next_due"], chore_id))
+    if values["household_member_id"] != chore["household_member_id"]:
+        _notify_chore_assignee(db, values["title"], values["household_member_id"], me)
+    db.commit()
+    flash(f"Chore updated: {values['title']}")
+    return redirect(url_for("chores_page"))
+
+
+@app.route("/chores/<int:chore_id>/done", methods=["POST"])
+def chore_done(chore_id):
+    db = get_db()
+    chore = db.execute("SELECT * FROM routine_tasks WHERE id = ?",
+                       (chore_id,)).fetchone()
+    if chore is None:
+        abort(404)
+    me = current_user()
+    today = datetime.now()
+    next_due = (today + timedelta(days=chore["recurrence_days"])).strftime("%Y-%m-%d")
+    db.execute(
+        "UPDATE routine_tasks SET last_completed_at = ?, last_completed_by = ?,"
+        " next_due = ?, reminder_sent = '' WHERE id = ?",
+        (today.strftime("%Y-%m-%d"), me["name"] if me else "", next_due, chore_id))
+    db.commit()
+    flash(f"Marked done: {chore['title']} — next due {next_due}.")
+    return redirect(url_for("chores_page"))
+
+
+@app.route("/chores/<int:chore_id>/delete", methods=["POST"])
+@delete_required
+def chore_delete(chore_id):
+    ok, msg = trash_item("routine_task", chore_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("chores_page"))
+
+
 def _closing_worklist(db):
     """Projects in the Wrap-up stage with balance due and remaining close-out
     steps — the Executive overview's Wrap-up worklist, also the Sales
@@ -3141,6 +3307,7 @@ def dashboard():
     user = current_user()
     db = get_db()
     ensure_backlog_reminders(db)
+    ensure_routine_task_reminders(db)
 
     my_tasks = []
     if user is not None:
@@ -3161,6 +3328,13 @@ def dashboard():
             task_groups.append({
                 "project_id": jid, "job_name": t["job_name"], "tasks": []})
         task_groups[_tg_index[jid]]["tasks"].append(t)
+
+    # Piece 37: this member's recurring chores, soonest-due first.
+    my_chores = []
+    if user is not None:
+        my_chores = db.execute(
+            "SELECT * FROM routine_tasks WHERE household_member_id = ?"
+            " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
 
     # Active-projects overview: every non-terminal project, grouped by stage
     # (replaces the old per-department project lists).
@@ -3320,7 +3494,7 @@ def dashboard():
     stale_stock = len(stale_stock_items(db))
     return render_template(
         "dashboard.html", user=user,
-        stale_stock=stale_stock, task_groups=task_groups,
+        stale_stock=stale_stock, task_groups=task_groups, my_chores=my_chores,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
         payments=payments, pay_totals=pay_totals,
         today=today_s,
@@ -7736,6 +7910,7 @@ def run_maintenance():
     conn.row_factory = sqlite3.Row
     try:
         ensure_backlog_reminders(conn)
+        ensure_routine_task_reminders(conn)
     finally:
         conn.close()
 

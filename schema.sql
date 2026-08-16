@@ -445,6 +445,22 @@ CREATE TABLE IF NOT EXISTS board_time (
     note        TEXT DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 37: "Chores" — recurring household tasks, not tied to any project.
+-- A row is one recurring chore definition; completing it advances next_due
+-- by recurrence_days rather than generating a new row per occurrence.
+CREATE TABLE IF NOT EXISTS routine_tasks (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    title                TEXT NOT NULL,
+    notes                TEXT DEFAULT '',
+    household_member_id  INTEGER REFERENCES household_members(id),   -- NULL = unassigned
+    recurrence_days      INTEGER NOT NULL DEFAULT 7,
+    next_due             TEXT NOT NULL DEFAULT '',       -- YYYY-MM-DD
+    last_completed_at    TEXT DEFAULT '',
+    last_completed_by    TEXT DEFAULT '',
+    reminder_sent        TEXT DEFAULT '',                -- '1' once notified for the current next_due
+    created_by           TEXT DEFAULT '',
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id INTEGER NOT NULL REFERENCES household_members(id),

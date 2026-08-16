@@ -378,4 +378,33 @@
   <p class="empty">No open tasks assigned to you. 🎉</p>
   {% endif %}
 </details>
+
+{# ---- My chores (recurring, not tied to a project) ---- #}
+<details class="card sect" open>
+  <summary>🔁 My chores <span class="sect-count">{{ my_chores|length }}</span></summary>
+  {% if my_chores %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Chore</th><th>Next due</th><th>Every</th><th></th></tr></thead>
+    <tbody>
+      {% for c in my_chores %}
+      {% set overdue = c["next_due"] and c["next_due"] < today %}
+      <tr>
+        <td>{{ c["title"] }}{% if c["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ c["notes"] }}</span>{% endif %}</td>
+        <td>{{ c["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td class="muted">{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}</td>
+        <td>
+          <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
+  {% endif %}
+</details>
 {% endblock %}
