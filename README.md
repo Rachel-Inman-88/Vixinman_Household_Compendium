@@ -100,8 +100,8 @@ can confirm a pull/update took effect.
   **Planning-phase tool**: once the contract is signed (the project moves past
   Planning) the editor **locks** — the recorded figures stay visible here and in
   Design, but no one edits them (enforced in the UI and on the server).
-  - **Sales / Designer view modes** default per viewer from their department
-    (Design → Designer, Sales → Sales) and are togglable per session.
+  - **Sales / Designer view modes** — a per-session toggle (defaults to
+    Designer); a view preference, not access control.
   - **Room-aware appliance picker**: each survey room has a "type" (Kitchen,
     Garage…) so its picker defaults to that room's appliances, with a search box
     over the whole catalog and a **Custom** toggle for off-catalog items.
@@ -125,8 +125,8 @@ can confirm a pull/update took effect.
 - **Per-slot upload formats**: a document slot can restrict its accepted file
   types (e.g. a permit slot to PDF), enforced on upload.
 - **Auto-renamed uploads**: every uploaded file is renamed to a self-describing
-  `Name_What_Date` scheme for recordkeeping (project docs, household files, employee
-  files, and field photos each get their own pattern); the friendly name is what
+  `Name_What_Date` scheme for recordkeeping (project docs, household files,
+  household-member files, and field photos each get their own pattern); the friendly name is what
   shows and downloads, while the on-disk name stays collision-safe.
 - **In-place editing** for the add/delete-only records (rules, appliance &
   component catalog, credentials, load items/rooms, BOM lines) — an ✎ edit
@@ -134,31 +134,32 @@ can confirm a pull/update took effect.
 - **Exportable project report**.
 
 ### Pipeline, tasks & scheduling
-- **Standardized pipeline**: Planning → Prep → In Progress → Wrap-up → Done (plus Abandoned). Each stage is **owned by a department** with
-  defined exit criteria; Prep is gated by prerequisites (all permits filed +
-  an install date set — setting the install date auto-advances the project).
+- **Standardized pipeline**: Planning → Prep → In Progress → Wrap-up → Done
+  (plus Abandoned), each stage carrying a descriptive label and defined exit
+  criteria; Prep is gated by prerequisites (all permits filed + an install date
+  set — setting the install date auto-advances the project).
 - **Per-project progress widget** — a segmented progress bar (one per project) that shows
   at a glance where the project sits in the pipeline, with the **next step called
   out**. Appears on the dashboard and each project's header.
 - **Pipeline-turnover notifications**: whenever a project advances to a new stage
   (from Planning onward — new projects, manual stage changes, and the install-date
-  auto-advance), the department(s) that **own the new stage** are notified in
+  auto-advance), **every household member with a login** is notified in
   their in-app inbox. Each recipient's copy **clears the first time they access
   it** (opening the notification or the project); the person who made the move isn't
   notified, and backward moves don't fire.
 - **Project cancellation (Abandoned) with a reason**: a "Cancel this project" control marks it
   **Abandoned** with a **required reason** recorded in the audit log (who/when), and
   remembers the stage it was at. A cancelled project's **open tasks are hidden** from
-  My Tasks, the task board, and the Work Bag so they stop nagging the crew —
+  My Tasks, the task board, and the Work Bag so they stop nagging anyone —
   nothing is deleted. **Everyone involved so far** (task assignees, time loggers)
   is notified. A **↩ Reopen** action restores the exact prior
   stage and its tasks. ("Abandoned" is removed from the plain stage dropdown so every
   cancellation captures a reason.)
-- **Closed projects review** (🗄 Databases → Closed projects, GM/Admin): a management view
-  of **cancelled** projects — reason, who/when, prior stage, contract — each
-  with a one-click Reopen, plus a list of **completed** projects.
-- **Task generation** from a project's process, with each step auto-assigned to the
-  role-holder responsible for it.
+- **Closed projects review** (🗄 Databases → Closed projects, Admin): a
+  management view of **cancelled** projects — reason, who/when, prior stage,
+  contract — each with a one-click Reopen, plus a list of **completed** projects.
+- **Task generation** from a project's process. Generated tasks land
+  **unassigned** — a human assigns them; there's no automatic assignment by role.
 - **Default task deadlines**: every generated task defaults to **7 days after the
   previous step** (a weekly cadence); when a step is marked Done, the next open
   step is re-defaulted to 7 days after that completion. Hand-editable per project.
@@ -166,20 +167,18 @@ can confirm a pull/update took effect.
   (`/calendar/my.ics`) or a single project's dates (`/projects/<id>/calendar.ics`) and
   import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
   updates events instead of duplicating.
-- **Work Bag** for field crews — an offline-capable field tool that shows **only
+- **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
-  dashboards. It opens on a **projects landing** that lists just the projects in the
-  crew's bag (name, install date, open-task count); tapping a project opens
+  dashboard. It opens on a **projects landing** that lists just the projects in the
+  bag (name, install date, open-task count); tapping a project opens
   its **own page** with that project's tasks, plus hours, receipts, and notes pinned
   to it.
-- **Submit-as-done with time by pay type**: instead of a status dropdown, each
+- **Submit-as-done with a single hours total**: instead of a status dropdown, each
   task has a single **✓ Submit as done** (and a **⚠ Can't finish** → Blocked).
-  Submitting captures **the time it took, split by pay type** (e.g. 8 h regular +
-  1 h travel + 2 h roof) shown live on a **colour-coded timeline**. It flows
-  through **two sign-offs**: the supervisor approves the task (marking it Done and
-  posting the split hours as **pending payroll** by pay type), then Finance
-  approves the hours on the payroll page. All edits are saved on-device and submit
-  when back online.
+  Submitting captures **the time it took** as one number, held for **whoever has
+  the "Approve field work" permission** to approve — a single review step;
+  there's no payroll behind it (display-only recordkeeping). All edits are saved
+  on-device and submit when back online.
 - **Project photos from the field**: every pipeline step that requires photos — the
   site visit, the install itself, the crew walkthrough, doc tube, the meter set,
   and re-inspection of corrections — is completed on its **own dedicated screen**:
@@ -214,110 +213,82 @@ can confirm a pull/update took effect.
   on a daemon timer, so it keeps working while the app sits unattended.
 
 ### People, roles & permissions
-- **Employees** matched to the org chart, with first / last / optional nickname
-  (duplicate-name guard on creation).
-- **28 roles arranged as the org chart**; the New Employee form's **Roles** picker
-  is an **indented org tree** (checkboxes) mirroring Vixinman's reporting structure —
-  where a role sits shows who they report to, and rows with direct reports are
-  bold. Multi-select, with an "Other role(s)" free-text field for anything off-chart.
-- **Licenses & certifications** per employee, with expiry tracking that ties into
-  project requirements (a project page can show whether staff hold the licenses it needs
-  and warn when a credential has lapsed).
-- **New-employee onboarding checklist**: an editable, company-wide step template
-  (seeded with sensible defaults; add / edit / reorder / archive), tracked
-  per employee on their profile's **Onboarding** tab with a progress bar and
-  who/when stamps. Managers check steps off; everyone else sees status read-only.
-  Onboarding is **initiated inside the New Employee form** — after the basic
-  profile fields you pick **who's responsible** for finishing it (a GM or
-  Supervisor, defaulting to the GM) and preview the steps; saving starts the
-  checklist, notifies the responsible person, and drops you on the checklist to
-  begin. The responsible person is shown on the Onboarding tab and can be
-  reassigned there.
-- **Emergency access lockout**: a GM — or a new GM-designated **Supervisor** —
-  can instantly suspend **all** of an employee's access (they're signed out
-  mid-session and blocked at login until reinstated); the account, login and
-  data stay intact and a **↩ reinstate** restores it. Hierarchy guards: nobody
-  locks out themselves, and a Supervisor can't lock out a GM or a fellow
-  Supervisor. The roster flags suspended / supervisor at a glance.
+- **Household members** (👥 Household), with first / last / optional nickname
+  (duplicate-name guard on creation) and a simple role: **Parent, Child, or
+  Assistant** (Assistant = a household member with their own login who isn't a
+  Parent — not the same as an **External helper** below, who isn't a household
+  member at all). Replaces the original solar-shop's 28-role org chart —
+  a household doesn't need a reporting structure.
+- **Licenses & certifications** per household member, with expiry tracking that
+  ties into the **Requirements Engine** (a project page can show whether anyone
+  in the household holds the certifications it needs, and warn when one has
+  lapsed).
+- **External Helpers** (🧰 Databases → External Helpers): a reusable contact
+  roster — name, specialty, phone, email, notes — for contractors, tutors,
+  coaches, and anyone else who helps but isn't a household member. Doubles as
+  the household's vendor/contractor directory (electricians, plumbers,
+  warranty lines).
 - **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
-  pipeline turnovers, project cancellations, and security auto-locks; each
-  notification **clears when the recipient accesses it**.
-- **Role-based "My Dashboard"** — the sign-in landing, one role view at a time
-  (mode switch for people who hold multiple roles); each person's **default view
-  is remembered** (e.g. the GM defaults to the Executive overview). Every section
-  is **collapsible**. The **Sales** viewport shows **In Planning** (projects in
-  Planning), a **Leads** worklist (prospects not yet converted, with follow-up
-  actions), and My tasks. The **Installation** (Foreman) viewport lists installs
-  **bucketed by date** — This week / Upcoming / Wrap-up · unscheduled —
-  with the install date leading, and trims **My tasks** to on-site field work.
-  For **Sales-role** users that late-stage mode reads **🏁 Wrap-up** instead —
-  Wrap-up-stage projects with **balance due** and remaining close-out steps — since
-  Sales owns the walkthrough / final-invoice hand-off, not the install (the GM
-  is exempt and keeps the Installation mode).
-  The **Executive** (GM) viewport opens with a **Company overview**: pipeline
-  counts by stage, money-in-flight tiles (contract / collected / outstanding /
-  expenses across active projects), an attention row (approvals waiting, overdue
-  tasks, stalled projects), a **Ready-for-design** queue (Planning-stage projects whose load
-  survey is captured but design isn't finalized — the Sales→Designer hand-off),
-  this week's installs, and a **Wrap-up worklist** (each project's balance due and
-  remaining close-out steps). Each sub-section sits in its own panel.
-- **Inventory database** (🗄 Databases → Inventory): Vixinman's stock of components
-  seeded from the inventory workbook — **439 items across 15 categories** (PV,
-  inverters, batteries, charge controllers, racking, …) with per-category specs, a
-  canonical **~52-vendor** supplier list (names normalized from the workbook's
-  typo'd entries), plus a standard **tool kit** (priced with big-box listings) and
-  a **vehicles / heavy-equipment** list (each vehicle has a shop **nickname**). The
-  table is editable in-app; item specs feed the Loads & Sizing calculator, and a
-  `web_price` sits alongside the quoted `Cost` so a price check never overwrites
-  your number. Battery, inverter, and PV spec data is research-calibrated, with
-  product-page **purchase URLs** on current-install gear.
+  pipeline turnovers, project cancellations, chore/requirement reminders, and
+  security notices; each notification **clears when the recipient accesses it**.
+- **One unified dashboard** (🏠 My Dashboard) — the sign-in landing. Every
+  section renders for every signed-in member, all the time; no per-role mode
+  switcher. Sections include a household-wide **overview** (pipeline counts by
+  stage, money-in-flight tiles, an attention row, this week's installs, a
+  wrap-up worklist), **Payments**, **Procurement**, **Installs**, active
+  projects grouped by stage, the **Backlog**, and each member's own **My
+  tasks**, **My chores**, and **My requirements**. Each section is
+  **collapsible**.
+- **Inventory database** (🗄 Databases → Inventory): ships **empty** on a fresh
+  install — no pre-seeded solar catalog, vendor list, tool kit, or vehicle
+  fleet; items get added as the household actually needs them. Per-category
+  spec fields still drive the add-item form, and the table is editable in-app.
 - **Stock ledger & stale-stock notice**: every stock change (received / used /
   count / adjust) flows through a single ledger that keeps each item's on-hand
-  balance; items that go unused past a threshold surface a **stale-stock** notice
-  on the Designer's dashboard. Items can also be **manually marked stale at will**
-  (a 🕰 toggle in the inventory listing) regardless of the automatic rule —
-  hand-flagged items show a **Stale** badge and join the review queue/count, and
-  Keep or Discontinue clears the mark.
-- **Barcode / asset registry**: generate and print **Code 128** labels, register
-  serial numbers for **consumables** (hardware, components) and **non-consumables**
-  (tools, PPE, trucks), and **scan** them in/out — including **phone-camera
-  scanning** — to load a project's truck (two installers can load the same project from
-  their own phones). Only the **Warehouse Manager** can mint new tags; loading a
-  project needs no special permission.
-- **Stock audit** (🧮 Audit stock): run a counting session — scan every tag on the
-  shelf (camera or keyboard-wedge) and Compendium reconciles the scanned serials against
-  the assets the database expects to be **In stock**. Audit **all stock** or scope it
-  to one **category / type**. It flags — live and in a saved report — everything that
-  doesn't line up: **unaccounted-for** items (expected but not scanned), items
-  **scanned but unexpected** (checked out, retired, or out of scope), **unknown tags**,
-  and **duplicate scans** — with an **exportable CSV** of the whole reconciliation.
-  Every scan is logged per session and past audits are kept for reference.
-- **Nav grouping**: the reference/data pages — **Backlog, Household Files, Rules
-  Editor, L/P/C Directory, Inventory, Calculator Catalog**, plus **Cost model & finance**
-  and **Closed projects** — are consolidated under a single **🗄 Databases** dropdown
-  in the header; **Employees + Payroll** sit under a **👥 Team** dropdown; and
-  **Log / Trash / Access** sit under a **🔧 Admin** dropdown.
-  Each grouped dropdown shows only the items the user may reach and collapses to a
-  plain link when only one applies. Keeps the top bar tidy.
-- **Permissions**: the General Manager (identified by the GM role) has unfettered
-  access and can grant individuals access to specific tools/functions **with an
-  expiration date**. Admin tier sits below GM; granular grants everywhere else.
-- **Deletion & trash**: deletes are GM-only (delegatable), prompt before
-  deleting, and are **blocked with an error if the data is in use** elsewhere.
-  Deleted items go to a **trash can** for review; permanent purge stays GM-only.
-- **Employee offboarding**: admins can remove an employee with a confirm prompt
-  that requires a reason for the audit log.
+  balance; items that go unused past a threshold surface a **stale-stock**
+  notice. Items can also be **manually marked stale at will** (a 🕰 toggle in
+  the inventory listing) regardless of the automatic rule — hand-flagged items
+  show a **Stale** badge and join the review queue/count, and Keep or
+  Discontinue clears the mark. (Barcode/asset-tag scanning and stock audits —
+  built for a multi-person crew truck-loading parts — were cut; they didn't
+  fit household scale.)
+- **Nav grouping**: the reference/data pages — **Projects, Backlog, Household
+  Files, External Helpers, Requirements Editor, Requirements Library,
+  Inventory, Calculator Catalog**, plus (admin-only) **Cost model & finance**
+  and **Closed projects** — are consolidated under a single **🗄 Databases**
+  dropdown; **Log / Trash / Access** sit under a **🔧 Admin** dropdown. Each
+  grouped dropdown shows only the items the user may reach and collapses to a
+  plain link when only one applies.
+- **Permissions**: a flat **`is_admin`** flag — admins get every tool except
+  **Delete**, which always needs an explicit grant even for an admin.
+  Non-admins get only what's individually checked off for them on the
+  **🔐 Access** console (manage rules, manage the catalog, manage inventory,
+  manage household members & accounts, approve field work, view the audit
+  log, or delete). No tiers above admin, no role auto-conferring permissions,
+  and grants don't expire.
+- **Deletion & trash**: deleting anything needs the explicit **Delete**
+  permission (even an admin doesn't have it by default), prompts before
+  deleting, and is **blocked with an error if the data is in use** elsewhere.
+  Deleted items go to a **trash can** for review; restoring or permanently
+  purging also needs Delete.
+- **Household member offboarding**: an admin with `household.manage` can
+  remove a member with a confirm prompt that requires a reason (captured in
+  the audit log). Blocked if they have field-work submissions on record, so
+  approved-hours history isn't lost; their tasks are unassigned rather than
+  deleted.
 - **Logins**: per-user accounts with hashed passwords (**pbkdf2:sha256**, which
   also works in the packaged desktop build). **Usernames are case-insensitive**
   (passwords stay case-sensitive); the Accounts page scans for case-duplicate
   usernames. Sessions **auto-log-out after 12 hours of inactivity** (a sliding
   window that renews on each request).
-- **Self-service password reset**: an employee can enrol **security questions**
-  on their account page (answers stored as salted hashes, **case-sensitive**). A
-  **"Forgot password?"** flow on the sign-in page asks a **random 2 of the 3**
-  and lets them set a new password **with no admin approval**. Wrong answers are
-  rate-limited; hitting the limit **auto-locks the account** and notifies the
-  Supervisor(s) (or the GM if none). Suspended accounts can't reset here.
+- **Self-service password reset**: a household member can enrol **security
+  questions** on their account page (answers stored as salted hashes,
+  **case-sensitive**). A **"Forgot password?"** flow on the sign-in page asks a
+  **random 2 of the 3** and lets them set a new password **with no admin
+  approval**. Too many wrong answers ends that reset attempt and notifies
+  every admin with a login, so one of them can reset the password directly —
+  there's no account-level auto-lock (that mechanism went away with the
+  emergency-lockout system it used to belong to).
 
 ### Finance & billing
 - **Per-project billing ledger** (💵 Billing tab): set the contract total and record
@@ -341,47 +312,32 @@ Customer-facing invoice generation and the project-transactions QuickBooks expor
 were removed (Piece 33, household reorg) — this app manages one household
 directly, so there's no customer to invoice. The plain income/expense ledger
 above still tracks project budgets; only the customer-invoice presentation
-layer is gone. (Payroll's own QuickBooks export, unrelated, is unchanged —
-see Payroll below.)
-- **Cost Model Defaults** (🗄 Databases → Cost model & finance, Finance/Admin/GM):
-  Vixinman's estimating template behind project pricing — six editable sections
+layer is gone. **Payroll — pay types, overtime, pay periods, timesheets, the
+payroll reminder, and its own QuickBooks export — was cut entirely** (Piece
+35): a household doesn't run payroll. Field hours logged from the Work Bag are
+now a single self-reported number, display-only, held for approval (see
+Pipeline, tasks & scheduling above) with no pay calculation behind it.
+- **Cost Model Defaults** (🗄 Databases → Cost model & finance, Admin only):
+  the estimating template behind project pricing — six editable sections
   (**Equipment Inventory, Equipment Non-Inventory, Labor, Travel, Adders,
-  Overhead**), each line **qty × cost × (1 + markup)**, seeded with the finance
-  team's real figures and add/edit/delete-able. Equipment-Inventory markups price
-  the project BOM; **Overhead (G&A)** applies on the whole subtotal. The page also
-  holds the **NM county GRT rate table** (all 33 counties; a project auto-fills its
-  GRT from its install county, overridable for the solar deduction) and shows a
-  default "standard project" rollup.
-- **Per-project estimate** (📐 Estimate tab, Finance/Sales/Design): builds a project's
+  Overhead**), each line **qty × cost × (1 + markup)**, add/edit/delete-able.
+  Equipment-Inventory markups price the project BOM; **Overhead (G&A)** applies
+  on the whole subtotal. The page also holds the **NM county GRT rate table**
+  (all 33 counties; a project auto-fills its GRT from its install county,
+  overridable for the solar deduction) and shows a default "standard project"
+  rollup.
+- **Per-project estimate** (📐 Estimate tab, Admin only): builds a project's
   price against the cost model — one-click **prefill** pulls the default Labor /
   Travel / Adders / Non-Inventory lines, quantities are set per line, equipment
   comes from the BOM, Overhead applies on top, and a **suggested price** can be
   pushed straight to the contract total.
 - **Pricing breakdown** (on the Billing tab): an internal cost-vs-margin summary
   (marked-up equipment, estimate sections, overhead, suggested price) visible to
-  **Finance, Sales & Design** only — never on the customer copy. Change-order
-  materials added after the deposit bill at the **marked-up customer price**.
+  **admins only** — deliberately narrow, since it exposes cost and margin.
+  Change-order materials added after the deposit bill at the **marked-up
+  customer price**.
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
   (a comma appears for amounts ≥ $1,000).
-- **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
-  project, and **pay type** — usually captured right on the task they finished);
-  supervisors **review and approve** them before they count. The pay schema is
-  configurable — each pay type is a **multiplier** on the employee's base wage
-  (roof time…) or a **flat $/hr** (travel time…), **overridable per employee**.
-  **Overtime is automatic** — hours over the weekly threshold of OT-eligible time
-  earn the OT premium (no manual OT entry). Only **Cary (GM)** and **Lisa (Payroll
-  Manager)** can change pay rates.
-- **Pay periods run Sunday → Saturday** (the default period is the most recent
-  full week), overridable by date range.
-- **Leave can't earn overtime**: approving vacation/PTO/sick time that would take
-  an employee past the weekly cap is **blocked** unless the GM overrides it on the
-  approval form (worked hours still earn OT normally).
-- **Payroll reminder**: the Finance dashboard shows a **Tuesday–Thursday** nudge
-  to run payroll each week until the period's hours are **confirmed and exported**.
-- **Timesheets**: a per-employee, printable/CSV timesheet view of logged hours
-  (a read-only lens on the same time data; payroll approval/export is unchanged).
-- A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
-  export.
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
@@ -404,7 +360,6 @@ see Payroll below.)
   grouped by area with a contents list and expandable questions.
 - **Audit log** of all changes (create/update/delete), with password fields
   redacted and never logged in plaintext.
-- **NM directory** of authorities/utilities baked in for quick reference.
 
 ---
 
