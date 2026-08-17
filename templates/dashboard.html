@@ -74,29 +74,6 @@
     {% endif %}
   </section>
 
-  {# Ready for design — Planning-stage projects whose loads are in, awaiting design #}
-  <section style="{{ panel }}">
-    <div style="{{ panelh }}">📐 Ready for design <span class="muted" style="font-weight:400; font-size:0.8rem;">— loads captured, awaiting design</span></div>
-    {% if gm.ready_design %}
-    <div style="overflow-x:auto;">
-    <table>
-      <thead><tr><th>Project</th><th>Loads</th><th></th></tr></thead>
-      <tbody>
-        {% for j in gm.ready_design %}
-        <tr>
-          <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
-          <td><span class="badge">✅ on file</span></td>
-          <td><a href="{{ url_for('project_loads', project_id=j['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.8rem;">Loads &amp; Sizing →</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="empty" style="margin:0;">No projects waiting on design right now.</p>
-    {% endif %}
-  </section>
-
   {# This week's installs #}
   <section style="{{ panel }}">
     <div style="font-weight:800; margin:0 0 0.5rem; font-size:1.1rem;">🔨 This week's installs <span class="muted" style="font-weight:400; font-size:0.92rem;">— next 7 days</span></div>

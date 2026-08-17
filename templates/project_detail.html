@@ -67,10 +67,6 @@
     <span title="Electric loads are collected during the walkthrough, not at project creation">
       {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded</span>
     {% endif %}
-    <a href="{{ url_for('project_loads', project_id=project['id']) }}"
-       class="btn{{ '' if stage.status == 'Planning' else ' btn-secondary' }}"
-       style="padding:0.25rem 0.7rem; font-size:0.85rem;"
-       title="Electric loads &amp; system sizing worksheet">⚡ Loads &amp; Sizing</a>
     {% if stage.status == "Prep" %}
     <span title="Permit-category requirements with a filed document">
       {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
@@ -127,7 +123,6 @@
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
-  {% if can_see_pricing %}<button class="tab-btn" data-tab="estimate" title="Cost estimate &amp; suggested price">📐 Estimate</button>{% endif %}
   <button class="tab-btn" data-tab="billing" title="Payments &amp; expenses">💵 Billing</button>
 </div>
 
@@ -146,14 +141,7 @@
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
     <dt>County</dt><dd>{{ project["county"] or "—" }}</dd>
     <dt>Electric loads</dt>
-    <dd>{{ project["electric_loads"] or "—" }}
-      {% if load_has_survey %}
-      <br><span class="muted" style="font-size:0.85rem;">📋 Load survey on file:
-        <strong>{{ "%.1f"|format(load_daily_kwh) }} kWh/day</strong>,
-        peak <strong>{{ load_peak_w|int }} W</strong> ·
-        <a href="{{ url_for('project_loads', project_id=project['id']) }}">open Loads &amp; Sizing</a></span>
-      {% endif %}
-    </dd>
+    <dd>{{ project["electric_loads"] or "—" }}</dd>
     <dt>Utility provider</dt><dd>{{ project["utility_provider"] or "—" }}</dd>
     <dt>Warranty type</dt><dd>{{ project["warranty_type"] or "—" }}</dd>
     <dt>Payment</dt><dd>{{ project["cost_method"] or "—" }}</dd>
@@ -540,89 +528,6 @@
 </div>
 </div>
 
-<div class="tab-panel" id="tab-estimate">
-{% if can_see_pricing %}
-<div class="card">
-  <div class="toolbar" style="margin-bottom:0.5rem;">
-    <h2 style="margin:0; font-size:1.1rem;">📐 Project estimate</h2>
-    <div style="display:flex; gap:0.4rem;">
-      <form method="post" action="{{ url_for('estimate_prefill', project_id=project['id']) }}" style="margin:0;">
-        <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.83rem;" title="Add the cost-model default lines to this project">↻ Prefill from cost model</button>
-      </form>
-    </div>
-  </div>
-  <p class="muted" style="margin-top:0; font-size:0.86rem;">Set quantities against Vixinman's cost model to build this project's price.
-    <strong>Equipment</strong> comes from the <a href="{{ url_for('project_loads', project_id=project['id']) }}">BOM (Loads &amp; Sizing)</a>; enter labor, travel and adders below. Each line = qty × cost × (1 + markup); Overhead (G&amp;A) applies on the subtotal.</p>
-
-  <div class="form-grid" style="margin-bottom:0.6rem;">
-    <div class="field"><label>Equipment (BOM, marked up)</label><div style="font-weight:700;">${{ (pricing.equipment_price)|money }}</div></div>
-    {% for sec, tot in pricing.estimate_by_section.items() %}
-    <div class="field"><label>{{ sec }}</label><div style="font-weight:600;">${{ (tot)|money }}</div></div>
-    {% endfor %}
-    <div class="field"><label>Subtotal</label><div style="font-weight:700;">${{ (pricing.subtotal)|money }}</div></div>
-    {% if pricing.overhead_pct %}<div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(pricing.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ (pricing.overhead_amount)|money }}</div></div>{% endif %}
-    <div class="field"><label>Suggested price</label><div style="font-weight:800; color:var(--brand); font-size:1.1rem;">${{ (pricing.suggested)|money }}</div></div>
-  </div>
-  <form method="post" action="{{ url_for('estimate_to_contract', project_id=project['id']) }}" style="margin:0 0 0.4rem;"
-        onsubmit="return confirm('Set the contract total to the suggested price?');">
-    <button type="submit" class="btn">Use suggested as contract total →</button>
-    {% if pricing.contract %}<span class="muted" style="font-size:0.83rem; margin-left:0.4rem;">current contract ${{ (pricing.contract)|money0 }}</span>{% endif %}
-  </form>
-</div>
-
-<form method="post" action="{{ url_for('estimate_save', project_id=project['id']) }}">
-{% for sec in estimate_sections %}
-{% set rows = pricing.estimate_lines | selectattr('section','equalto',sec) | list %}
-<div class="card">
-  <h3 style="margin-top:0; font-size:1rem;">{{ sec }}</h3>
-  {% if rows %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Item</th><th style="width:5rem;">Unit</th><th style="width:6rem;">Qty</th><th style="width:7rem;">Cost $</th><th style="width:6rem;">Markup %</th><th style="width:7rem; text-align:right;">Line</th><th></th></tr></thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r["item"] }}</td>
-        <td class="muted">{{ r["unit"] or "—" }}</td>
-        <td><input name="qty_{{ r['id'] }}" type="number" step="any" min="0" value="{{ ('%g'|format(r['qty'])) if r['qty'] is not none else '' }}" style="max-width:5.5rem;"></td>
-        <td><input name="cost_{{ r['id'] }}" type="number" step="any" min="0" value="{{ ('%g'|format(r['unit_cost'])) if r['unit_cost'] is not none else '' }}" style="max-width:6.5rem;"></td>
-        <td><input name="markup_{{ r['id'] }}" type="number" step="0.1" min="0" value="{{ ('%g'|format(r['markup_pct'])) if r['markup_pct'] is not none else '0' }}" style="max-width:5.5rem;"></td>
-        <td style="text-align:right; font-weight:600; white-space:nowrap;">${{ (r["line_total"])|money }}</td>
-        <td><button type="submit" formaction="{{ url_for('estimate_delete_line', project_id=project['id'], line_id=r['id']) }}"
-                    class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;"
-                    onclick="return confirm('Remove this line?');" title="Remove">✕</button></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty" style="margin:0;">No {{ sec|lower }} lines yet.</p>
-  {% endif %}
-</div>
-{% endfor %}
-  <div class="card" style="position:sticky; bottom:0.5rem;"><button type="submit" class="btn">💾 Save estimate quantities</button></div>
-</form>
-
-<div class="card">
-  <h3 style="margin-top:0; font-size:1rem;">Add a line</h3>
-  <form method="post" action="{{ url_for('estimate_add_line', project_id=project['id']) }}"
-        style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
-    <div class="field" style="margin:0;"><label>Section</label>
-      <select name="section" required>{% for s in estimate_sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
-    <div class="field" style="margin:0;"><label>Item</label><input name="item" required></div>
-    <div class="field" style="margin:0;"><label>Unit</label><input name="unit" style="max-width:5.5rem;"></div>
-    <div class="field" style="margin:0;"><label>Qty</label><input name="qty" type="number" step="any" min="0" style="max-width:5.5rem;"></div>
-    <div class="field" style="margin:0;"><label>Cost $</label><input name="cost" type="number" step="any" min="0" style="max-width:6.5rem;"></div>
-    <div class="field" style="margin:0;"><label>Markup %</label><input name="markup" type="number" step="0.1" min="0" style="max-width:5.5rem;"></div>
-    <button type="submit" class="btn">＋ Add</button>
-  </form>
-</div>
-{% else %}
-<div class="card"><p class="empty">Pricing is limited to Finance, Sales and Design.</p></div>
-{% endif %}
-</div>
-
 <div class="tab-panel" id="tab-billing">
 
 <div class="card">
@@ -634,34 +539,9 @@
       <input name="contract_amount" type="number" step="0.01" min="0"
              value="{{ '%.2f'|format(billing.contract) if billing.contract else '' }}"
              placeholder="0.00" style="padding:0.3rem; width:9rem;">
-      <label style="margin:0; font-size:0.85rem; color:var(--muted);" title="NM gross-receipts tax added to each customer invoice. Leave 0 if the solar deduction (NMSA 7-9-112) applies.">GRT %</label>
-      <input id="grt-input" name="grt_rate" type="number" step="0.0001" min="0"
-             value="{{ ('%.4f'|format(project['grt_rate']|float)).rstrip('0').rstrip('.') if 'grt_rate' in project.keys() and project['grt_rate'] else '' }}"
-             placeholder="0" style="padding:0.3rem; width:5rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
     </form>
   </div>
-  {# Piece 29.6/29.7: internal pricing breakdown — Finance, Sales & Design only,
-     never shown to the customer. #}
-  {% if can_see_pricing %}
-  <div class="card" style="background:var(--bg); border:1px dashed var(--border); margin-bottom:0.9rem;">
-    <div class="toolbar" style="margin-bottom:0.4rem;">
-      <strong style="font-size:0.95rem;">🏷 Pricing breakdown <span class="muted" style="font-weight:400;">(internal — cost & margin)</span></strong>
-      {% if is_admin %}<a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>{% endif %}
-    </div>
-    <div class="form-grid">
-      <div class="field"><label>Equipment (BOM, marked up)</label><div style="font-weight:600;">${{ (pricing.equipment_price)|money }} <span class="muted" style="font-size:0.8rem;">(cost ${{ (pricing.equipment_cost)|money0 }})</span></div></div>
-      {% for sec, tot in pricing.estimate_by_section.items() %}
-      <div class="field"><label>{{ sec }}</label><div style="font-weight:600;">${{ (tot)|money }}</div></div>
-      {% endfor %}
-      {% if pricing.overhead_pct %}<div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(pricing.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ (pricing.overhead_amount)|money }}</div></div>{% endif %}
-      <div class="field"><label>Suggested price</label><div style="font-weight:700; color:var(--brand);">${{ (pricing.suggested)|money }}
-        {% if pricing.suggested and pricing.contract %}<span class="muted" style="font-size:0.8rem;">(contract ${{ (pricing.contract)|money0 }})</span>{% endif %}</div></div>
-    </div>
-    <p class="muted" style="margin:0.3rem 0 0; font-size:0.8rem;">Build the labor / travel / adders in the
-      <a href="#estimate" onclick="activateTab('estimate',true);return false;">Estimate tab</a>. Change-order materials added after the deposit bill at the marked-up price automatically. The customer invoice shows only the contract total and the equipment list — never these cost/margin figures.</p>
-  </div>
-  {% endif %}
 
   <div class="form-grid" style="margin-bottom:0.9rem;">
     <div class="field"><label>Contract total</label><div style="font-weight:700; font-size:1.05rem;">${{ (billing.contract)|money }}</div></div>
@@ -793,7 +673,7 @@
 <script>
   // Tabs remember their state through the URL hash, so form posts that
   // redirect back (materials, uploads) land on the tab you were using.
-  const TABS = ["general", "requirements", "materials", "documents", "tasks", "estimate", "billing"];
+  const TABS = ["general", "requirements", "materials", "documents", "tasks", "billing"];
   function activateTab(name, updateHash) {
     if (!TABS.includes(name)) name = "general";
     document.querySelectorAll(".tab-btn").forEach(b =>

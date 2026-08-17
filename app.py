@@ -1,4 +1,4 @@
-﻿"""Compendium — household task/project manager for the Vixinman household.
+"""Compendium — household task/project manager for the Vixinman household.
 
 Piece 1: Flask skeleton backed by SQLite; home page lists client profiles.
 Piece 2: "New client" form and individual client profile pages.
@@ -35,7 +35,6 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 from inventory_seed import INVENTORY_CATEGORY_SPECS
 from inventory_research import (
     RESEARCH, RESEARCH_VERSION, TOOLS_RESEARCH, TOOLS_RESEARCH_VERSION,
@@ -209,7 +208,6 @@ HOUSEHOLD_MEMBER_FIELDS = ["name", "first_name", "last_name", "nickname",
 # "delete"; everyone else ⇒ only what's explicitly granted.
 PERMISSIONS = {
     "rules.manage": "Manage rules",
-    "catalog.manage": "Manage catalog (appliances & components)",
     "inventory.manage": "Manage inventory (add/edit items, tools, stock)",
     "household.manage": "Manage household members & accounts",
     "approvals": "Approve field work",
@@ -237,32 +235,6 @@ SECURITY_QUESTIONS_ASK = 2        # how many (randomly chosen) to answer on rese
 SECURITY_RESET_MAX_ATTEMPTS = 5   # wrong tries before the account auto-locks
 
 
-def seed_finance_reference(db):
-    """Piece 29.6/29.8: seed the NM county list (at 0% GRT) and Vixinman's Cost Model
-    Defaults. Counties are inserted if missing (rates preserved). The cost model
-    is seeded once (meta-guarded) with the finance team's real figures; after
-    that it's edited on the Cost Model page and never re-seeded."""
-    for c in NM_COUNTIES:
-        db.execute("INSERT OR IGNORE INTO county_tax_rates (county, grt_rate)"
-                   " VALUES (?, 0)", (c,))
-    if not db.execute("SELECT 1 FROM meta WHERE key = 'cost_model_seeded'").fetchone():
-        order = 0
-        for section in COST_MODEL_SECTIONS:
-            for item, unit, qty, cost, markup in COST_MODEL_SEED.get(section, []):
-                db.execute(
-                    "INSERT INTO cost_model_lines (section, item, unit,"
-                    " default_qty, unit_cost, markup_pct, sort_order)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (section, item, unit, qty, cost, markup, order))
-                order += 1
-        db.execute("INSERT INTO meta (key, value) VALUES ('cost_model_seeded','1')"
-                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-        # Align the per-project travel $/mile with the Vehicle Trips line (direct SQL:
-        # init_db's connection has no Row factory, so avoid _meta_get/_meta_set).
-        if not db.execute("SELECT 1 FROM meta WHERE key = 'travel_rate_per_mile'"
-                          ).fetchone():
-            db.execute("INSERT INTO meta (key, value)"
-                       " VALUES ('travel_rate_per_mile', '1.0')")
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
     "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
@@ -423,70 +395,6 @@ DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 # GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance sets a
 # rate on the Billing tab where any receipts are taxable.
 GRT_DEFAULT_RATE = 0.0
-# Piece 29.6: the 33 New Mexico counties, seeded (at 0%) into county_tax_rates
-# so Finance can enter each county's current GRT rate. A project's GRT rate
-# auto-fills from its install county. Rates change biannually — enter the
-# current NM TRD figures; they are NOT bundled to avoid shipping stale tax data.
-NM_COUNTIES = [
-    "Bernalillo", "Catron", "Chaves", "Cibola", "Colfax", "Curry", "De Baca",
-    "Doña Ana", "Eddy", "Grant", "Guadalupe", "Harding", "Hidalgo", "Lea",
-    "Lincoln", "Los Alamos", "Luna", "McKinley", "Mora", "Otero", "Quay",
-    "Rio Arriba", "Roosevelt", "Sandoval", "San Juan", "San Miguel", "Santa Fe",
-    "Sierra", "Socorro", "Taos", "Torrance", "Union", "Valencia",
-]
-# Piece 29.6: equipment-markup categories seeded (at 0%) when none exist, so the
-# per-category markup table is useful out of the box. Finance sets real margins.
-MARKUP_SEED_CATEGORIES = [
-    "Panel", "Inverter", "Battery", "Racking", "Electrical", "Monitoring",
-    "Generator", "Well Pump", "Mini Split", "Other",
-]
-# Default travel reimbursement, $ per (round-trip) mile — stored in meta as
-# 'travel_rate_per_mile' and edited on Finance Settings. 0 until Finance sets it.
-TRAVEL_RATE_DEFAULT = 0.0
-# Piece 29.8: Vixinman's Cost Model Defaults (from the finance team's estimating
-# sheet). Sections in display order; each line = (item, unit, default_qty,
-# unit_cost, markup_pct). Equipment Inventory rows carry only a markup (they
-# price the BOM). Overhead rows carry a percent (in the markup slot) applied to
-# the whole project subtotal. Seeded once; fully editable on the Cost Model page.
-COST_MODEL_SECTIONS = ["Equipment Inventory", "Equipment Non-Inventory",
-                       "Labor", "Travel", "Adders", "Overhead"]
-COST_MODEL_SEED = {
-    "Equipment Inventory": [
-        ("Battery", "", None, None, 30), ("Breaker", "", None, None, 50),
-        ("Breaker Panel", "", None, None, 50), ("Charge Controller", "", None, None, 30),
-        ("Controls", "", None, None, 50), ("Electrical", "", None, None, 30),
-        ("Enclosure", "", None, None, 30), ("Generator", "", None, None, 30),
-        ("Inverter", "", None, None, 50), ("mc4", "", None, None, 0),
-        ("Monitoring", "", None, None, 50), ("Office Supplies", "", None, None, 0),
-        ("Optimizer", "", None, None, 50), ("Pumping", "", None, None, 40),
-        ("PV Module", "", None, None, 50), ("Racking", "", None, None, 50),
-        ("Wire", "", None, None, 50),
-    ],
-    "Equipment Non-Inventory": [
-        ("Ground PV Mount", "Watts", None, 0.8, 30),
-        ("Direct Roof PV Mount", "Watts", None, 0.18, 30),
-        ("Pergola PV Mount", "Watts", None, 1.1, 30),
-        ("Ballasted Roof PV Mount", "Watts", None, 0.5, 30),
-        ("Direct Roof on Shingles Mount", "Watts", None, 0.22, 30),
-    ],
-    "Labor": [
-        ("Hours", "", 100, 40, 100),
-        ("Panels", "Panels", None, 40, 100),
-    ],
-    "Travel": [
-        ("Vehicle Trips", "Mile", 7, 1, 0),
-        ("Person Trips", "Hour", 21, 30, 100),
-    ],
-    "Adders": [
-        ("Trench", "", 1, 1000, 0),
-        ("Permits", "", 1, 1000, 0),
-        ("Propane Line Installation", "", 1, 2500, 30),
-    ],
-    "Overhead": [
-        ("G&A", "", None, None, 22),
-    ],
-}
-
 # Piece 38: renamed from the solar-shop taxonomy (License/Compliance) to fit
 # household requirements — a cert earned for a personal-improvement project,
 # a prerequisite/inspection a home-improvement project needs before it can
@@ -679,38 +587,6 @@ TITLE_STATUS_KEYWORDS = [
     ("installation date", "Prep"), ("plan review", "Prep"),
 ]
 
-# Piece 9: Electric Loads Calculator / System Sizing config (ported from
-# the standalone loads_calculator.html field tool). Catalogs themselves
-# live in appliance_catalog / component_catalog (seeded from loads_seed.py).
-LOAD_USAGE_TYPES = ["Always-on", "Daily", "Occasional", "Seasonal"]
-LOAD_ERAS = ["Modern", "Vintage"]
-ROOM_TYPES = ["standard", "scenario"]
-# Piece 29.9: kept identical to the Cost Model's Equipment Inventory items so a
-# BOM line's category always matches an equipment-markup rate.
-COMPONENT_CATEGORIES = [
-    "Battery", "Breaker", "Breaker Panel", "Charge Controller", "Controls",
-    "Electrical", "Enclosure", "Generator", "Inverter", "mc4", "Monitoring",
-    "Office Supplies", "Optimizer", "Pumping", "PV Module", "Racking", "Wire",
-]
-# system_type presets auto-fill sizing fields on the project page; system_type
-# reverts to "custom" on manual edit of a preset-controlled field.
-SYSTEM_TYPE_PRESETS = {
-    "offgrid": {"derate_pct": 70, "autonomy_days": 3},
-    "gridtie": {"derate_pct": 80, "autonomy_days": 1.5},
-}
-UI_MODES = ["sales", "designer"]
-
-
-def loads_view_mode(user):
-    """Piece 26.4 (revised Piece 35): the Loads & Sizing view mode for this
-    viewer. A per-session toggle wins; otherwise defaults to designer mode.
-    It's a view preference, not access control."""
-    m = session.get("loads_ui_mode")
-    if m in UI_MODES:
-        return m
-    return "designer"
-
-
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
 # Needed for flash messages; fine as a constant for an internal single-box tool.
 app.secret_key = "vixinman-home-compendium"
@@ -768,8 +644,8 @@ def close_db(exc):
 
 # ------------------------------------------------------------- audit log
 # Friendlier names for a few endpoints; everything else is prettified from
-# the view function name (e.g. delete_component_catalog -> "Delete component
-# catalog"), so new routes are logged readably without extra wiring.
+# the view function name (e.g. delete_rule -> "Delete rule"), so new routes
+# are logged readably without extra wiring.
 ACTION_LABELS = {
     "new_project": "Create project",
     "edit_project": "Edit project", "add_rule": "Add rule", "delete_rule": "Delete rule",
@@ -778,8 +654,7 @@ ACTION_LABELS = {
     "new_employee": "Add employee", "edit_employee": "Edit employee",
     "delete_employee": "Delete employee", "upload_file": "Upload project document",
     "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
-    "set_task_due": "Change task due date", "set_ui_mode": "Change sizing view mode",
-    "update_sizing": "Update system sizing",
+    "set_task_due": "Change task due date",
     "cancel_project": "Cancel project (mark Abandoned)", "reopen_project": "Reopen project",
 }
 # Endpoints whose POSTs are not user data changes worth logging.
@@ -970,10 +845,6 @@ def has_permission(perm):
 # Which permission each admin-gated view needs (Piece 17). Views not listed
 # fall back to the generic admin gate (perm=None).
 VIEW_PERMISSION = {
-    "add_appliance_catalog": "catalog.manage",
-    "delete_appliance_catalog": "catalog.manage",
-    "add_component_catalog": "catalog.manage",
-    "delete_component_catalog": "catalog.manage",
     "submissions_page": "approvals",
     "approve_submission": "approvals",
     "reject_submission": "approvals",
@@ -1015,24 +886,6 @@ def admin_required(view):
     def wrapped(*args, **kwargs):
         if not has_permission(VIEW_PERMISSION.get(view.__name__)):
             flash("You don't have access to that. Ask an admin.", "error")
-            return redirect(url_for("home"))
-        return view(*args, **kwargs)
-    return wrapped
-
-
-def _can_see_pricing():
-    """Piece 29.7 (revised Piece 35): who may see the internal cost/margin
-    pricing breakdown — admins only. Deliberately narrow: it exposes cost and
-    margin."""
-    return _is_admin()
-
-
-def finance_required(view):
-    """Guard the surviving cost-model/GRT-rate settings pages to admins."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not _is_admin():
-            flash("That's limited to admins.", "error")
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
@@ -1133,18 +986,6 @@ def _emp_name(db, eid):
     return r["name"] if r else f"Household member #{eid}"
 
 
-def _component_uses(db, cid):
-    uses = []
-    n = _count(db, "SELECT COUNT(*) FROM project_bom WHERE component_id = ?", (cid,))
-    if n:
-        uses.append(f"{n} project bill-of-materials line(s)")
-    n = _count(db, "SELECT COUNT(*) FROM project_sizing WHERE selected_battery_id = ?"
-               " OR selected_pv_module_id = ?", (cid, cid))
-    if n:
-        uses.append(f"{n} project sizing selection(s)")
-    return uses
-
-
 def _employee_uses(db, eid):
     uses = []
     n = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE household_member_id = ?", (eid,))
@@ -1164,12 +1005,6 @@ TRASH_REGISTRY = {
              "in_use": lambda db, r: (
                  [f"{_count(db, 'SELECT COUNT(*) FROM project_files WHERE rule_label = ?', (r['label'],))} filed document(s)"]
                  if _count(db, "SELECT COUNT(*) FROM project_files WHERE rule_label = ?", (r["label"],)) else [])},
-    "appliance": {"table": "appliance_catalog", "label": lambda r: r["name"],
-                  "found_in": lambda db, r: "Appliance catalog",
-                  "in_use": lambda db, r: []},
-    "component": {"table": "component_catalog", "label": lambda r: r["name"],
-                  "found_in": lambda db, r: "Component catalog",
-                  "in_use": lambda db, r: _component_uses(db, r["id"])},
     "material": {"table": "project_materials", "label": lambda r: r["item"],
                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Materials",
                  "in_use": lambda db, r: []},
@@ -1178,17 +1013,6 @@ TRASH_REGISTRY = {
              "in_use": lambda db, r: (
                  [f"{_count(db, 'SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?', (r['id'],))} field submission(s)"]
                  if _count(db, "SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?", (r["id"],)) else [])},
-    "load_room": {"table": "project_load_rooms", "label": lambda r: r["name"],
-                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Loads",
-                  "in_use": lambda db, r: (
-                      [f"{_count(db, 'SELECT COUNT(*) FROM project_load_items WHERE room_id = ?', (r['id'],))} appliance(s) in the room"]
-                      if _count(db, "SELECT COUNT(*) FROM project_load_items WHERE room_id = ?", (r["id"],)) else [])},
-    "load_item": {"table": "project_load_items", "label": lambda r: r["appliance"],
-                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Loads",
-                  "in_use": lambda db, r: []},
-    "bom": {"table": "project_bom", "label": lambda r: r["component_name"],
-            "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Components",
-            "in_use": lambda db, r: []},
     "project_file": {"table": "project_files", "label": lambda r: r["original_name"],
                  "found_in": lambda db, r: f"{_project_name(db, r['project_id'])} — Documents",
                  "in_use": lambda db, r: [],
@@ -1978,9 +1802,7 @@ def init_db():
     # deposit invoice captures (BOM added after it counts as billable extras).
     ensure_columns(db, "project_transactions",
                    ["invoice_number", "milestone", "due_date", "contract_snapshot",
-                    "base_amount", "extras_amount", "bom_snapshot",
-                    "grt_rate", "grt_amount"])   # Piece 27.4: GRT snapshot per invoice
-    ensure_columns(db, "projects", ["deposit_bom_cutoff_id", "grt_rate"])
+                    "base_amount", "extras_amount", "bom_snapshot"])
     # Piece 27.9: per-task time split by pay type (+ its work date) carried on a
     # field-submission item, so approving a completed task posts Pending payroll
     # entries (one per pay-type segment) for Finance to approve.
@@ -1989,9 +1811,6 @@ def init_db():
     ensure_columns(db, "project_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
     ensure_columns(db, "project_files", ["txn_id"])
-    # Piece 26.4: a room's appliance-catalog "type" (Kitchen, Garage, …) so the
-    # load-survey picker can default to that room's appliances.
-    ensure_columns(db, "project_load_rooms", ["category"])
     # Piece 25.2: per-slot accepted file formats (comma-separated extensions) on
     # a rule, so a document slot can require e.g. PDF only.
     ensure_columns(db, "resource_rules", ["allowed_formats"])
@@ -2096,36 +1915,11 @@ def init_db():
                    " ('rule_verify_backfilled', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
-    # Piece 9: appliance + component catalogs seed once, the same way the
-    # sample clients above do — not via the rule-style batch system, since
-    # they're reference tables of their own rather than resource_rules rows.
-    if db.execute("SELECT COUNT(*) FROM appliance_catalog").fetchone()[0] == 0:
-        db.executemany(
-            "INSERT INTO appliance_catalog"
-            " (name, category, era, low_w, high_w, avg_w, hrs_per_day,"
-            "  usage_type, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            APPLIANCE_SEED,
-        )
-        db.commit()
-    if db.execute("SELECT COUNT(*) FROM component_catalog").fetchone()[0] == 0:
-        db.executemany(
-            "INSERT INTO component_catalog"
-            " (name, category, manufacturer, model, specs, watts, voc, vmp,"
-            "  temp_coef_voc, capacity_kwh_nameplate, dod, max_input_v,"
-            "  continuous_w, inverter_eff, cost, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            COMPONENT_SEED,
-        )
-        db.commit()
     seed_org_team(db)
-    seed_finance_reference(db)  # Piece 29.6: county GRT + markup categories
-    ensure_columns(db, "projects", ["travel_miles"])       # Piece 29.6
     # Piece 30.2: cancellation (Abandoned) metadata — reason, who/when, and the
     # stage to restore on reopen.
     ensure_columns(db, "projects", ["cancel_reason", "cancelled_at", "cancelled_by",
                                     "pre_lost_status"])
-    ensure_columns(db, "project_bom", ["markup_pct"])      # per-line markup override
     # Piece 34: remap old pipeline-stage values (Proposal/Job Prep/Installation/
     # Inspections/Closing/Complete/Lost) to the new household vocabulary on any
     # rows still carrying them — a no-op on a genuinely fresh database. Runs
@@ -2176,6 +1970,32 @@ def init_db():
         for legacy_table in ("inventory_assets", "stock_audits", "stock_audit_scans"):
             db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
         db.execute("INSERT INTO meta (key, value) VALUES ('barcode_scanning_removed_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
+    # Piece 40 Part B: Loads & Sizing (a PV/battery/inverter electrical-sizing
+    # calculator) and the Cost Model/GRT pricing system both priced/sized a job
+    # for the original solar business — cut entirely; a household budget just
+    # needs the plain contract-total + income/expense ledger that survives.
+    # Drop their tables from any existing database; a no-op on a fresh one.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'loads_and_cost_model_removed_v1'").fetchone():
+        for legacy_table in ("appliance_catalog", "component_catalog",
+                              "project_load_rooms", "project_load_items",
+                              "project_bom", "project_sizing", "county_tax_rates",
+                              "markup_categories", "cost_model_lines",
+                              "project_estimate_lines"):
+            db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
+        for col in ("grt_rate", "deposit_bom_cutoff_id", "travel_miles"):
+            try:
+                db.execute(f"ALTER TABLE projects DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        for col in ("grt_rate", "grt_amount"):
+            try:
+                db.execute(f"ALTER TABLE project_transactions DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('loads_and_cost_model_removed_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
     tag_tasks_by_stage(db)
@@ -2404,188 +2224,6 @@ def license_staffing():
         staffing.setdefault(r["rule_label"], []).append(
             {"name": r["emp_name"], "state": state})
     return staffing
-
-
-# ------------------------------------------------------- Piece 9: loads/sizing
-def fetch_job_sizing(db, project_id):
-    """One project_sizing row always exists once a project's Loads tab is opened;
-    create it lazily with defaults from the schema."""
-    row = db.execute("SELECT * FROM project_sizing WHERE project_id = ?", (project_id,)).fetchone()
-    if row is None:
-        db.execute("INSERT INTO project_sizing (project_id) VALUES (?)", (project_id,))
-        db.commit()
-        row = db.execute("SELECT * FROM project_sizing WHERE project_id = ?", (project_id,)).fetchone()
-    return row
-
-
-def compute_load_totals(rooms, items):
-    """Daily kWh and peak watts across every ENABLED room only — a
-    disabled scenario room's items are excluded without being deleted."""
-    enabled = {r["id"] for r in rooms if r["enabled"]}
-    daily_kwh = 0.0
-    peak_w = 0.0
-    for it in items:
-        if it["room_id"] not in enabled:
-            continue
-        w = (it["watts"] or 0) * (it["qty"] or 0)
-        peak_w += w
-        daily_kwh += w * (it["hrs"] or 0) / 1000.0
-    return daily_kwh, peak_w
-
-
-def compute_array(daily_kwh, sun_hours, derate_pct, solar_fraction_pct, panel_watts):
-    """Array sizing: daily kWh (scaled by the solar fraction) divided by
-    peak sun hours and the derate factor gives array kW; panel count is
-    that array size divided by a single panel's wattage, rounded up."""
-    derate = (derate_pct or 0) / 100.0
-    frac = (solar_fraction_pct or 100) / 100.0
-    if not sun_hours or sun_hours <= 0 or derate <= 0:
-        return 0.0, 0
-    array_kw = (daily_kwh * frac) / (sun_hours * derate)
-    panel_count = math.ceil((array_kw * 1000) / panel_watts) if panel_watts else 0
-    return array_kw, panel_count
-
-
-def compute_battery_kwh(backup_daily_kwh, autonomy_days, dod_pct,
-                         round_trip_eff_pct, inverter_eff_pct):
-    """Usable backup load over the autonomy window, grossed up for
-    depth-of-discharge and round-trip/inverter losses, gives the
-    nameplate battery kWh needed."""
-    dod = (dod_pct or 0) / 100.0
-    rte = (round_trip_eff_pct or 100) / 100.0
-    inv = (inverter_eff_pct or 100) / 100.0
-    if dod <= 0 or rte <= 0 or inv <= 0:
-        return 0.0
-    return (backup_daily_kwh or 0) * (autonomy_days or 0) / dod / (rte * inv)
-
-
-def compute_voc(voc_rated, temp_coef_pct, record_low_temp_f, max_input_v):
-    """NEC 690.7 Method 1 cold-temperature Voc correction: correct the
-    module's rated Voc to the site's record low, then divide the inverter/
-    charge controller's max input voltage by that to get the longest
-    allowed string length."""
-    if not voc_rated or temp_coef_pct is None:
-        return None, None
-    tmin_c = ((record_low_temp_f or 32) - 32) * 5.0 / 9.0
-    voc_corrected = voc_rated * (1 + (temp_coef_pct / 100.0) * (tmin_c - 25))
-    max_modules = math.floor(max_input_v / voc_corrected) if voc_corrected > 0 and max_input_v else 0
-    return voc_corrected, max_modules
-
-
-# --- Piece 26.5: component auto-suggest from live inventory specs ------------
-def _spec_num(specs, *keys):
-    """First numeric value among the given spec keys, or None. Specs are the
-    per-item JSON blobs (e.g. {'Rating': 630.0, 'Voc': 48.8})."""
-    for k in keys:
-        v = specs.get(k)
-        if v not in (None, ""):
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                pass
-    return None
-
-
-def _rank_role(label, unit, cands):
-    """Take the fitting candidates for one role (already carrying a private
-    `_sort` key), order them best-first, and label the top three: the first is
-    the "Recommended" pick, the next two are "Alternate" 2nd/3rd choices."""
-    cands.sort(key=lambda c: c.pop("_sort"))
-    top = cands[:3]
-    tags = ["Recommended", "Alternate", "Alternate"]
-    for i, c in enumerate(top):
-        c["rank"] = i + 1
-        c["tag"] = tags[i]
-    return {"label": label, "unit": unit, "suggestions": top}
-
-
-def suggest_components(db, array_kw, peak_w, battery_kwh_needed):
-    """Read the specs on ACTIVE inventory items and propose the components that
-    fit the sized project — PV modules, batteries, and the inverter. For each role
-    the fitting items are ranked (in-stock first, then the tidiest fit and the
-    lower cost) and the top three are returned: a primary "Recommended" pick
-    plus up to two "Alternate" 2nd/3rd choices, each with the quantity needed
-    and a short "why", so the Designer can accept one with a single click."""
-    rows = db.execute(
-        "SELECT id, category, make, model, cost, available, specs"
-        " FROM inventory_items WHERE active = 1 AND status = 'Active'"
-        "   AND category IN ('PV Module', 'Battery', 'Inverter')"
-    ).fetchall()
-    parsed = []
-    for it in rows:
-        try:
-            sp = json.loads(it["specs"] or "{}")
-        except (ValueError, TypeError):
-            sp = {}
-        parsed.append((it, sp))
-
-    def _name(it):
-        return " ".join(p for p in (it["make"], it["model"]) if p) or it["model"] or "—"
-
-    def _cost_key(it):
-        return it["cost"] if it["cost"] not in (None, "") else float("inf")
-
-    roles = []
-
-    # PV modules — fit by nameplate wattage ("Rating") to reach the array size.
-    if array_kw and array_kw > 0:
-        cands = []
-        for it, sp in parsed:
-            if it["category"] != "PV Module":
-                continue
-            watts = _spec_num(sp, "Rating")
-            if not watts or watts <= 0:
-                continue
-            qty = math.ceil((array_kw * 1000) / watts)
-            in_stock = (it["available"] or 0) > 0
-            cands.append({
-                "item_id": it["id"], "name": _name(it), "category": "PV Module",
-                "qty": qty, "unit_cost": it["cost"], "in_stock": in_stock,
-                "why": f"{watts:g} W module — {qty} panels reach the {array_kw:.2f} kW array",
-                "_sort": (qty, 0 if in_stock else 1, _cost_key(it)),
-            })
-        roles.append(_rank_role("PV modules", "panels", cands))
-
-    # Batteries — fit by usable capacity ("Capacity", kWh) for the backup bank.
-    if battery_kwh_needed and battery_kwh_needed > 0:
-        cands = []
-        for it, sp in parsed:
-            if it["category"] != "Battery":
-                continue
-            cap = _spec_num(sp, "Capacity")
-            if not cap or cap <= 0:
-                continue
-            qty = math.ceil(battery_kwh_needed / cap)
-            in_stock = (it["available"] or 0) > 0
-            cands.append({
-                "item_id": it["id"], "name": _name(it), "category": "Battery",
-                "qty": qty, "unit_cost": it["cost"], "in_stock": in_stock,
-                "why": f"{cap:g} kWh each — {qty} for the {battery_kwh_needed:.1f} kWh bank",
-                "_sort": (qty, 0 if in_stock else 1, _cost_key(it)),
-            })
-        roles.append(_rank_role("Batteries", "units", cands))
-
-    # Inverter — the smallest unit whose rated power ("Pout Rated (kW)") still
-    # carries the peak load; oversizing is the tie-breaker, then cost.
-    if peak_w and peak_w > 0:
-        peak_kw = peak_w / 1000.0
-        cands = []
-        for it, sp in parsed:
-            if it["category"] != "Inverter":
-                continue
-            pout = _spec_num(sp, "Pout Rated (kW)")
-            if not pout or pout <= 0 or pout + 1e-9 < peak_kw:
-                continue
-            in_stock = (it["available"] or 0) > 0
-            cands.append({
-                "item_id": it["id"], "name": _name(it), "category": "Inverter",
-                "qty": 1, "unit_cost": it["cost"], "in_stock": in_stock,
-                "why": f"{pout:g} kW rated — covers the {peak_kw:.1f} kW peak",
-                "_sort": (round(pout, 3), 0 if in_stock else 1, _cost_key(it)),
-            })
-        roles.append(_rank_role("Inverter", "unit", cands))
-
-    return [r for r in roles if r["suggestions"]]
 
 
 @app.route("/help")
@@ -3144,25 +2782,11 @@ def dashboard():
         " AND status != 'Abandoned' ORDER BY install_date",
         (today_s, wk_end)).fetchall()
     closing_jobs = _closing_worklist(db)
-    # Ready for design: Planning-stage projects whose load survey is
-    # captured (the step before design) but whose design isn't finalized yet.
-    ready_design = []
-    for j in db.execute(
-            "SELECT id, job_name, electric_loads FROM projects"
-            " WHERE status = 'Planning' ORDER BY id").fetchall():
-        if not _loads_recorded(db, j):
-            continue
-        designed = db.execute(
-            "SELECT 1 FROM project_tasks WHERE project_id = ?"
-            " AND LOWER(title) LIKE '%finalize%design%' AND status = 'Done'"
-            " LIMIT 1", (j["id"],)).fetchone()
-        if not designed:
-            ready_design.append(j)
     gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
           "approvals": db.execute(
               "SELECT COUNT(*) FROM field_submissions"
               " WHERE status = 'Pending'").fetchone()[0],
-          "overdue": overdue, "stalled": stalled, "ready_design": ready_design,
+          "overdue": overdue, "stalled": stalled,
           "installs_week": installs_week, "closing": closing_jobs}
 
     # Payments/Finance table across every active project (all in-flight
@@ -3801,9 +3425,6 @@ def project_detail(project_id):
         for heading, items in groups
     ]
 
-    # Piece 15.1: Loads & Sizing moved to its own page (project_loads); its data
-    # is no longer computed here.
-
     # Piece 10: tasks for this project, plus the crew list for the assignee
     # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
     # (household_member_id NULL) still show.
@@ -3815,14 +3436,6 @@ def project_detail(project_id):
     employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
     stage = stage_info(db, project, groups, filed_labels)
     progress = build_project_progress(db, project)
-
-    # Saved load-survey results (from the Loads & Sizing page) surfaced here so
-    # the numbers Sales captured on the walkthrough are visible in the project
-    # details and ready for the Designer — no need to re-open the loads page.
-    lrooms = db.execute("SELECT * FROM project_load_rooms WHERE project_id = ?", (project_id,)).fetchall()
-    litems = db.execute("SELECT * FROM project_load_items WHERE project_id = ?", (project_id,)).fetchall()
-    load_daily_kwh, load_peak_w = compute_load_totals(lrooms, litems)
-    load_has_survey = bool(litems)
 
     # Documents tab: one upload slot per file the project needs — the standard docs
     # plus the project's document-worthy requirements (permits / compliance / doc
@@ -3862,8 +3475,6 @@ def project_detail(project_id):
         "SELECT * FROM project_notes WHERE project_id = ? ORDER BY id DESC",
         (project_id,)).fetchall()
 
-    pricing = project_pricing(db, project)
-
     return render_template(
         "project_detail.html", project=project, groups=groups, versions=versions,
         project_notes=project_notes,
@@ -3873,16 +3484,12 @@ def project_detail(project_id):
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
         job_statuses=PROJECT_STATUSES, job_status_class=PROJECT_STATUS_CLASS,
         stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
-        load_daily_kwh=load_daily_kwh, load_peak_w=load_peak_w,
-        load_has_survey=load_has_survey, doc_sections=doc_sections,
+        doc_sections=doc_sections,
         files_by_label=files_by_label, other_files=other_files,
         formats_by_label=formats_by_label,
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
-        pricing=pricing,                                   # Piece 29.6
-        can_see_pricing=_can_see_pricing(),                # Piece 29.7
-        estimate_sections=ESTIMATE_SECTIONS,               # Piece 29.9
     )
 
 
@@ -3890,220 +3497,11 @@ def project_detail(project_id):
 def set_contract(project_id):
     fetch_project(project_id)
     db = get_db()
-    # Piece 27.4: GRT rate is set alongside the contract (both drive invoicing).
-    grt = max(_to_float(request.form.get("grt_rate")) or 0.0, 0.0)
-    db.execute("UPDATE projects SET contract_amount = ?, grt_rate = ? WHERE id = ?",
-               (_to_float(request.form.get("contract_amount")) or 0.0,
-                str(grt), project_id))
+    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
+               (_to_float(request.form.get("contract_amount")) or 0.0, project_id))
     db.commit()
     flash("Billing details updated.")
     return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
-
-
-# ---------------------------------------------------------- per-project estimate
-def _estimate_guard(project_id):
-    """Estimate editing is limited to who can see pricing (Finance/Sales/Design)."""
-    fetch_project(project_id)
-    if not _can_see_pricing():
-        flash("Pricing is limited to Finance, Sales and Design.", "error")
-        return False
-    return True
-
-
-@app.route("/projects/<int:project_id>/estimate/prefill", methods=["POST"])
-def estimate_prefill(project_id):
-    """Copy the cost-model default lines (non-equipment sections) into this
-    project's estimate, so the estimator starts from Vixinman's template. Skips sections
-    already present, so it won't duplicate."""
-    if not _estimate_guard(project_id):
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    db = get_db()
-    have = {r["section"] for r in db.execute(
-        "SELECT DISTINCT section FROM project_estimate_lines WHERE project_id = ?",
-        (project_id,)).fetchall()}
-    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
-                     " FROM project_estimate_lines WHERE project_id = ?", (project_id,)).fetchone()[0]
-    added = 0
-    for r in db.execute(
-            "SELECT * FROM cost_model_lines WHERE active = '1'"
-            " ORDER BY sort_order, id").fetchall():
-        if r["section"] not in ESTIMATE_SECTIONS or r["section"] in have:
-            continue
-        db.execute(
-            "INSERT INTO project_estimate_lines (project_id, section, item, unit, qty,"
-            " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (project_id, r["section"], r["item"], r["unit"] or "",
-             r["default_qty"] or 0, r["unit_cost"] or 0, r["markup_pct"] or 0, nxt))
-        nxt += 1
-        added += 1
-    db.commit()
-    flash(f"Added {added} line(s) from the cost model." if added
-          else "Those sections are already on the estimate.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-
-
-@app.route("/projects/<int:project_id>/estimate/add", methods=["POST"])
-def estimate_add_line(project_id):
-    if not _estimate_guard(project_id):
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    section = request.form.get("section", "")
-    item = request.form.get("item", "").strip()
-    if section not in ESTIMATE_SECTIONS or not item:
-        flash("Pick a section and name the line.", "error")
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    db = get_db()
-    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
-                     " FROM project_estimate_lines WHERE project_id = ?", (project_id,)).fetchone()[0]
-    db.execute(
-        "INSERT INTO project_estimate_lines (project_id, section, item, unit, qty,"
-        " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (project_id, section, item, request.form.get("unit", "").strip(),
-         max(_to_float(request.form.get("qty")) or 0.0, 0.0),
-         max(_to_float(request.form.get("cost")) or 0.0, 0.0),
-         max(_to_float(request.form.get("markup")) or 0.0, 0.0), nxt))
-    db.commit()
-    flash(f"Added “{item}”.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-
-
-@app.route("/projects/<int:project_id>/estimate/save", methods=["POST"])
-def estimate_save(project_id):
-    if not _estimate_guard(project_id):
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    db = get_db()
-    for r in db.execute("SELECT id FROM project_estimate_lines WHERE project_id = ?",
-                        (project_id,)).fetchall():
-        i = r["id"]
-        if f"qty_{i}" not in request.form:
-            continue
-        db.execute(
-            "UPDATE project_estimate_lines SET qty = ?, unit_cost = ?, markup_pct = ?"
-            " WHERE id = ? AND project_id = ?",
-            (max(_to_float(request.form.get(f"qty_{i}")) or 0.0, 0.0),
-             max(_to_float(request.form.get(f"cost_{i}")) or 0.0, 0.0),
-             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i, project_id))
-    db.commit()
-    flash("Estimate saved.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-
-
-@app.route("/projects/<int:project_id>/estimate/<int:line_id>/delete", methods=["POST"])
-def estimate_delete_line(project_id, line_id):
-    if not _estimate_guard(project_id):
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    db = get_db()
-    db.execute("DELETE FROM project_estimate_lines WHERE id = ? AND project_id = ?",
-               (line_id, project_id))
-    db.commit()
-    flash("Line removed.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-
-
-@app.route("/projects/<int:project_id>/estimate/to-contract", methods=["POST"])
-def estimate_to_contract(project_id):
-    """Set the contract total to the estimate's suggested price."""
-    project = fetch_project(project_id)
-    if not _estimate_guard(project_id):
-        return redirect(url_for("project_detail", project_id=project_id, _anchor="estimate"))
-    db = get_db()
-    suggested = project_pricing(db, project)["suggested"]
-    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
-               (suggested, project_id))
-    db.commit()
-    flash(f"Contract total set to the suggested price — ${suggested:,.2f}.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
-
-
-@app.route("/finance/settings")
-@finance_required
-def finance_settings():
-    """Piece 29.6/29.8: the Cost Model Defaults (equipment, labor, travel,
-    adders, overhead) plus the NM county GRT rate table."""
-    db = get_db()
-    counties = db.execute(
-        "SELECT * FROM county_tax_rates ORDER BY county").fetchall()
-    return render_template(
-        "finance_settings.html", counties=counties,
-        sections=cost_model_by_section(db), section_order=COST_MODEL_SECTIONS,
-        rollup=cost_model_rollup(db))
-
-
-@app.route("/finance/settings/counties", methods=["POST"])
-@finance_required
-def finance_save_counties():
-    db = get_db()
-    for c in db.execute("SELECT id FROM county_tax_rates").fetchall():
-        val = request.form.get(f"county_{c['id']}")
-        if val is not None:
-            db.execute("UPDATE county_tax_rates SET grt_rate = ?, updated_at = ?"
-                       " WHERE id = ?",
-                       (max(_to_float(val) or 0.0, 0.0),
-                        datetime.now().strftime("%Y-%m-%d"), c["id"]))
-    db.commit()
-    flash("County GRT rates saved.")
-    return redirect(url_for("finance_settings"))
-
-
-def _cost_line_num(raw):
-    """Parse an optional numeric cost-model field: blank stays NULL."""
-    if raw is None or str(raw).strip() == "":
-        return None
-    v = _to_float(raw)
-    return max(v, 0.0) if v is not None else None
-
-
-@app.route("/finance/settings/cost-model", methods=["POST"])
-@finance_required
-def finance_save_cost_model():
-    """Bulk-save every cost-model line's qty / cost / markup."""
-    db = get_db()
-    for r in db.execute("SELECT id FROM cost_model_lines WHERE active = '1'").fetchall():
-        i = r["id"]
-        if f"markup_{i}" not in request.form:
-            continue
-        db.execute(
-            "UPDATE cost_model_lines SET default_qty = ?, unit_cost = ?,"
-            " unit = ?, markup_pct = ? WHERE id = ?",
-            (_cost_line_num(request.form.get(f"qty_{i}")),
-             _cost_line_num(request.form.get(f"cost_{i}")),
-             request.form.get(f"unit_{i}", "").strip(),
-             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i))
-    db.commit()
-    flash("Cost model saved.")
-    return redirect(url_for("finance_settings"))
-
-
-@app.route("/finance/settings/cost-model/add", methods=["POST"])
-@finance_required
-def finance_add_cost_line():
-    db = get_db()
-    section = request.form.get("section", "")
-    item = request.form.get("item", "").strip()
-    if section not in COST_MODEL_SECTIONS or not item:
-        flash("Pick a section and name the line.", "error")
-        return redirect(url_for("finance_settings"))
-    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
-                     " FROM cost_model_lines").fetchone()[0]
-    db.execute(
-        "INSERT INTO cost_model_lines (section, item, unit, default_qty,"
-        " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (section, item, request.form.get("unit", "").strip(),
-         _cost_line_num(request.form.get("qty")),
-         _cost_line_num(request.form.get("cost")),
-         max(_to_float(request.form.get("markup")) or 0.0, 0.0), nxt))
-    db.commit()
-    flash(f"Added “{item}” to {section}.")
-    return redirect(url_for("finance_settings"))
-
-
-@app.route("/finance/settings/cost-model/<int:line_id>/delete", methods=["POST"])
-@finance_required
-def finance_delete_cost_line(line_id):
-    db = get_db()
-    db.execute("UPDATE cost_model_lines SET active = '' WHERE id = ?", (line_id,))
-    db.commit()
-    flash("Line removed.")
-    return redirect(url_for("finance_settings"))
 
 
 @app.route("/projects/<int:project_id>/transactions/add", methods=["POST"])
@@ -4177,165 +3575,6 @@ def delete_transaction(project_id, txn_id):
     db.commit()
     flash("Transaction deleted.")
     return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
-
-
-# --- Piece 27.3: 50/40/10 invoice generation -------------------------------
-def _norm_county(name):
-    """Normalise a county name for matching: drop a trailing 'County', lower."""
-    n = (name or "").strip()
-    if n.lower().endswith(" county"):
-        n = n[:-7].strip()
-    return n.lower()
-
-
-def markup_map(db):
-    """{equipment category (lower): markup percent} from the Cost Model's
-    Equipment Inventory section (Piece 29.8)."""
-    return {(r["item"] or "").strip().lower(): float(r["markup_pct"] or 0)
-            for r in db.execute(
-                "SELECT item, markup_pct FROM cost_model_lines"
-                " WHERE section = 'Equipment Inventory' AND active = '1'").fetchall()}
-
-
-def travel_rate(db):
-    """Per-project travel $/mile — the Cost Model's Travel → Vehicle Trips line is
-    the single source of truth (falls back to the stored meta rate)."""
-    r = db.execute(
-        "SELECT unit_cost FROM cost_model_lines WHERE section = 'Travel'"
-        " AND item = 'Vehicle Trips' AND active = '1' LIMIT 1").fetchone()
-    if r and r["unit_cost"] is not None:
-        return float(r["unit_cost"] or 0)
-    return _to_float(_meta_get(db, "travel_rate_per_mile",
-                               str(TRAVEL_RATE_DEFAULT))) or 0.0
-
-
-def cost_model_by_section(db):
-    """Active cost-model lines grouped by section, in display order."""
-    out = {s: [] for s in COST_MODEL_SECTIONS}
-    for r in db.execute("SELECT * FROM cost_model_lines WHERE active = '1'"
-                        " ORDER BY sort_order, id").fetchall():
-        out.setdefault(r["section"], []).append(r)
-    return out
-
-
-def overhead_pct(db):
-    """Total overhead (G&A) percent applied to the whole project subtotal."""
-    return sum(float(r["markup_pct"] or 0) for r in db.execute(
-        "SELECT markup_pct FROM cost_model_lines"
-        " WHERE section = 'Overhead' AND active = '1'").fetchall())
-
-
-def cost_model_rollup(db):
-    """A default 'standard project' estimate straight from the model: each line is
-    qty × cost × (1 + markup) for Non-Inventory / Labor / Travel / Adders, then
-    G&A overhead on the subtotal (Piece 29.8). Equipment Inventory is excluded —
-    it prices the actual per-project BOM, not a default quantity."""
-    sections = cost_model_by_section(db)
-    section_totals, subtotal = {}, 0.0
-    for s in ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]:
-        st = 0.0
-        for r in sections.get(s, []):
-            qty = float(r["default_qty"] or 0)
-            cost = float(r["unit_cost"] or 0)
-            st += qty * cost * (1 + float(r["markup_pct"] or 0) / 100.0)
-        section_totals[s] = round(st, 2)
-        subtotal += st
-    ov = overhead_pct(db)
-    overhead_amt = round(subtotal * ov / 100.0, 2)
-    return {"section_totals": section_totals, "subtotal": round(subtotal, 2),
-            "overhead_pct": ov, "overhead_amount": overhead_amt,
-            "total": round(subtotal + overhead_amt, 2)}
-
-
-def _effective_markup(category, line_markup, mmap):
-    """A BOM line's markup %: its own override if set, else the category default."""
-    if line_markup not in (None, ""):
-        v = _to_float(line_markup)
-        if v is not None:
-            return max(v, 0.0)
-    return mmap.get((category or "").strip().lower(), 0.0)
-
-
-def bom_pricing(db, project_id, mmap, after_id=None):
-    """Cost and marked-up customer price for a project's BOM (optionally only rows
-    added after `after_id`, for change-order extras). Per-line markup override
-    wins over the category default."""
-    sql = ("SELECT id, component_name, category, COALESCE(qty,0) AS qty,"
-           " COALESCE(unit_cost,0) AS cost, markup_pct FROM project_bom"
-           " WHERE project_id = ?")
-    args = [project_id]
-    if after_id is not None:
-        sql += " AND id > ?"
-        args.append(int(after_id or 0))
-    sql += " ORDER BY id"
-    lines, cost_total, price_total = [], 0.0, 0.0
-    for r in db.execute(sql, args).fetchall():
-        mk = _effective_markup(r["category"],
-                               r["markup_pct"] if "markup_pct" in r.keys() else "",
-                               mmap)
-        line_cost = (r["qty"] or 0) * (r["cost"] or 0)
-        line_price = line_cost * (1 + mk / 100.0)
-        cost_total += line_cost
-        price_total += line_price
-        lines.append({"id": r["id"], "name": r["component_name"],
-                      "category": r["category"], "qty": r["qty"],
-                      "cost": r["cost"], "markup": mk,
-                      "line_cost": round(line_cost, 2),
-                      "line_price": round(line_price, 2)})
-    return {"lines": lines, "cost_total": round(cost_total, 2),
-            "price_total": round(price_total, 2)}
-
-
-def project_travel_charge(db, project):
-    miles = _to_float(project["travel_miles"] if "travel_miles" in project.keys() else 0) or 0.0
-    return round(max(miles, 0.0) * travel_rate(db), 2), max(miles, 0.0)
-
-
-def project_pricing(db, project):
-    """Internal Finance breakdown for a project: equipment cost vs marked-up price,
-    travel, a suggested contract price, and the contract Finance actually set."""
-    mmap = markup_map(db)
-    bom = bom_pricing(db, project["id"], mmap)
-    est = estimate_pricing(db, project["id"])             # Piece 29.9: the project estimate
-    subtotal = round(bom["price_total"] + est["total"], 2)
-    ov = overhead_pct(db)                              # G&A on the whole subtotal
-    overhead_amt = round(subtotal * ov / 100.0, 2)
-    suggested = round(subtotal + overhead_amt, 2)
-    contract = _to_float(project["contract_amount"] if "contract_amount" in project.keys()
-                         else 0) or 0.0
-    return {"equipment_cost": bom["cost_total"],
-            "equipment_price": bom["price_total"],
-            "markup_amount": round(bom["price_total"] - bom["cost_total"], 2),
-            "estimate_by_section": est["by_section"],
-            "estimate_total": est["total"], "estimate_lines": est["lines"],
-            "subtotal": subtotal, "overhead_pct": ov, "overhead_amount": overhead_amt,
-            "suggested": suggested, "contract": contract, "lines": bom["lines"]}
-
-
-# Piece 29.9: the cost-model sections that make up a per-project estimate (Equipment
-# Inventory is priced from the BOM; Overhead is applied on top, not entered).
-ESTIMATE_SECTIONS = ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]
-
-
-def estimate_lines(db, project_id):
-    return db.execute(
-        "SELECT * FROM project_estimate_lines WHERE project_id = ?"
-        " ORDER BY sort_order, id", (project_id,)).fetchall()
-
-
-def estimate_pricing(db, project_id):
-    """Per-section and total for a project's estimate lines: qty × cost × (1+markup)."""
-    by_section = {s: 0.0 for s in ESTIMATE_SECTIONS}
-    lines = []
-    for r in estimate_lines(db, project_id):
-        lt = (r["qty"] or 0) * (r["unit_cost"] or 0) * (1 + (r["markup_pct"] or 0) / 100.0)
-        by_section[r["section"]] = by_section.get(r["section"], 0.0) + lt
-        d = dict(r)
-        d["line_total"] = round(lt, 2)
-        lines.append(d)
-    by_section = {k: round(v, 2) for k, v in by_section.items()}
-    return {"by_section": by_section, "total": round(sum(by_section.values()), 2),
-            "lines": lines}
 
 
 def _workbag_redirect(anchor=None):
@@ -4440,507 +3679,6 @@ def delete_project_note(note_id):
     db.commit()
     flash("Note removed.")
     return _workbag_redirect(anchor="notes")
-
-
-@app.route("/projects/<int:project_id>/loads")
-def project_loads(project_id):
-    """Piece 15.1: Electric loads & system sizing — its own page (was a tab
-    on the project detail page)."""
-    project = fetch_project(project_id)
-    db = get_db()
-    rooms = db.execute(
-        "SELECT * FROM project_load_rooms WHERE project_id = ? ORDER BY sort_order, id",
-        (project_id,),
-    ).fetchall()
-    load_items = db.execute(
-        "SELECT * FROM project_load_items WHERE project_id = ? ORDER BY id", (project_id,)
-    ).fetchall()
-    items_by_room = {}
-    for it in load_items:
-        items_by_room.setdefault(it["room_id"], []).append(it)
-    sizing = fetch_job_sizing(db, project_id)
-    bom = db.execute(
-        "SELECT * FROM project_bom WHERE project_id = ? ORDER BY id", (project_id,)
-    ).fetchall()
-    appliances = db.execute(
-        "SELECT * FROM appliance_catalog ORDER BY category, name"
-    ).fetchall()
-    components = db.execute(
-        "SELECT * FROM component_catalog ORDER BY category, name"
-    ).fetchall()
-    appliances_by_category = {}
-    for a in appliances:
-        appliances_by_category.setdefault(a["category"] or "Other", []).append(a)
-    # Piece 26.4: flat catalog (for the room-filtered picker + whole-catalog
-    # search) and the list of room "types" to choose from.
-    all_appliances = [
-        {"id": a["id"], "name": a["name"], "category": a["category"] or "Other",
-         "watts": int(a["avg_w"] or 0), "era": a["era"] or ""} for a in appliances]
-    appliance_categories = sorted(appliances_by_category.keys())
-    components_by_category = {}
-    for c in components:
-        components_by_category.setdefault(c["category"] or "Other", []).append(c)
-
-    daily_kwh, peak_w = compute_load_totals(rooms, load_items)
-    array_kw, panel_count = compute_array(
-        daily_kwh, sizing["sun_hours"], sizing["derate_pct"],
-        sizing["solar_fraction_pct"], sizing["panel_watts"],
-    )
-    battery_kwh_needed = compute_battery_kwh(
-        sizing["backup_daily_kwh"], sizing["autonomy_days"], sizing["dod_pct"],
-        sizing["round_trip_eff_pct"], sizing["inverter_eff_pct"],
-    )
-    selected_battery = None
-    battery_units_needed = None
-    if sizing["selected_battery_id"]:
-        selected_battery = db.execute(
-            "SELECT * FROM component_catalog WHERE id = ?",
-            (sizing["selected_battery_id"],),
-        ).fetchone()
-        if selected_battery and selected_battery["capacity_kwh_nameplate"]:
-            battery_units_needed = math.ceil(
-                battery_kwh_needed / selected_battery["capacity_kwh_nameplate"]
-            )
-    selected_pv_module = None
-    voc_corrected = max_modules = None
-    if sizing["selected_pv_module_id"]:
-        selected_pv_module = db.execute(
-            "SELECT * FROM component_catalog WHERE id = ?",
-            (sizing["selected_pv_module_id"],),
-        ).fetchone()
-        if selected_pv_module:
-            voc_corrected, max_modules = compute_voc(
-                selected_pv_module["voc"], selected_pv_module["temp_coef_voc"],
-                sizing["record_low_temp_f"], sizing["max_input_v"],
-            )
-    bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
-
-    # Piece 26.5: once the load survey has produced sizing figures, read the
-    # live inventory specs and auto-suggest the components that fit. Only
-    # meaningful in Designer mode and once there's a real survey to size from.
-    ui_mode = loads_view_mode(current_user())
-    suggestions = []
-    if ui_mode == "designer" and load_items and (array_kw or battery_kwh_needed or peak_w):
-        suggestions = suggest_components(db, array_kw, peak_w, battery_kwh_needed)
-
-    return render_template(
-        "project_loads.html", project=project, locked=_loads_locked(project),
-        rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
-        bom_total=bom_total, appliances_by_category=appliances_by_category,
-        components_by_category=components_by_category,
-        component_categories=COMPONENT_CATEGORIES,
-        # Piece 25.0: which room / load-item / BOM row is being edited in place.
-        edit_room=request.args.get("edit_room", type=int),
-        edit_item=request.args.get("edit_item", type=int),
-        edit_bom=request.args.get("edit_bom", type=int),
-        load_usage_types=LOAD_USAGE_TYPES, load_eras=LOAD_ERAS,
-        ui_mode=ui_mode, suggestions=suggestions,
-        all_appliances=all_appliances, appliance_categories=appliance_categories,
-        daily_kwh=daily_kwh, peak_w=peak_w, array_kw=array_kw,
-        panel_count=panel_count, battery_kwh_needed=battery_kwh_needed,
-        selected_battery=selected_battery, battery_units_needed=battery_units_needed,
-        selected_pv_module=selected_pv_module, voc_corrected=voc_corrected,
-        max_modules=max_modules,
-    )
-
-
-def _float(val, default=0.0):
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-# ------------------------------------------------------------ loads & sizing
-def _loads_locked(project):
-    """Piece 22.2: Loads & Sizing is a Proposal-phase tool. Once the project
-    advances past Proposal (the contract is signed), the editor locks — the
-    recorded figures stay visible on the project and in Design, but no one re-opens
-    the tool to change them. Lost projects (outside the normal stage order) are left
-    editable in case one is revived."""
-    status = project["status"] if "status" in project.keys() else ""
-    return status in STAGE_ORDER and STAGE_ORDER.index(status) > 0
-
-
-LOADS_LOCK_MSG = ("Loads & Sizing locks once the contract is signed — the "
-                  "recorded figures are final and view-only from here.")
-
-
-def loads_unlocked(view):
-    """Guard a loads-editing POST: refuse the write once the project is past
-    Proposal, so the locked figures can't be changed from anywhere."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if _loads_locked(fetch_project(kwargs["project_id"])):
-            flash(LOADS_LOCK_MSG, "error")
-            return redirect(url_for("project_loads", project_id=kwargs["project_id"]))
-        return view(*args, **kwargs)
-    return wrapped
-
-
-@app.route("/projects/<int:project_id>/loads/rooms/add", methods=["POST"])
-@loads_unlocked
-def add_load_room(project_id):
-    fetch_project(project_id)
-    name = request.form.get("name", "").strip()
-    room_type = request.form.get("room_type", "standard")
-    if room_type not in ROOM_TYPES:
-        room_type = "standard"
-    if not name:
-        flash("Room name is required.", "error")
-        return redirect(url_for("project_loads", project_id=project_id))
-    category = request.form.get("category", "").strip()
-    db = get_db()
-    next_order = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_load_rooms WHERE project_id = ?",
-        (project_id,),
-    ).fetchone()[0]
-    db.execute(
-        "INSERT INTO project_load_rooms (project_id, name, room_type, category, sort_order)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (project_id, name, room_type, category, next_order),
-    )
-    db.commit()
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
-@loads_unlocked
-def toggle_load_room(project_id, room_id):
-    db = get_db()
-    db.execute(
-        "UPDATE project_load_rooms SET enabled = 1 - enabled WHERE id = ? AND project_id = ?",
-        (room_id, project_id),
-    )
-    db.commit()
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/edit", methods=["POST"])
-@loads_unlocked
-def update_load_room(project_id, room_id):
-    fetch_project(project_id)
-    db = get_db()
-    if db.execute("SELECT 1 FROM project_load_rooms WHERE id = ? AND project_id = ?",
-                  (room_id, project_id)).fetchone() is None:
-        abort(404)
-    name = request.form.get("name", "").strip()
-    if not name:
-        flash("The room needs a name.", "error")
-        return redirect(url_for("project_loads", project_id=project_id, edit_room=room_id))
-    room_type = request.form.get("room_type", "standard").strip() or "standard"
-    category = request.form.get("category", "").strip()
-    db.execute("UPDATE project_load_rooms SET name = ?, room_type = ?, category = ?"
-               " WHERE id = ?", (name, room_type, category, room_id))
-    db.commit()
-    flash("Room updated.")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
-@delete_required
-@loads_unlocked
-def delete_load_room(project_id, room_id):
-    ok, msg = trash_item("load_room", room_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/items/add", methods=["POST"])
-@loads_unlocked
-def add_load_item(project_id):
-    fetch_project(project_id)
-    db = get_db()
-    room_id = request.form.get("room_id", type=int)
-    room = db.execute(
-        "SELECT * FROM project_load_rooms WHERE id = ? AND project_id = ?", (room_id, project_id)
-    ).fetchone()
-    if not room:
-        flash("Pick a room before adding an appliance.", "error")
-        return redirect(url_for("project_loads", project_id=project_id))
-
-    catalog_id = request.form.get("catalog_id", type=int)
-    if catalog_id:
-        appliance = db.execute(
-            "SELECT * FROM appliance_catalog WHERE id = ?", (catalog_id,)
-        ).fetchone()
-        if not appliance:
-            flash("Appliance not found in the catalog.", "error")
-            return redirect(url_for("project_loads", project_id=project_id))
-        name = appliance["name"]
-        watts = appliance["avg_w"]
-        hrs = appliance["hrs_per_day"]
-        usage_type = appliance["usage_type"]
-    else:
-        name = request.form.get("custom_name", "").strip()
-        watts = _float(request.form.get("custom_watts"))
-        hrs = _float(request.form.get("custom_hrs"))
-        usage_type = request.form.get("custom_usage_type", "").strip()
-        if not name:
-            flash("Give the custom appliance a name.", "error")
-            return redirect(url_for("project_loads", project_id=project_id))
-
-    qty = _float(request.form.get("qty"), 1) or 1
-    # Allow overriding hrs/day from the form even for a catalog pick.
-    hrs_override = request.form.get("hrs")
-    if hrs_override not in (None, ""):
-        hrs = _float(hrs_override, hrs)
-
-    db.execute(
-        "INSERT INTO project_load_items"
-        " (project_id, room_id, appliance, watts, qty, hrs, usage_type)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (project_id, room_id, name, watts, qty, hrs, usage_type),
-    )
-    db.commit()
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/items/<int:item_id>/edit", methods=["POST"])
-@loads_unlocked
-def update_load_item(project_id, item_id):
-    fetch_project(project_id)
-    db = get_db()
-    if db.execute("SELECT 1 FROM project_load_items WHERE id = ? AND project_id = ?",
-                  (item_id, project_id)).fetchone() is None:
-        abort(404)
-    name = request.form.get("appliance", "").strip()
-    if not name:
-        flash("The appliance needs a name.", "error")
-        return redirect(url_for("project_loads", project_id=project_id, edit_item=item_id))
-    db.execute(
-        "UPDATE project_load_items SET appliance = ?, watts = ?, qty = ?, hrs = ?,"
-        " usage_type = ? WHERE id = ?",
-        (name, _float(request.form.get("watts")),
-         _float(request.form.get("qty"), 1) or 1, _float(request.form.get("hrs")),
-         request.form.get("usage_type", "").strip(), item_id))
-    db.commit()
-    flash("Appliance updated.")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/items/<int:item_id>/delete", methods=["POST"])
-@delete_required
-@loads_unlocked
-def delete_load_item(project_id, item_id):
-    ok, msg = trash_item("load_item", item_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/bom/add", methods=["POST"])
-@loads_unlocked
-def add_bom_item(project_id):
-    fetch_project(project_id)
-    db = get_db()
-    component_id = request.form.get("component_id", type=int)
-    qty = _float(request.form.get("qty"), 1) or 1
-    notes = request.form.get("notes", "").strip()
-    if component_id:
-        comp = db.execute(
-            "SELECT * FROM component_catalog WHERE id = ?", (component_id,)
-        ).fetchone()
-        if not comp:
-            flash("Component not found in the catalog.", "error")
-            return redirect(url_for("project_loads", project_id=project_id))
-        # Adding the same component again increments quantity instead of
-        # creating a duplicate row.
-        existing = db.execute(
-            "SELECT * FROM project_bom WHERE project_id = ? AND component_id = ?",
-            (project_id, component_id),
-        ).fetchone()
-        if existing:
-            db.execute("UPDATE project_bom SET qty = qty + ? WHERE id = ?",
-                       (qty, existing["id"]))
-        else:
-            db.execute(
-                "INSERT INTO project_bom"
-                " (project_id, component_id, component_name, category, qty,"
-                "  unit_cost, notes)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (project_id, component_id, comp["name"], comp["category"], qty,
-                 comp["cost"], notes),
-            )
-    else:
-        name = request.form.get("custom_name", "").strip()
-        category = request.form.get("custom_category", "").strip()
-        cost = request.form.get("custom_cost")
-        if not name:
-            flash("Give the custom component a name.", "error")
-            return redirect(url_for("project_loads", project_id=project_id))
-        db.execute(
-            "INSERT INTO project_bom"
-            " (project_id, component_id, component_name, category, qty,"
-            "  unit_cost, notes)"
-            " VALUES (?, NULL, ?, ?, ?, ?, ?)",
-            (project_id, name, category, qty, _float(cost, None) if cost else None, notes),
-        )
-    db.commit()
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/bom/suggest", methods=["POST"])
-@loads_unlocked
-def accept_suggested_component(project_id):
-    """Piece 26.5: one-click accept of an auto-suggested inventory component.
-    Drops the picked item into the BOM at the sized quantity, at its inventory
-    cost. Inventory items aren't catalog components, so component_id stays NULL;
-    accepting the same item again tops up its quantity instead of duplicating."""
-    fetch_project(project_id)
-    db = get_db()
-    name = request.form.get("name", "").strip()
-    category = request.form.get("category", "").strip()
-    qty = _float(request.form.get("qty"), 1) or 1
-    cost = request.form.get("unit_cost")
-    unit_cost = _float(cost, None) if cost not in (None, "") else None
-    if not name:
-        flash("Nothing to add.", "error")
-        return redirect(url_for("project_loads", project_id=project_id))
-    existing = db.execute(
-        "SELECT id FROM project_bom WHERE project_id = ? AND component_id IS NULL"
-        "   AND component_name = ? AND category = ?",
-        (project_id, name, category)).fetchone()
-    if existing:
-        db.execute("UPDATE project_bom SET qty = ? WHERE id = ?", (qty, existing["id"]))
-    else:
-        db.execute(
-            "INSERT INTO project_bom"
-            " (project_id, component_id, component_name, category, qty, unit_cost, notes)"
-            " VALUES (?, NULL, ?, ?, ?, ?, ?)",
-            (project_id, name, category, qty, unit_cost, "Suggested from inventory"))
-    db.commit()
-    flash(f"Added {name} to the BOM.")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/bom/<int:bom_id>/edit", methods=["POST"])
-@loads_unlocked
-def update_bom_item(project_id, bom_id):
-    fetch_project(project_id)
-    db = get_db()
-    if db.execute("SELECT 1 FROM project_bom WHERE id = ? AND project_id = ?",
-                  (bom_id, project_id)).fetchone() is None:
-        abort(404)
-    name = request.form.get("component_name", "").strip()
-    if not name:
-        flash("The component needs a name.", "error")
-        return redirect(url_for("project_loads", project_id=project_id, edit_bom=bom_id))
-    cost = request.form.get("unit_cost")
-    # Piece 29.6: optional per-line markup override (blank = use category default).
-    mk_raw = request.form.get("markup_pct", "")
-    markup = "" if mk_raw.strip() == "" else str(max(_to_float(mk_raw) or 0.0, 0.0))
-    db.execute(
-        "UPDATE project_bom SET component_name = ?, category = ?, qty = ?,"
-        " unit_cost = ?, notes = ?, markup_pct = ? WHERE id = ?",
-        (name, request.form.get("category", "").strip(),
-         _float(request.form.get("qty"), 1) or 1,
-         _float(cost, None) if cost not in (None, "") else None,
-         request.form.get("notes", "").strip(), markup, bom_id))
-    db.commit()
-    flash("Component updated.")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
-@delete_required
-@loads_unlocked
-def delete_bom_item(project_id, bom_id):
-    ok, msg = trash_item("bom", bom_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/sizing", methods=["POST"])
-@loads_unlocked
-def update_sizing(project_id):
-    fetch_project(project_id)
-    db = get_db()
-    fetch_job_sizing(db, project_id)  # ensure the row exists
-
-    ui_mode = request.form.get("ui_mode", "designer")
-    if ui_mode not in UI_MODES:
-        ui_mode = "designer"
-    system_type = request.form.get("system_type", "custom")
-    if system_type not in ("offgrid", "gridtie", "custom"):
-        system_type = "custom"
-
-    derate_pct = _float(request.form.get("derate_pct"), 75)
-    autonomy_days = _float(request.form.get("autonomy_days"), 2)
-    # A preset system type overrides derate/autonomy with its fixed values,
-    # mirroring the standalone tool's auto-fill-then-revert-on-edit behavior.
-    if system_type in SYSTEM_TYPE_PRESETS:
-        preset = SYSTEM_TYPE_PRESETS[system_type]
-        derate_pct = preset["derate_pct"]
-        autonomy_days = preset["autonomy_days"]
-
-    selected_battery_id = request.form.get("selected_battery_id", type=int) or None
-    selected_pv_module_id = request.form.get("selected_pv_module_id", type=int) or None
-
-    db.execute(
-        "UPDATE project_sizing SET ui_mode = ?, system_type = ?, sun_hours = ?,"
-        " derate_pct = ?, autonomy_days = ?, solar_fraction_pct = ?,"
-        " panel_watts = ?, dod_pct = ?, round_trip_eff_pct = ?,"
-        " inverter_eff_pct = ?, max_input_v = ?, record_low_temp_f = ?,"
-        " backup_daily_kwh = ?, selected_battery_id = ?, selected_pv_module_id = ?,"
-        " updated_at = datetime('now')"
-        " WHERE project_id = ?",
-        (
-            ui_mode, system_type,
-            _float(request.form.get("sun_hours"), 5.5),
-            derate_pct, autonomy_days,
-            _float(request.form.get("solar_fraction_pct"), 100),
-            _float(request.form.get("panel_watts"), 400),
-            _float(request.form.get("dod_pct"), 80),
-            _float(request.form.get("round_trip_eff_pct"), 92),
-            _float(request.form.get("inverter_eff_pct"), 96),
-            _float(request.form.get("max_input_v"), 600),
-            _float(request.form.get("record_low_temp_f"), 5),
-            _float(request.form.get("backup_daily_kwh"), 0),
-            selected_battery_id, selected_pv_module_id, project_id,
-        ),
-    )
-    db.commit()
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-@app.route("/projects/<int:project_id>/loads/mode", methods=["POST"])
-def set_ui_mode(project_id):
-    # Piece 26.4: the view mode is now a per-viewer session preference (the
-    # default comes from their department), not a per-project stored value.
-    ui_mode = request.form.get("ui_mode", "designer")
-    session["loads_ui_mode"] = ui_mode if ui_mode in UI_MODES else "designer"
-    return redirect(url_for("project_loads", project_id=project_id))
-
-
-# ------------------------------------------------------------------ catalog
-@app.route("/catalog")
-def catalog_page():
-    db = get_db()
-    appliances = db.execute(
-        "SELECT * FROM appliance_catalog ORDER BY category, name"
-    ).fetchall()
-    components = db.execute(
-        "SELECT * FROM component_catalog ORDER BY category, name"
-    ).fetchall()
-    appliance_categories = sorted({a["category"] for a in appliances if a["category"]})
-    # Piece 25.0: in-place edit — ?edit_appliance / ?edit_component pre-fills the
-    # add form with that row so it can be saved back over the original.
-    edit_appliance = edit_component = None
-    if request.args.get("edit_appliance", type=int):
-        edit_appliance = db.execute(
-            "SELECT * FROM appliance_catalog WHERE id = ?",
-            (request.args.get("edit_appliance", type=int),)).fetchone()
-    if request.args.get("edit_component", type=int):
-        edit_component = db.execute(
-            "SELECT * FROM component_catalog WHERE id = ?",
-            (request.args.get("edit_component", type=int),)).fetchone()
-    return render_template(
-        "catalog.html", appliances=appliances, components=components,
-        appliance_categories=appliance_categories,
-        component_categories=COMPONENT_CATEGORIES, load_eras=LOAD_ERAS,
-        load_usage_types=LOAD_USAGE_TYPES,
-        edit_appliance=edit_appliance, edit_component=edit_component,
-    )
 
 
 INVENTORY_CAT_ORDER = [
@@ -5441,154 +4179,6 @@ def inventory_vehicle_delete(vehicle_id):
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="vehicles"))
 
-
-
-@app.route("/catalog/appliances/add", methods=["POST"])
-@admin_required
-def add_appliance_catalog():
-    name = request.form.get("name", "").strip()
-    if not name:
-        flash("Appliance name is required.", "error")
-        return redirect(url_for("catalog_page"))
-    db = get_db()
-    db.execute(
-        "INSERT INTO appliance_catalog"
-        " (name, category, era, low_w, high_w, avg_w, hrs_per_day, usage_type, notes)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            name, request.form.get("category", "").strip(),
-            request.form.get("era", "").strip(),
-            _float(request.form.get("low_w"), 0),
-            _float(request.form.get("high_w"), 0),
-            _float(request.form.get("avg_w"), 0),
-            _float(request.form.get("hrs_per_day"), 0),
-            request.form.get("usage_type", "").strip(),
-            request.form.get("notes", "").strip(),
-        ),
-    )
-    db.commit()
-    flash(f"Added {name} to the appliance catalog.")
-    return redirect(url_for("catalog_page"))
-
-
-@app.route("/catalog/appliances/<int:appliance_id>/edit", methods=["POST"])
-@admin_required
-def update_appliance_catalog(appliance_id):
-    name = request.form.get("name", "").strip()
-    db = get_db()
-    if db.execute("SELECT 1 FROM appliance_catalog WHERE id = ?",
-                  (appliance_id,)).fetchone() is None:
-        abort(404)
-    if not name:
-        flash("Appliance name is required.", "error")
-        return redirect(url_for("catalog_page", edit_appliance=appliance_id,
-                                _anchor="appliances"))
-    db.execute(
-        "UPDATE appliance_catalog SET name = ?, category = ?, era = ?, low_w = ?,"
-        " high_w = ?, avg_w = ?, hrs_per_day = ?, usage_type = ?, notes = ?"
-        " WHERE id = ?",
-        (name, request.form.get("category", "").strip(),
-         request.form.get("era", "").strip(),
-         _float(request.form.get("low_w"), 0), _float(request.form.get("high_w"), 0),
-         _float(request.form.get("avg_w"), 0),
-         _float(request.form.get("hrs_per_day"), 0),
-         request.form.get("usage_type", "").strip(),
-         request.form.get("notes", "").strip(), appliance_id))
-    db.commit()
-    flash(f"Updated {name}.")
-    return redirect(url_for("catalog_page", _anchor="appliances"))
-
-
-@app.route("/catalog/appliances/<int:appliance_id>/delete", methods=["POST"])
-@delete_required
-def delete_appliance_catalog(appliance_id):
-    ok, msg = trash_item("appliance", appliance_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("catalog_page"))
-
-
-@app.route("/catalog/components/add", methods=["POST"])
-@admin_required
-def add_component_catalog():
-    name = request.form.get("name", "").strip()
-    if not name:
-        flash("Component name is required.", "error")
-        return redirect(url_for("catalog_page"))
-
-    def opt_float(field):
-        val = request.form.get(field)
-        return _float(val, None) if val not in (None, "") else None
-
-    db = get_db()
-    db.execute(
-        "INSERT INTO component_catalog"
-        " (name, category, manufacturer, model, specs, watts, voc, vmp,"
-        "  temp_coef_voc, capacity_kwh_nameplate, dod, max_input_v,"
-        "  continuous_w, inverter_eff, cost, notes)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            name, request.form.get("category", "").strip(),
-            request.form.get("manufacturer", "").strip(),
-            request.form.get("model", "").strip(),
-            request.form.get("specs", "").strip(),
-            opt_float("watts"), opt_float("voc"), opt_float("vmp"),
-            opt_float("temp_coef_voc"), opt_float("capacity_kwh_nameplate"),
-            opt_float("dod"), opt_float("max_input_v"), opt_float("continuous_w"),
-            opt_float("inverter_eff"), opt_float("cost"),
-            request.form.get("notes", "").strip(),
-        ),
-    )
-    db.commit()
-    flash(f"Added {name} to the component catalog.")
-    return redirect(url_for("catalog_page"))
-
-
-@app.route("/catalog/components/<int:component_id>/edit", methods=["POST"])
-@admin_required
-def update_component_catalog(component_id):
-    name = request.form.get("name", "").strip()
-    db = get_db()
-    if db.execute("SELECT 1 FROM component_catalog WHERE id = ?",
-                  (component_id,)).fetchone() is None:
-        abort(404)
-    if not name:
-        flash("Component name is required.", "error")
-        return redirect(url_for("catalog_page", edit_component=component_id,
-                                _anchor="components"))
-
-    def opt_float(field):
-        val = request.form.get(field)
-        return _float(val, None) if val not in (None, "") else None
-
-    db.execute(
-        "UPDATE component_catalog SET name = ?, category = ?, manufacturer = ?,"
-        " model = ?, specs = ?, watts = ?, voc = ?, vmp = ?, temp_coef_voc = ?,"
-        " capacity_kwh_nameplate = ?, dod = ?, max_input_v = ?, continuous_w = ?,"
-        " inverter_eff = ?, cost = ?, notes = ? WHERE id = ?",
-        (name, request.form.get("category", "").strip(),
-         request.form.get("manufacturer", "").strip(),
-         request.form.get("model", "").strip(),
-         request.form.get("specs", "").strip(),
-         opt_float("watts"), opt_float("voc"), opt_float("vmp"),
-         opt_float("temp_coef_voc"), opt_float("capacity_kwh_nameplate"),
-         opt_float("dod"), opt_float("max_input_v"), opt_float("continuous_w"),
-         opt_float("inverter_eff"), opt_float("cost"),
-         request.form.get("notes", "").strip(), component_id))
-    db.commit()
-    flash(f"Updated {name}.")
-    return redirect(url_for("catalog_page", _anchor="components"))
-
-
-@app.route("/catalog/components/<int:component_id>/delete", methods=["POST"])
-@delete_required
-def delete_component_catalog(component_id):
-    # Piece 17.1: blocked (with an error) if the component is still used by any
-    # project BOM line or sizing selection; otherwise it goes to the trash.
-    ok, msg = trash_item("component", component_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("catalog_page"))
-
-
 @app.route("/projects/<int:project_id>/status", methods=["POST"])
 def set_project_status(project_id):
     project = fetch_project(project_id)
@@ -5868,14 +4458,10 @@ def project_permit_coverage(db, project, rules):
 
 
 def _loads_recorded(db, project):
-    """True once the walkthrough loads have been captured for a project — either
-    the structured Loads & Sizing worksheet has line items, or the free-text
-    loads summary on the project is filled. Used to gate the Planning stage."""
-    if (project["electric_loads"] if "electric_loads" in project.keys() else "").strip():
-        return True
-    n = db.execute("SELECT COUNT(*) FROM project_load_items WHERE project_id = ?",
-                   (project["id"],)).fetchone()[0]
-    return n > 0
+    """True once the walkthrough's electric-loads summary is filled in. Used
+    to gate the Planning stage."""
+    return bool(
+        (project["electric_loads"] if "electric_loads" in project.keys() else "").strip())
 
 
 def stage_info(db, project, groups, filed_labels):
@@ -7581,16 +6167,12 @@ def assistant_available_providers(cfg):
 
 
 def build_assistant_snapshot(db, user):
-    """A compact, permission-scoped snapshot of the current business state, given
-    to the model as grounding context. Respects what THIS user may see — pricing
-    and payroll figures are only included for those who can already view them."""
+    """A compact snapshot of the current household state, given to the model as
+    grounding context."""
     lines = []
     name = user["name"] if user else "the user"
     role = (user["role"] or "") if user else ""
     lines.append(f"Signed-in user: {name} — role: {role or 'none'}.")
-    can_price = _can_see_pricing()
-    lines.append("Viewer may see internal pricing/margins: "
-                 f"{'yes' if can_price else 'no'}.")
     today = datetime.now().strftime("%Y-%m-%d")
     lines.append(f"Today is {today}.")
 
@@ -7639,16 +6221,14 @@ def build_assistant_snapshot(db, user):
     ).fetchone()[0]
     lines.append(f"Company-wide overdue open tasks: {overdue}.")
 
-    # Contract totals only for pricing-cleared viewers.
-    if can_price:
-        row = db.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
-            " WHERE status NOT IN ('Done','Abandoned')"
-            " AND COALESCE(contract_amount,0) > 0").fetchone()
-        if row and row["n"]:
-            lines.append(
-                f"Active projects with a contract total: {row['n']}, "
-                f"summing ${row['t']:,.0f}.")
+    row = db.execute(
+        "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
+        " WHERE status NOT IN ('Done','Abandoned')"
+        " AND COALESCE(contract_amount,0) > 0").fetchone()
+    if row and row["n"]:
+        lines.append(
+            f"Active projects with a contract total: {row['n']}, "
+            f"summing ${row['t']:,.0f}.")
 
     return "\n".join(lines)
 
@@ -7675,9 +6255,7 @@ def _assist_money(n):
 def build_assistant_tools(db, user):
     """Piece 32.1: read-only, permission-scoped tools the assistant may call to
     look data up live. Every tool respects what the signed-in user may see —
-    pricing/contract figures are withheld from non-pricing viewers, and no tool
-    exposes pay. Each returns a compact text block for the model to read."""
-    can_price = _can_see_pricing()
+    no tool exposes pay. Each returns a compact text block for the model to read."""
 
     def find_projects(args):
         text = (args.get("text") or "").strip()
@@ -7695,9 +6273,7 @@ def build_assistant_tools(db, user):
             where.append("j.status = ?"); params.append(stage)
         if county:
             where.append("j.county LIKE ?"); params.append(f"%{county}%")
-        # min_contract only applies for pricing-cleared viewers; silently ignored
-        # otherwise so the filter can't be used to probe hidden figures.
-        if can_price and args.get("min_contract") not in (None, ""):
+        if args.get("min_contract") not in (None, ""):
             try:
                 where.append("COALESCE(j.contract_amount,0) >= ?")
                 params.append(float(args.get("min_contract")))
@@ -7724,7 +6300,7 @@ def build_assistant_tools(db, user):
             line = (f"#{r['id']} {r['job_name'] or 'Project'} — "
                     f"{r['status']} — install {r['install_date'] or 'TBD'}"
                     f"{' — ' + r['county'] if r['county'] else ''}")
-            if can_price and r["amt"]:
+            if r["amt"]:
                 line += f" — contract {_assist_money(r['amt'])}"
             out.append("• " + line)
         return "\n".join(out)
@@ -7749,7 +6325,7 @@ def build_assistant_tools(db, user):
                f"Install date: {row['install_date'] or 'TBD'}",
                f"County: {row['county'] or '—'}",
                f"Payment: {row['cost_method'] or '—'}"]
-        if can_price and (row["contract_amount"] or 0):
+        if row["contract_amount"] or 0:
             out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
         if (row["status"] or "") == "Abandoned" and (row["cancel_reason"] or ""):
             out.append(f"Cancelled — reason: {row['cancel_reason']}")
