@@ -91,8 +91,6 @@ can confirm a pull/update took effect.
   dropdown: none / Verify / Unverified) — add or remove the callout on any rule
   at will.
 - **Project edit history / versioning** for recordkeeping.
-- **Per-project BPMN process charts**: an in-app viewer plus `.bpmn` export, with
-  each step tagged by pipeline status.
 - **Loads & Sizing** (`/projects/<id>/loads`): electrical loads and system sizing on
   its own page. Electric loads are **not** entered at project creation (they aren't
   known until the walkthrough) — they're recorded here during the proposal, and
@@ -158,11 +156,12 @@ can confirm a pull/update took effect.
 - **Closed projects review** (🗄 Databases → Closed projects, Admin): a
   management view of **cancelled** projects — reason, who/when, prior stage,
   contract — each with a one-click Reopen, plus a list of **completed** projects.
-- **Task generation** from a project's process. Generated tasks land
-  **unassigned** — a human assigns them; there's no automatic assignment by role.
-- **Default task deadlines**: every generated task defaults to **7 days after the
-  previous step** (a weekly cadence); when a step is marked Done, the next open
-  step is re-defaulted to 7 days after that completion. Hand-editable per project.
+- **Tasks are added manually** — there's no auto-generated process/pipeline chain.
+  A **+ Add task** form on the project's Tasks tab is the only way tasks appear;
+  assign one to a household member (or leave it unassigned) at any point.
+- **Default task deadlines**: a new task defaults to **7 days out**; when a task is
+  marked Done, the next open task on the project is re-defaulted to 7 days after
+  that completion. Hand-editable per task.
 - **Calendar export (.ics)**: download your task due dates + install dates
   (`/calendar/my.ics`) or a single project's dates (`/projects/<id>/calendar.ics`) and
   import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
@@ -405,6 +404,16 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.9** — cut the BPMN task-generation engine (`bpmn_export.py`), found by a
+  full-repo staleness audit: it was the only way any project got tasks, hardcoding
+  the entire solar sales→install→closeout pipeline (10 lanes; steps like "50%
+  Deposit Received," "Meter set by {utility}") regardless of a project's category.
+  Tasks are added manually now — the **+ Add task** form already existed and worked
+  alongside auto-generation. Also removed: the per-project BPMN chart viewer/export,
+  and the auto-trigger that regenerated tasks on every pipeline stage advance. First
+  of three parts closing out a full solar-business-code audit; Loads & Sizing / Cost
+  Model / GRT tax are next.
 
 - **v0.8** — retired `nm_directory.py`. `HANDOFF.md`'s plan was to repurpose
   it as a vendor/contractor directory, but that need turned out to already

@@ -224,17 +224,47 @@ sweep, fresh-DB boot, a project create/edit round-trip confirming
 free-text `utility_provider` saves and edits exactly as typed (and that no
 leftover select/JS remains in the rendered form), and a 42-route sweep.
 
+**Post-reorg staleness audit (2026-08-16): a full-repo sweep — three parallel
+passes over schema.sql table liveness, still-live solar-specific code, and
+dangling code references — found the "structural reorg is done" status above
+was premature.** Four subsystems were still fully wired up and still shaped
+for the original solar-installation business, beyond anything already listed
+here as deliberately deferred: the BPMN task-generation engine, the Loads &
+Sizing electrical calculator, the Cost Model/GRT tax pricing system, and the
+Work Bag's field-submission approval flow. Walked through with the user one
+at a time; being landed as three parts of **Piece 40**:
+
+- **Part A (v0.9) — cut the BPMN task-generation engine — done.** It was the
+  only way any project got tasks, hardcoding the solar sales→install→closeout
+  pipeline regardless of project category. Tasks are added manually now (the
+  `add_task()` route already existed). Also removed: the per-project BPMN
+  chart viewer/export and the auto-trigger that regenerated tasks on every
+  stage advance. Verified via compile, Jinja parse sweep, fresh-DB boot, a
+  test-client cycle (zero auto-generated tasks on project creation, manual
+  add works, stage advance succeeds with no generation flash, all three
+  removed routes 404), and a 42-route sweep.
+- **Part B — cut Loads & Sizing + Cost Model/GRT tax — not started.** Both
+  price/size a job for the original solar business; `HANDOFF.md`'s own
+  "Billing → Project budget tracking" plan (below) already said to cut the
+  cost-model/GRT machinery down to plain budget-vs-actual — never done.
+- **Part C — fix a real Work Bag crash bug — not started.** Audit found
+  `templates/work_bag_photos.html` hard-crashes (500) on open, from an
+  undefined template variable left by dead pay-type UI. The submit→
+  Parent/Admin-approve gate itself is being **kept**, per the user — it's
+  wanted as real parental oversight for Assistant/Child Work Bag
+  submissions, not solar-crew cruft to simplify away.
+
 **NOT done yet:**
+- **Parts B and C of Piece 40** (above).
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
   borders, accent colors in blue, green, red, gold/brass, and black ("burnt wood"). This
   is real visual design work (textures, border art, probably a different typeface), not
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
-  **after every feature/file/database reorg piece below is done**, not incrementally
-  per piece. **This is now the only remaining item on this list** — the
-  structural/domain reorg itself is done.
-- **A manual browser click-through of Pieces 35–39** — verification so
+  **after every feature/file/database reorg piece is done**, not incrementally per
+  piece.
+- **A manual browser click-through of Pieces 35–40** — verification so
   far is automated (Flask test-client route sweeps + POST flows); no one has
   clicked through the new household-member/dashboard/access/inventory/
   requirements UI in a real browser yet.
