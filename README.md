@@ -315,9 +315,9 @@ income/expense ledger above, both visible to everyone.
   stage/county/overdue/contract, drill into one project, list
   tasks, look up staff) rather than inventing details.
 - **Permission-scoped & private.** It only ever sees what the signed-in user is
-  already allowed to see (pricing/contract figures are withheld from those who
-  can't view pricing; pay is never exposed). **Online-only** — nothing is sent
-  until a question is asked, and nothing is sent while offline.
+  already allowed to see (contract totals are visible to every signed-in member,
+  same as the dashboard; pay/payroll doesn't exist in this app). **Online-only**
+  — nothing is sent until a question is asked, and nothing is sent while offline.
 - Setup is below under **[Setting up the AI Assistant](#setting-up-the-ai-assistant)**.
 
 ### Help & records
@@ -370,6 +370,24 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.11** — bugfix/cleanup, not a removal: the same audit that drove v0.9/v0.10
+  found `templates/work_bag_photos.html` referenced an undefined template
+  variable, hard-crashing (500) the Photos step of every Work Bag task. The
+  leftover "pay type" time-segment widget it was part of also fed a `segments`
+  field the backend never read — the route only ever consumed a plain `hours`
+  number — so it was both broken and, even patched, silently discarded. Replaced
+  it with the single plain-number hours field the route already expects.
+  `templates/submissions.html` had the matching dead "Time (by pay type)" column
+  (always rendered "—") and stale copy about "pending payroll... for Finance to
+  approve" — neither payroll nor a Finance role exist here; dropped the column,
+  reworded the copy. **The approval gate itself is unchanged and intentional**:
+  Work Bag submissions from Assistants/Children still land as a Pending
+  `field_submissions` row and nothing is written permanently until a Parent/Admin
+  approves it. Also fixed a stale AI Assistant doc claim left over from v0.10
+  about pricing being gated by permission — contract figures are visible to
+  everyone now that the Cost Model's margin breakdown is gone. Third and last of
+  the three-part audit cleanup; only the deferred visual theme pass remains.
 
 - **v0.10** — cut two more solar-only subsystems found by the same audit: the
   **Loads & Sizing** electrical calculator (PV/battery/inverter sizing, a

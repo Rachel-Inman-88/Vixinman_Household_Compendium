@@ -271,15 +271,29 @@ at a time; being landed as three parts of **Piece 40**:
   tables/columns correctly dropped), a test-client cycle (contract save
   without GRT, all four removed routes 404, project detail renders clean),
   and a 40-route sweep.
-- **Part C — fix a real Work Bag crash bug — not started.** Audit found
-  `templates/work_bag_photos.html` hard-crashes (500) on open, from an
-  undefined template variable left by dead pay-type UI. The submit→
-  Parent/Admin-approve gate itself is being **kept**, per the user — it's
-  wanted as real parental oversight for Assistant/Child Work Bag
-  submissions, not solar-crew cruft to simplify away.
+- **Part C (v0.11) — fix a real Work Bag crash bug — done.**
+  `templates/work_bag_photos.html` hard-crashed (500) on open, from an
+  undefined `pay_types_js` template variable left by dead pay-type UI; the
+  `segments` array that UI built was never even read by
+  `complete_photo_task()` (it only ever consumed a plain `hours` value), so
+  the widget was both broken and, patched, silently discarded. Replaced with
+  the single plain-number hours field the route already expects.
+  `templates/submissions.html`'s matching dead "Time (by pay type)" column
+  (always rendered "—") and its stale "pending payroll... for Finance to
+  approve" copy were also cleaned up. The submit→Parent/Admin-approve gate
+  itself was **kept unchanged** per the user — it's wanted as real parental
+  oversight for Assistant/Child Work Bag submissions, not solar-crew cruft
+  to simplify away: a submission still lands as a Pending `field_submissions`
+  row and nothing is written permanently until an admin approves or rejects
+  it. Also fixed a stale AI Assistant README claim left over from Part B
+  about pricing being permission-gated (`can_see_pricing()` is gone; contract
+  figures are visible to everyone). Verified via compile, Jinja parse sweep,
+  fresh-DB boot, a test-client cycle (Photos screen renders instead of
+  500ing, an hours submission lands Pending without touching the task,
+  `approve_submission()` still flips the task to Done, `reject_submission()`
+  still discards it), and a 40-route sweep with zero 500s.
 
-**NOT done yet:**
-- **Part C of Piece 40** (above).
+This closes out the full three-part audit cleanup. **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
