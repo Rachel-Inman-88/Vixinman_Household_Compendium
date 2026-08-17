@@ -35,7 +35,6 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from bpmn_export import build_project_bpmn
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 from inventory_seed import INVENTORY_CATEGORY_SPECS
 from inventory_research import (
@@ -652,9 +651,6 @@ OLD_TO_NEW_STAGE = {
 }
 # Piece 10: per-project task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
-# Days between consecutive generated tasks when a target install date is
-# given — a rough schedule anchored on the Site Installation step.
-TASK_DUE_SPACING_DAYS = 2
 # Piece 20.1: a task's *default* deadline is 7 days after the previous step
 # was completed (for the very first step there's nothing completed yet, so it
 # counts from the day the steps are generated). When a step is marked Done we
@@ -781,7 +777,6 @@ ACTION_LABELS = {
     "backlog_start": "Start idea as a project", "backlog_delete": "Delete backlog idea",
     "new_employee": "Add employee", "edit_employee": "Edit employee",
     "delete_employee": "Delete employee", "upload_file": "Upload project document",
-    "generate_tasks": "Generate tasks from process",
     "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
     "set_task_due": "Change task due date", "set_ui_mode": "Change sizing view mode",
     "update_sizing": "Update system sizing",
@@ -5619,32 +5614,17 @@ def set_project_status(project_id):
             if not info["ready"]:
                 warn = " · ".join(info["pending"])
         db.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
-        # Piece 29.4: on a forward turnover, alert the stage's department(s).
+        # Piece 29.4: on a forward turnover, notify the household.
         moved_forward = (status != cur and status in STAGE_ORDER
                          and (cur not in STAGE_ORDER
                               or STAGE_ORDER.index(status) > STAGE_ORDER.index(cur)))
-        gen_added = 0
         if moved_forward:
             actor = current_user()
             notify_stage_turnover(db, project, status,
                                   exclude_id=actor["id"] if actor else None)
-            # Piece 31.5: auto-fill and assign the tasks the project just moved into,
-            # so the receiving department lands with its to-dos already populated.
-            # Only the entered stage's steps are generated (role-assigned, dated);
-            # existing tasks are skipped, so this never duplicates the manual
-            # "Generate tasks" button. Done has no work of its own.
-            if status != "Done":
-                job_row = fetch_project(project_id)  # re-read so scheduling sees new status
-                install_raw = (job_row["install_date"]
-                               if "install_date" in job_row.keys() else "") or ""
-                gen_added, _a, _s = _generate_project_tasks(
-                    db, job_row, install_raw, only_status=status)
         db.commit()
         if warn:
             flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
-        if gen_added:
-            flash(f"Auto-added {gen_added} {status} task"
-                  f"{'s' if gen_added != 1 else ''}, assigned by role where possible.")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -6073,116 +6053,6 @@ def tag_tasks_by_stage(db):
     db.execute("INSERT INTO meta (key, value) VALUES ('tasks_stage_tagged', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
-
-
-def _generate_project_tasks(db, project, install_date_raw="", only_status=None):
-    """Piece 31.5 (revised Piece 35): core of the task auto-generator —
-    materialize a project's process steps into To-do tasks, scheduled and
-    left unassigned (Piece 35 dropped role-based auto-assignment — a human
-    picks who does it), skipping steps already on the list (safe to re-run).
-    When `only_status` is given, only steps tagged for that pipeline stage
-    are inserted (used to auto-fill the stage a project just entered);
-    otherwise every actionable step is generated. Returns
-    (added, assigned, scheduled) — `assigned` is always 0 now, kept in the
-    return shape so call sites don't need to change. Does not commit."""
-    project_id = project["id"]
-    rules = db.execute("SELECT * FROM resource_rules").fetchall()
-    _xml, details = build_project_bpmn(project, match_rules(project, rules))
-
-    # Actionable workflow steps in order (no start/end events, gateways, or
-    # automatic system steps like "Compendium generates tasks" — those stay on the
-    # chart but never become a to-do).
-    task_steps = [
-        s for s in sorted(details.values(), key=lambda d: d["order"])
-        if not (s["kind"].endswith("Event") or s["kind"].endswith("Gateway"))
-        and s["kind"] != "serviceTask"
-        and (s["name"] or "").strip()
-    ]
-    # Optional schedule anchored on Site Installation.
-    base_date = None
-    raw_install = (install_date_raw or "").strip()
-    if raw_install:
-        try:
-            base_date = datetime.strptime(raw_install, "%Y-%m-%d").date()
-        except ValueError:
-            base_date = None
-    install_idx = next((i for i, s in enumerate(task_steps)
-                        if s["name"].strip().lower().startswith("site installation")),
-                       None)
-
-    existing = {r["title"].strip().lower() for r in db.execute(
-        "SELECT title FROM project_tasks WHERE project_id = ?", (project_id,)).fetchall()}
-    base = db.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_tasks WHERE project_id = ?",
-        (project_id,)).fetchone()[0]
-    # Default chain anchor: with no completed step yet, the first generated
-    # step is due 7 days out, the next 7 days after that, and so on. As steps
-    # actually get marked Done, set_task_status re-defaults the next open step
-    # to 7 days after that completion.
-    chain_start = datetime.now().date()
-    default_seq = 0
-    added = assigned = scheduled = 0
-    for pos, step in enumerate(task_steps):
-        # When filling a single stage, skip steps that belong to other stages —
-        # without touching the default-deadline chain for the ones we keep.
-        if only_status is not None and step.get("status", "") != only_status:
-            continue
-        title = step["name"].strip()
-        if title.lower() in existing:
-            continue
-        note = f"Process step · {step['lane']}" if step.get("lane") else "Process step"
-        assignee = None
-        due = ""
-        if base_date is not None and install_idx is not None:
-            offset = (pos - install_idx) * TASK_DUE_SPACING_DAYS
-            due = (base_date + timedelta(days=offset)).strftime("%Y-%m-%d")
-        else:
-            default_seq += 1
-            due = (chain_start + timedelta(
-                days=default_seq * TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
-        db.execute(
-            "INSERT INTO project_tasks"
-            " (project_id, household_member_id, title, status, due_date, notes, sort_order,"
-            "  pipeline_status, updated_at)"
-            " VALUES (?, ?, ?, 'To do', ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (project_id, assignee, title, due, note, base + added,
-             step.get("status", "")))
-        existing.add(title.lower())
-        added += 1
-        if assignee:
-            assigned += 1
-        if due:
-            scheduled += 1
-    return added, assigned, scheduled
-
-
-@app.route("/projects/<int:project_id>/tasks/generate", methods=["POST"])
-def generate_tasks(project_id):
-    """Pre-load a project's task list from its process: run the same per-project
-    BPMN the Process chart uses, then turn each workflow step (skipping
-    start/end events and gateways) into a To-do task, in order, left
-    unassigned. If a target install date is given, each task gets a due date
-    spaced around the Site Installation step. Skips steps already on the
-    list, so it's safe to re-run after the project's fields change."""
-    project = fetch_project(project_id)
-    db = get_db()
-    raw_install = request.form.get("install_date", "").strip()
-    added, assigned, scheduled = _generate_project_tasks(db, project, raw_install)
-    db.commit()
-    if added:
-        extra = []
-        if assigned:
-            extra.append(f"{assigned} auto-assigned by role")
-        if scheduled:
-            if raw_install:
-                extra.append(f"due dates set around {raw_install}")
-            else:
-                extra.append("default deadlines set 7 days apart")
-        detail = f" ({'; '.join(extra)})" if extra else ""
-        flash(f"Added {added} task{'s' if added != 1 else ''} from the project's process{detail}.")
-    else:
-        flash("No new tasks — the process steps are already on the list.")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
 def _redefault_next_due(db, project_id, completed_date):
@@ -6842,69 +6712,6 @@ def project_report(project_id):
         mimetype="text/plain",
         headers={"Content-Disposition":
                  f"attachment; filename=job_{project_id}_report.txt"},
-    )
-
-
-@app.route("/projects/<int:project_id>/bpmn")
-def project_bpmn(project_id):
-    """Download this project's process as a BPMN 2.0 file: the master
-    pipeline instantiated with the project's resolved permits and variables."""
-    project = fetch_project(project_id)
-    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    materials, files, materials_note, docs_note = project_progress_extras(project_id)
-    xml, _details = build_project_bpmn(project, match_rules(project, rules),
-                                   materials_note, docs_note)
-    return Response(
-        xml, mimetype="application/xml",
-        headers={"Content-Disposition":
-                 f"attachment; filename=job_{project_id}_process.bpmn"},
-    )
-
-
-def project_progress_extras(project_id):
-    """Materials and documents for a project, plus one-line summaries used
-    as annotations in the exported BPMN."""
-    db = get_db()
-    materials = db.execute(
-        "SELECT * FROM project_materials WHERE project_id = ? ORDER BY id", (project_id,)
-    ).fetchall()
-    files = db.execute(
-        "SELECT * FROM project_files WHERE project_id = ? ORDER BY id", (project_id,)
-    ).fetchall()
-    materials_note = ""
-    if materials:
-        counts = {}
-        for m in materials:
-            counts[m["status"]] = counts.get(m["status"], 0) + 1
-        breakdown = ", ".join(f"{n} {s}" for s, n in counts.items())
-        materials_note = f"Materials: {len(materials)} items — {breakdown}"
-    docs_note = ""
-    if files:
-        covered = len({f["rule_label"] for f in files if f["rule_label"]})
-        docs_note = (f"Documents on file: {len(files)}"
-                     + (f" ({covered} requirements covered)" if covered else ""))
-    return materials, files, materials_note, docs_note
-
-
-@app.route("/projects/<int:project_id>/bpmn/view")
-def project_bpmn_view(project_id):
-    project = fetch_project(project_id)
-    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    materials, files, materials_note, docs_note = project_progress_extras(project_id)
-    _xml, details = build_project_bpmn(project, match_rules(project, rules),
-                                   materials_note, docs_note)
-    steps = sorted(details.values(), key=lambda d: d["order"])
-    files_by_label = {}
-    for f in files:
-        if f["rule_label"]:
-            files_by_label.setdefault(f["rule_label"], []).append(f)
-    material_counts = {}
-    for m in materials:
-        material_counts[m["status"]] = material_counts.get(m["status"], 0) + 1
-    return render_template(
-        "bpmn_view.html", project=project, steps=steps,
-        files_by_label=files_by_label, materials=materials,
-        material_counts=material_counts,
     )
 
 

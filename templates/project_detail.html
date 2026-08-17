@@ -28,7 +28,6 @@
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
   <a href="{{ url_for('project_calendar_ics', project_id=project['id']) }}" class="btn btn-secondary"
      title="Download this project's due dates + install date to import into your calendar">📅 Calendar</a>
-  <a href="{{ url_for('project_bpmn_view', project_id=project['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
   <a href="{{ url_for('edit_project', project_id=project['id']) }}" class="btn">✎ Edit project</a>
   <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"
      style="margin-left:auto;">← Dashboard</a>
@@ -456,15 +455,6 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
-    <form method="post" action="{{ url_for('generate_tasks', project_id=project['id']) }}"
-          style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;"
-          onsubmit="return confirm('Add this project’s process steps as tasks? Steps already on the list are skipped.');">
-      <label style="margin:0; font-size:0.8rem; color:var(--muted);"
-             title="Optional: gives each generated task a due date, spaced around the install">
-        Install date <input type="date" name="install_date" style="padding:0.3rem;">
-      </label>
-      <button type="submit" class="btn btn-secondary">⚙ Generate from process</button>
-    </form>
   </div>
   {% if tasks %}
   <div style="overflow-x:auto;">
