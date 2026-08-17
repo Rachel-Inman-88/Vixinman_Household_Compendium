@@ -91,27 +91,12 @@ can confirm a pull/update took effect.
   dropdown: none / Verify / Unverified) — add or remove the callout on any rule
   at will.
 - **Project edit history / versioning** for recordkeeping.
-- **Loads & Sizing** (`/projects/<id>/loads`): electrical loads and system sizing on
-  its own page. Electric loads are **not** entered at project creation (they aren't
-  known until the walkthrough) — they're recorded here during the proposal, and
-  the **Planning stage can't advance until loads are recorded**. It's a
-  **Planning-phase tool**: once the contract is signed (the project moves past
-  Planning) the editor **locks** — the recorded figures stay visible here and in
-  Design, but no one edits them (enforced in the UI and on the server).
-  - **Sales / Designer view modes** — a per-session toggle (defaults to
-    Designer); a view preference, not access control.
-  - **Room-aware appliance picker**: each survey room has a "type" (Kitchen,
-    Garage…) so its picker defaults to that room's appliances, with a search box
-    over the whole catalog and a **Custom** toggle for off-catalog items.
-  - **Appliance-era tags** are colour-coded — 🟢 Modern / 🟠 Vintage.
-  - **Component auto-suggest**: once the survey is recorded, Designer mode reads
-    the live inventory specs and proposes the components that fit — **PV modules**
-    (by nameplate watts), **batteries** (by usable kWh), and the **inverter** (by
-    rated power) — ranked with a Recommended pick plus alternates, each one-click
-    addable to the bill of materials at the sized quantity.
-- **Calculator Catalog** (🗄 Databases → Calculator Catalog): the appliance +
-  component reference data that drives the load survey and the BOM/sizing picker;
-  editing it applies everywhere immediately.
+- **Electric loads** is a plain free-text field on the project (e.g. "3-ton AC,
+  well pump, shop sub-panel") — the **Planning stage can't advance until it's
+  recorded**. (The structured PV/battery/inverter electrical-sizing calculator
+  that used to live here — a per-project load survey, a bill of materials, an
+  appliance/component catalog — was solar-installation-specific and has been
+  cut entirely.)
 - **Materials lists** per project (status: Needed → Quoted → Ordered → Backordered →
   Received → On hand → Installed) and **document upload/storage** with
   per-requirement filing coverage. The project's **Requirements tab** leads with
@@ -188,8 +173,7 @@ can confirm a pull/update took effect.
 - **Packing list**: each project in the Work Bag carries a collapsible **📦 Packing
   list** of its materials (item, qty, status) — colour-coded by readiness (on
   hand / received vs. still-needed vs. backordered) — so installers can pack the
-  truck before they leave. (Named "Packing", not "Load", to keep it distinct
-  from the electrical **Loads & Sizing** tool.)
+  truck before they leave.
 - **Field notes**: a standard **📝 Project notes** box in the Work Bag lets crews jot
   free-form notes about a project (access details, on-site changes, callbacks). Each
   note is **individually timestamped** (the same clock as the audit log) with the
@@ -253,11 +237,10 @@ can confirm a pull/update took effect.
   fit household scale.)
 - **Nav grouping**: the reference/data pages — **Projects, Backlog, Household
   Files, External Helpers, Requirements Editor, Requirements Library,
-  Inventory, Calculator Catalog**, plus (admin-only) **Cost model & finance**
-  and **Closed projects** — are consolidated under a single **🗄 Databases**
-  dropdown; **Log / Trash / Access** sit under a **🔧 Admin** dropdown. Each
-  grouped dropdown shows only the items the user may reach and collapses to a
-  plain link when only one applies.
+  Inventory**, plus (admin-only) **Closed projects** — are consolidated under a
+  single **🗄 Databases** dropdown; **Log / Trash / Access** sit under a
+  **🔧 Admin** dropdown. Each grouped dropdown shows only the items the user
+  may reach and collapses to a plain link when only one applies.
 - **Permissions**: a flat **`is_admin`** flag — admins get every tool except
   **Delete**, which always needs an explicit grant even for an admin.
   Non-admins get only what's individually checked off for them on the
@@ -301,42 +284,25 @@ can confirm a pull/update took effect.
   Income/Outstanding, Bill → Expense/Outstanding, Receipt → Expense/Paid, all
   still editable). The Billing tab shows a **paperwork-on-file** tally (count +
   total for each type).
-- **Payments table** on the Finance dashboard: every active project with Contract /
-  Collected / Outstanding / Expenses / Net and a grand-total row.
-- **NM gross-receipts-tax rate**: an optional per-project GRT rate, settable on the
-  Billing tab, for projects where receipts are taxable (defaults to 0% for the solar
-  deduction). Not tied to any invoice-generation flow — a plain rate field.
+- **Payments table** on the shared dashboard: every active project with Contract /
+  Collected / Outstanding / Expenses / Net and a grand-total row, visible to every
+  signed-in household member.
+- **Money formatting**: dollar amounts show a **thousands separator** everywhere
+  (a comma appears for amounts ≥ $1,000).
 
 Customer-facing invoice generation and the project-transactions QuickBooks export
 were removed (Piece 33, household reorg) — this app manages one household
-directly, so there's no customer to invoice. The plain income/expense ledger
-above still tracks project budgets; only the customer-invoice presentation
-layer is gone. **Payroll — pay types, overtime, pay periods, timesheets, the
-payroll reminder, and its own QuickBooks export — was cut entirely** (Piece
-35): a household doesn't run payroll. Field hours logged from the Work Bag are
-now a single self-reported number, display-only, held for approval (see
-Pipeline, tasks & scheduling above) with no pay calculation behind it.
-- **Cost Model Defaults** (🗄 Databases → Cost model & finance, Admin only):
-  the estimating template behind project pricing — six editable sections
-  (**Equipment Inventory, Equipment Non-Inventory, Labor, Travel, Adders,
-  Overhead**), each line **qty × cost × (1 + markup)**, add/edit/delete-able.
-  Equipment-Inventory markups price the project BOM; **Overhead (G&A)** applies
-  on the whole subtotal. The page also holds the **NM county GRT rate table**
-  (all 33 counties; a project auto-fills its GRT from its install county,
-  overridable for the solar deduction) and shows a default "standard project"
-  rollup.
-- **Per-project estimate** (📐 Estimate tab, Admin only): builds a project's
-  price against the cost model — one-click **prefill** pulls the default Labor /
-  Travel / Adders / Non-Inventory lines, quantities are set per line, equipment
-  comes from the BOM, Overhead applies on top, and a **suggested price** can be
-  pushed straight to the contract total.
-- **Pricing breakdown** (on the Billing tab): an internal cost-vs-margin summary
-  (marked-up equipment, estimate sections, overhead, suggested price) visible to
-  **admins only** — deliberately narrow, since it exposes cost and margin.
-  Change-order materials added after the deposit bill at the **marked-up
-  customer price**.
-- **Money formatting**: dollar amounts show a **thousands separator** everywhere
-  (a comma appears for amounts ≥ $1,000).
+directly, so there's no customer to invoice. **Payroll — pay types, overtime,
+pay periods, timesheets, the payroll reminder, and its own QuickBooks export —
+was cut entirely** (Piece 35): a household doesn't run payroll. Field hours
+logged from the Work Bag are a single self-reported number, held for a
+Parent/Admin's approval, with no pay calculation behind it. **The Cost Model
+estimator, the NM gross-receipts-tax rate table, and the per-project Estimate
+tab were cut entirely** (Piece 40): all of it priced a job for a paying
+customer — equipment markup percentages, a 33-county tax table, an internal
+cost-vs-margin breakdown — with no household equivalent. What's left is
+exactly what a household budget needs: a plain contract-total field plus the
+income/expense ledger above, both visible to everyone.
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
@@ -404,6 +370,22 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.10** — cut two more solar-only subsystems found by the same audit: the
+  **Loads & Sizing** electrical calculator (PV/battery/inverter sizing, a
+  per-project load survey, a bill of materials, its own appliance/component
+  catalog) and the **Cost Model / GRT tax pricing** system (an Equipment/
+  Labor/Travel/Adders/Overhead estimator, a 33-county NM tax table, a
+  cost-vs-margin breakdown). Both priced or sized a job for the original
+  solar business with no household equivalent — `HANDOFF.md`'s own plan
+  already said to cut the pricing machinery down to plain budget-vs-actual,
+  just never finished it. ~2,300 lines gone across `app.py`, `schema.sql`,
+  and three deleted templates (`project_loads.html`, `catalog.html`,
+  `finance_settings.html`); 10 tables dropped. `electric_loads` stays as a
+  plain text field (still gates the Planning stage); the Billing tab's
+  contract-total field and the income/expense ledger — the actual
+  budget-vs-actual tracking — are untouched. Second of three audit parts;
+  a Work Bag bugfix is next.
 
 - **v0.9** — cut the BPMN task-generation engine (`bpmn_export.py`), found by a
   full-repo staleness audit: it was the only way any project got tasks, hardcoding

@@ -243,10 +243,34 @@ at a time; being landed as three parts of **Piece 40**:
   test-client cycle (zero auto-generated tasks on project creation, manual
   add works, stage advance succeeds with no generation flash, all three
   removed routes 404), and a 42-route sweep.
-- **Part B — cut Loads & Sizing + Cost Model/GRT tax — not started.** Both
-  price/size a job for the original solar business; `HANDOFF.md`'s own
+- **Part B (v0.10) — cut Loads & Sizing + Cost Model/GRT tax — done.** Both
+  priced/sized a job for the original solar business; this doc's own
   "Billing → Project budget tracking" plan (below) already said to cut the
-  cost-model/GRT machinery down to plain budget-vs-actual — never done.
+  cost-model/GRT machinery down to plain budget-vs-actual — never done until
+  now. Dropped 10 tables (`appliance_catalog`/`component_catalog`,
+  `project_load_rooms`/`project_load_items`/`project_bom`/`project_sizing`,
+  `county_tax_rates`/`markup_categories`/`cost_model_lines`/
+  `project_estimate_lines`) and the `grt_rate`/`grt_amount`/
+  `deposit_bom_cutoff_id`/`travel_miles` columns they fed, via a
+  meta-guarded migration; deleted `loads_seed.py`,
+  `templates/project_loads.html`, `catalog.html`, `finance_settings.html`
+  outright (~2,300 lines total). `can_see_pricing()` is gone too — it only
+  gated the margin breakdown being cut; contract totals were already
+  visible to everyone on the unified dashboard. Kept: the plain
+  `electric_loads` text field (still gates Planning), the Billing tab's
+  contract-total field, and the `project_transactions` ledger — the actual
+  budget-vs-actual tracking. Also fixed two `ensure_columns()` calls that
+  would have crashed a fresh install by referencing now-gone tables, and
+  stripped a UTF-8 BOM that had crept into `app.py`/`schema.sql` from an
+  earlier PowerShell edit (broke `schema.sql`'s `executescript()`
+  outright — caught by the fresh-DB-boot check). Also swept
+  `templates/help.html`'s Loads/Sizing/BOM/Cost-Model section (cut
+  entirely, sections renumbered) and the same stale department/GM
+  references already fixed in `README.md` this session. Verified via
+  compile, Jinja parse sweep, fresh-DB boot, a migration test (legacy
+  tables/columns correctly dropped), a test-client cycle (contract save
+  without GRT, all four removed routes 404, project detail renders clean),
+  and a 40-route sweep.
 - **Part C — fix a real Work Bag crash bug — not started.** Audit found
   `templates/work_bag_photos.html` hard-crashes (500) on open, from an
   undefined template variable left by dead pay-type UI. The submit→
@@ -255,7 +279,7 @@ at a time; being landed as three parts of **Piece 40**:
   submissions, not solar-crew cruft to simplify away.
 
 **NOT done yet:**
-- **Parts B and C of Piece 40** (above).
+- **Part C of Piece 40** (above).
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
