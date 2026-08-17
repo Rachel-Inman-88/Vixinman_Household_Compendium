@@ -56,19 +56,14 @@
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">3 · Submit &amp; mark done</h2>
-  <p class="muted" style="margin-top:0;">Add any notes and the time it took (split by
-  pay type if the project needs it), then submit — it goes to your supervisor to approve.</p>
+  <p class="muted" style="margin-top:0;">Add any notes and the time it took, then submit —
+  it's held for an admin to approve.</p>
   <form method="post" action="{{ url_for('complete_photo_task', task_id=task['id']) }}" id="completeform">
-    <input type="hidden" name="segments" id="segments-json" value="[]">
     <div class="form-grid">
       <div class="field wide"><label>Notes</label><input name="notes" placeholder="anything the office should know"></div>
       <div class="field"><label>Work date</label><input type="date" name="work_date" value="{{ today }}"></div>
-    </div>
-    <div style="margin-top:0.4rem; padding:0.6rem 0.7rem; background:var(--bg); border-radius:8px;">
-      <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.45rem;">⏱ Time it took <span class="muted" style="font-weight:400;">(optional)</span></div>
-      <div id="segwrap"></div>
-      <button type="button" id="addseg" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem; margin:0.1rem 0 0.5rem;">＋ Add time type</button>
-      <div id="timeline"></div>
+      <div class="field"><label>Hours <span class="muted">(optional)</span></label>
+        <input type="number" name="hours" step="0.25" min="0" placeholder="0"></div>
     </div>
     <div class="actions" style="margin-top:0.7rem;">
       <button type="submit" name="action" value="done" class="btn">✓ Submit &amp; mark done</button>
@@ -87,73 +82,6 @@
         if (input.files && input.files.length) form.submit();
       });
     }
-
-    // Time segments + timeline (mirrors the per-project task form).
-    var PAY_TYPES = {{ pay_types_js | tojson }};
-    var PALETTE = ["#1a6e3c", "#b45309", "#1d4ed8", "#6d28d9", "#0891b2", "#be185d", "#4d7c0f", "#9a3412"];
-    var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]); }); };
-    var segs = [{ pay_type_id: PAY_TYPES.length ? PAY_TYPES[0].id : null, hours: "" }];
-    var wrap = document.getElementById("segwrap"), timeline = document.getElementById("timeline");
-    function payName(id) { var p = PAY_TYPES.find(function (x) { return x.id === id; }); return p ? p.name : ""; }
-    function payColor(id) { var i = PAY_TYPES.findIndex(function (x) { return x.id === id; }); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length]; }
-    function renderTimeline() {
-      var valid = segs.filter(function (s) { return Number(s.hours) > 0; });
-      var total = valid.reduce(function (a, s) { return a + Number(s.hours); }, 0);
-      timeline.innerHTML = "";
-      if (total <= 0) { timeline.innerHTML = '<span class="muted" style="font-size:0.8rem;">Enter the time it took — it shows here as a timeline.</span>'; return; }
-      var bar = document.createElement("div");
-      bar.style.cssText = "display:flex; height:26px; border-radius:6px; overflow:hidden; border:1px solid var(--border);";
-      valid.forEach(function (s) {
-        var seg = document.createElement("div");
-        var pct = Number(s.hours) / total * 100;
-        seg.style.cssText = "flex:" + Number(s.hours) + " 0 0; background:" + payColor(s.pay_type_id) + "; color:#fff; font-size:0.72rem; display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden;";
-        seg.title = payName(s.pay_type_id) + ": " + s.hours + "h";
-        seg.textContent = pct > 12 ? (s.hours + "h") : "";
-        bar.appendChild(seg);
-      });
-      timeline.appendChild(bar);
-      var legend = document.createElement("div");
-      legend.style.cssText = "display:flex; gap:0.7rem; flex-wrap:wrap; margin-top:0.3rem;";
-      legend.innerHTML = valid.map(function (s) {
-        return '<span style="font-size:0.75rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + payColor(s.pay_type_id) + ';margin-right:3px;vertical-align:middle;"></span>' + esc(payName(s.pay_type_id)) + ' ' + esc(s.hours) + 'h</span>';
-      }).join("") + ' <span class="muted" style="font-size:0.75rem;">· total ' + total.toFixed(2) + 'h</span>';
-      timeline.appendChild(legend);
-    }
-    function build() {
-      wrap.innerHTML = "";
-      segs.forEach(function (s, idx) {
-        var row = document.createElement("div");
-        row.style.cssText = "display:flex; gap:0.4rem; align-items:center; margin-bottom:0.35rem;";
-        var sel = document.createElement("select");
-        sel.style.cssText = "padding:0.25rem; flex:1; min-width:7rem;";
-        sel.innerHTML = PAY_TYPES.map(function (p) { return '<option value="' + p.id + '"' + (p.id === s.pay_type_id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join("");
-        sel.addEventListener("change", function () { s.pay_type_id = Number(sel.value); renderTimeline(); });
-        var hrs = document.createElement("input");
-        hrs.type = "number"; hrs.step = "0.25"; hrs.min = "0"; hrs.placeholder = "hrs"; hrs.value = s.hours;
-        hrs.style.cssText = "width:5rem; padding:0.25rem;";
-        hrs.addEventListener("input", function () { s.hours = hrs.value; renderTimeline(); });
-        row.appendChild(sel); row.appendChild(hrs);
-        if (segs.length > 1) {
-          var rm = document.createElement("button");
-          rm.type = "button"; rm.className = "btn btn-secondary"; rm.textContent = "✕";
-          rm.style.cssText = "padding:0 0.5rem; font-size:0.8rem;";
-          rm.addEventListener("click", function () { segs.splice(idx, 1); build(); renderTimeline(); });
-          row.appendChild(rm);
-        }
-        wrap.appendChild(row);
-      });
-    }
-    document.getElementById("addseg").addEventListener("click", function () {
-      segs.push({ pay_type_id: PAY_TYPES.length ? PAY_TYPES[0].id : null, hours: "" });
-      build(); renderTimeline();
-    });
-    // On submit, serialize the valid segments into the hidden field.
-    document.getElementById("completeform").addEventListener("submit", function () {
-      var valid = segs.filter(function (s) { return Number(s.hours) > 0 && s.pay_type_id; })
-        .map(function (s) { return { pay_type_id: s.pay_type_id, hours: Number(s.hours) }; });
-      document.getElementById("segments-json").value = JSON.stringify(valid);
-    });
-    build(); renderTimeline();
   })();
 </script>
 {% endblock %}

@@ -5167,7 +5167,7 @@ def task_photos(task_id):
 def complete_photo_task(task_id):
     """Piece 28.0: finish a photo step from its dedicated screen — record the
     photos already uploaded plus (optionally) the time it took, submit the task
-    for the supervisor's approval, and return to the project's Work Bag page."""
+    for an admin's approval, and return to the project's Work Bag page."""
     user = current_user()
     if user is None:
         abort(403)

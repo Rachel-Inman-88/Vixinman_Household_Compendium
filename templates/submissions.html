@@ -33,17 +33,12 @@ rejecting discards it. Nothing here counts in the system until you approve it.</
     {% set items = items_by_sub.get(s["id"], []) %}
     {% if items %}
     <table>
-      <thead><tr><th>Task</th><th>Marked</th><th>Time (by pay type)</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Task</th><th>Marked</th><th>Notes</th></tr></thead>
       <tbody>
         {% for it in items %}
         <tr>
           <td>{{ it["task_title"] }}</td>
           <td><span class="badge {{ 'danger' if it['new_status'] == 'Blocked' else '' }}">{{ it["new_status"] }}</span></td>
-          <td>
-            {% if it["segments"] %}
-              {% for seg in it["segments"] %}<span class="badge neutral" style="margin:0 0.15rem 0.15rem 0;">{{ seg["pay_type_name"] }}: {{ "%.2f"|format(seg["hours"]|float) }}h</span>{% endfor %}
-            {% else %}<span class="muted">—</span>{% endif %}
-          </td>
           <td class="muted">{{ it["new_notes"] }}</td>
         </tr>
         {% endfor %}
@@ -54,8 +49,8 @@ rejecting discards it. Nothing here counts in the system until you approve it.</
     {% endif %}
     {% if s["status"] == "Pending" %}
     <p class="muted" style="margin:0.6rem 0 0; font-size:0.83rem;">Approving confirms the
-    task changes and posts the time above as <strong>pending payroll</strong> (by pay type)
-    for Finance to approve. The "confirm hours" total is the field-work summary on record.</p>
+    task changes and posts the time above as the field-work summary on record. The
+    "confirm hours" total is what gets recorded.</p>
     <form method="post" action="{{ url_for('approve_submission', sub_id=s['id']) }}"
           style="margin-top:0.5rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">
       <div class="field" style="max-width:12rem;">
