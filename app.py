@@ -421,7 +421,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.21"
+VERSION = "0.22"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2669,7 +2669,8 @@ def appointment_delete(appt_id):
 def wishlist_page():
     """The Wishlist — filter by whose list (mine/all/unassigned/a person)
     and by pending-vs-all (approved/rejected items drop off the default
-    pending view)."""
+    pending view). ?prefill_item=<id> pre-fills the add form from an
+    Inventory item's "🎁 Add to wishlist" quick-link."""
     db = get_db()
     me = current_user()
     who = request.args.get("who", "mine" if me else "all")
@@ -2708,10 +2709,20 @@ def wishlist_page():
     edit_item = db.execute(
         "SELECT * FROM wishlist_items WHERE id = ?", (edit_id,)
     ).fetchone() if edit_id else None
+    prefill = None
+    prefill_item_id = request.args.get("prefill_item", type=int)
+    if prefill_item_id and not edit_item:
+        src = db.execute("SELECT * FROM inventory_items WHERE id = ?",
+                          (prefill_item_id,)).fetchone()
+        if src:
+            label = (f"{src['make']} {src['model']}".strip()
+                      or src["category"] or "item")
+            prefill = {"title": f"More {label}",
+                       "inventory_item_id": src["id"]}
     return render_template(
         "wishlist.html", items=items, employees=employees,
         inventory_items=inventory_items, projects=projects, contacts=contacts,
-        who=who, show=show, edit_item=edit_item)
+        who=who, show=show, edit_item=edit_item, prefill=prefill)
 
 
 def _wishlist_form_values():

@@ -32,8 +32,12 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <a href="#rules">4. Requirements engine (certs, permits &amp; recurring paperwork)</a>
     <a href="#tasks">5. Tasks &amp; the field Work Bag</a>
     <a href="#boards-help">5b. Boards (stand-alone to-dos)</a>
+    <a href="#chores-help">5c. Chores (recurring to-dos)</a>
+    <a href="#appointments-help">5d. Appointments (dates &amp; scheduling)</a>
     <a href="#finance">6. Billing</a>
-    <a href="#inventory">7. Inventory</a>
+    <a href="#budget-help">6b. Household Budget</a>
+    <a href="#contacts-help">6c. Contacts (people &amp; organizations)</a>
+    <a href="#inventory">7. Inventory &amp; Wishlist</a>
     <a href="#people">8. People, roles &amp; permissions</a>
     <a href="#notifications">9. Notifications</a>
     <a href="#managers">10. For admins</a>
@@ -101,6 +105,11 @@ button below isn't visible to you, you may not have access to it (ask an admin).
   <details><summary>Where do cancelled projects go?</summary>
     <p>Nowhere is deleted. An admin can review them under <strong>🗄 Databases → Closed projects</strong> (reason,
     who/when, contract) with one-click Reopen, alongside completed projects.</p></details>
+  <details><summary>What are Category and Subcategory for a project?</summary>
+    <p>Every project picks a <strong>Category</strong> — <strong>Home Improvement</strong> (Building, Landscaping,
+    Gardening, Maintenance &amp; Repair) or <strong>Personal Improvement</strong> (Education, Health, Habit,
+    Relationship, Misc) — and a matching <strong>Subcategory</strong>. The Subcategory list narrows automatically
+    to match whichever Category you pick.</p></details>
   <details><summary>Who gets told when a project moves to a new stage?</summary>
     <p>Every household member with a login gets an inbox notification. Your copy clears the first time you
     open it (or open the project).</p></details>
@@ -162,6 +171,41 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <p>Yes — open the board any time and add another note; the log keeps every entry with author and timestamp.</p></details>
 </div>
 
+<!-- 5c -->
+<div class="card" id="chores-help">
+  <h2>5c. Chores — recurring household to-dos</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;"><strong>🔁 Chores</strong> are repeating to-dos — dishes, trash, laundry —
+  assigned to a household member on a repeating schedule, different from Boards' one-off to-dos.</p>
+  <h3>Tutorial — add a chore</h3>
+  <ol class="steps">
+    <li>Open <strong>🔁 Chores</strong> and use <strong>＋ New chore</strong> — give it a title, who it's assigned to, and how often it repeats.</li>
+    <li>Mark it <strong>✓ Done</strong> when finished — a recurring chore reschedules itself for the next occurrence automatically.</li>
+  </ol>
+  <details><summary>Where do I see chores assigned to me?</summary>
+    <p>Your dashboard's <strong>🔁 My chores</strong> card, and the <strong>Mine</strong> filter on the Chores page.</p></details>
+</div>
+
+<!-- 5d -->
+<div class="card" id="appointments-help">
+  <h2>5d. Appointments — dates &amp; scheduling</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;"><strong>📅 Appointments</strong> track one-off or recurring dates and
+  times — doctor visits, service calls, anything that belongs on a calendar.</p>
+  <h3>Tutorial — add an appointment</h3>
+  <ol class="steps">
+    <li>Open <strong>📅 Appointments</strong> and use <strong>＋ New appointment</strong> — set a title, date, optional
+    time, who it's for, and optionally a repeating schedule.</li>
+    <li>Link it to a <strong>Contact</strong> (e.g. the dentist's office) if it's with someone in your Contacts list
+    — or start it directly from a contact's <strong>＋ Add appointment</strong> quick-link.</li>
+    <li>Mark it <strong>✓ Done</strong> once it's passed, or let a recurring one roll to its next date automatically.</li>
+  </ol>
+  <details><summary>Can I see my appointments in an outside calendar app?</summary>
+    <p>Yes — your dashboard's <strong>📅 Upcoming appointments</strong> card links to your personal calendar feed
+    (<code>.ics</code>), which you can subscribe to from Google Calendar, Apple Calendar, or Outlook alongside your
+    chores and requirement due dates.</p></details>
+</div>
+
 <!-- 6 -->
 <div class="card" id="finance">
   <h2>6. Billing</h2>
@@ -177,9 +221,50 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     as everything else.</p></details>
 </div>
 
+<!-- 6b -->
+<div class="card" id="budget-help">
+  <h2>6b. Household Budget — expenses, income &amp; receipts</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;"><strong>💵 Budget</strong> tracks whole-household money — groceries,
+  utilities, subscriptions — separate from a project's own <strong>Billing</strong> tab, which stays project-only.</p>
+  <h3>Tutorial — set a budget and log an expense</h3>
+  <ol class="steps">
+    <li>Open <strong>💵 Budget</strong> and add a <strong>category</strong> with a monthly target amount.</li>
+    <li>Log income/expenses as they happen — category, amount, date, optionally a <strong>Contact</strong> (who you
+    paid) and a photo of the receipt.</li>
+    <li>The month's summary shows actual spend against each category's target, with a bar that turns red once
+    you're over.</li>
+  </ol>
+  <details><summary>Does this replace a project's Billing tab?</summary>
+    <p>No — a project's contract, deposits, and expenses stay exactly as they were on its own <strong>Billing</strong>
+    tab. Household Budget is a separate, whole-house ledger for everyday spending that isn't tied to any one
+    project.</p></details>
+</div>
+
+<!-- 6c -->
+<div class="card" id="contacts-help">
+  <h2>6c. Contacts — people &amp; organizations outside the household</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  <p class="muted" style="margin-top:0;"><strong>🧰 Contacts</strong> (under 🗄 Databases) covers both individual
+  helpers (a plumber, a babysitter) and <strong>organizations</strong> you deal with (a subscription service, a
+  co-op, a utility) — each with its own relevant fields.</p>
+  <h3>Tutorial — add an organization</h3>
+  <ol class="steps">
+    <li>Open <strong>🧰 Contacts → ＋ New contact</strong> and set <strong>Type</strong> to
+    <strong>Organization</strong>.</li>
+    <li>Fill in the organization-specific fields — website, account number, contact person, and a renewal date if
+    it's a subscription.</li>
+    <li>Use the <strong>＋ Add appointment</strong> link on the contact's row to schedule something with them
+    directly.</li>
+  </ol>
+  <details><summary>Can I still add a plain person, like a handyman?</summary>
+    <p>Yes — set <strong>Type</strong> to <strong>Person</strong> instead; you get the original, simpler field set
+    (name, phone, specialty, notes).</p></details>
+</div>
+
 <!-- 7 -->
 <div class="card" id="inventory">
-  <h2>7. Inventory</h2>
+  <h2>7. Inventory &amp; Wishlist</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <h3>Tutorial — add an item</h3>
   <ol class="steps">
@@ -191,6 +276,20 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <p>The household's inventory starts empty — add items, tools, and vehicles as you actually
     acquire them. Each item just tracks how many you have; there's no stock ledger or
     procurement workflow behind it.</p></details>
+  <h3>Tutorial — ask for more of something (Wishlist)</h3>
+  <ol class="steps">
+    <li>From <strong>📦 Inventory</strong>, click the <strong>🎁</strong> next to any item to ask for more of it —
+    or use the <strong>🎁 Wishlist</strong> button to add something new, optionally linked to a Project or a
+    Contact.</li>
+    <li>It sits <strong>Pending</strong> until a parent/admin <strong>Approves</strong> or <strong>Rejects</strong>
+    it.</li>
+  </ol>
+  <details><summary>Does approving a wishlist item buy it or add it to Inventory automatically?</summary>
+    <p>No — approving is just the household's "go ahead" signal. Someone still adds it to Inventory (and logs the
+    expense in <strong>💵 Budget</strong>, if you're tracking that) once it's actually purchased.</p></details>
+  <details><summary>Whose wishlist is it?</summary>
+    <p>Everyone has their own list; the <strong>Mine / All</strong> filter switches between your list and the whole
+    household's. A parent can add something to a child's list directly by picking them under "For".</p></details>
 </div>
 
 <!-- 8 -->

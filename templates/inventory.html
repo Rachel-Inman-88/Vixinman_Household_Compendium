@@ -19,10 +19,13 @@
 
 <div class="toolbar">
   <h1>📦 Inventory</h1>
-  <span class="muted" style="font-size:0.9rem;">{{ item_total }} item{{ "s" if item_total != 1 }}</span>
+  <div style="display:flex; align-items:center; gap:0.7rem;">
+    <span class="muted" style="font-size:0.9rem;">{{ item_total }} item{{ "s" if item_total != 1 }}</span>
+    <a href="{{ url_for('wishlist_page') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🎁 Wishlist</a>
+  </div>
 </div>
 <p class="muted" style="margin-top:0;">Household stock, tools, and vehicles. Use
-<strong>＋ New item</strong> to add something.</p>
+<strong>＋ New item</strong> to add something, or 🎁 on a row to ask for more of it.</p>
 
 {# Piece 28.4: search across every inventory item (products, tools, vehicles). #}
 <div class="card" style="padding:0.7rem 0.9rem;">
@@ -69,7 +72,10 @@
           {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
           {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
         </td>
-        <td style="white-space:nowrap;">{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}</td>
+        <td style="white-space:nowrap;">
+          <a class="inv-edit" style="margin-right:0.35rem;" href="{{ url_for('wishlist_page', prefill_item=it['id']) }}#wishlist-form" title="Add to wishlist">🎁</a>
+          {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

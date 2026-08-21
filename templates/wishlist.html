@@ -79,7 +79,7 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
   <form method="post" action="{{ url_for('wishlist_edit', item_id=ew['id']) if ew else url_for('wishlist_new') }}">
     <div class="form-grid">
       <div class="field wide"><label for="title">Item *</label>
-        <input id="title" name="title" required value="{{ ew['title'] if ew else '' }}" placeholder="e.g. New bike helmet"></div>
+        <input id="title" name="title" required value="{{ ew['title'] if ew else (prefill['title'] if prefill else '') }}" placeholder="e.g. New bike helmet"></div>
       <div class="field"><label for="household_member_id">For</label>
         {% set default_for = ew['household_member_id'] if ew else (current_user['id'] if current_user else none) %}
         <select id="household_member_id" name="household_member_id">
@@ -95,10 +95,11 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
       <div class="field wide"><label for="description">Description (optional)</label>
         <input id="description" name="description" value="{{ ew['description'] if ew else '' }}"></div>
       <div class="field"><label for="inventory_item_id">More of this Inventory item (optional)</label>
+        {% set cur_item = ew['inventory_item_id'] if ew else (prefill['inventory_item_id'] if prefill else none) %}
         <select id="inventory_item_id" name="inventory_item_id">
           <option value="">— none —</option>
           {% for i in inventory_items %}
-          <option value="{{ i['id'] }}" {% if ew and ew['inventory_item_id'] == i['id'] %}selected{% endif %}>{{ (i['make'] ~ ' ' ~ i['model'])|trim or i['category'] }}</option>
+          <option value="{{ i['id'] }}" {% if cur_item == i['id'] %}selected{% endif %}>{{ (i['make'] ~ ' ' ~ i['model'])|trim or i['category'] }}</option>
           {% endfor %}
         </select></div>
       <div class="field"><label for="project_id">For a project (optional)</label>

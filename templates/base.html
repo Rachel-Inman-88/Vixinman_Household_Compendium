@@ -441,12 +441,11 @@
       <div id="navsearch-menu" class="navsearch-menu" style="display:none;"></div>
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
-    {# Order (left→right): Tasks · Boards · Chores · Appointments · Wishlist · Budget · Work Bag · Approvals · Household · Databases · Admin #}
+    {# Order (left→right): Tasks · Boards · Chores · Appointments · Budget · Work Bag · Approvals · Household · Databases (incl. Inventory/Wishlist) · Admin #}
     <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
     <a href="{{ url_for('boards_page') }}" style="font-size:0.9rem; font-weight:500;">📋 Boards</a>
     <a href="{{ url_for('chores_page') }}" style="font-size:0.9rem; font-weight:500;">🔁 Chores</a>
     <a href="{{ url_for('appointments_page') }}" style="font-size:0.9rem; font-weight:500;">📅 Appointments</a>
-    <a href="{{ url_for('wishlist_page') }}" style="font-size:0.9rem; font-weight:500;">🎁 Wishlist</a>
     <a href="{{ url_for('household_budget_page') }}" style="font-size:0.9rem; font-weight:500;">💵 Budget</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
@@ -461,6 +460,7 @@
         <a href="/rules">⚙️ Requirements Editor</a>
         <a href="/directory">📖 Requirements Library</a>
         <a href="/inventory">📦 Inventory</a>
+        <a href="{{ url_for('wishlist_page') }}">🎁 Wishlist</a>
         {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed projects</a>{% endif %}
       </div>
     </details>
