@@ -63,9 +63,11 @@ can confirm a pull/update took effect.
 
 ### Projects
 - **Project profiles** belong to the household directly, with full field capture,
-  including a **project category** (Home Improvement / Personal Improvement) and
-  free-text **project type**, so the Requirements Engine has household-appropriate
-  fields to match against.
+  including a **project category** (Home Improvement / Personal Improvement) and a
+  **Subcategory** dropdown that cascades from it — Home Improvement: Building,
+  Landscaping, Gardening, Maintenance & Repair; Personal Improvement: Education,
+  Health, Habit, Relationship, Misc — a fixed vocabulary (not free text) so the
+  Requirements Engine has something reliable to match rules against.
 - **Requirements Engine** — project selections → the certifications, permits, and
   prerequisites that apply, across two pages:
   - **Requirements Editor** (`/rules`): the editable catalog of resources (links,
@@ -392,6 +394,17 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.19** — replaced the Project form's free-text "Project type" field
+  with a fixed **Subcategory** dropdown that cascades from the chosen
+  Project category: Home Improvement → Building, Landscaping, Gardening,
+  Maintenance & Repair; Personal Improvement → Education, Health, Habit,
+  Relationship, Misc. No schema change (still the same `project_type`
+  column); a controlled vocabulary is what makes it useful for the
+  Requirements Engine to match rules against, unlike arbitrary typed text.
+  The Requirements Editor's "suggest a value" list and the Requirements
+  Library's type filter both switched from "whatever's been typed in real
+  projects so far" to the full fixed list.
 
 - **v0.18** — reworked **External Helpers into Contacts**: broadened to
   cover organizations (subscription services, co-ops, utilities), not just

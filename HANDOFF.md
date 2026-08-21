@@ -467,6 +467,26 @@ quick-add prefill works, the FK-delete block is correctly enforced then
 correctly lifted once unlinked), a 40-route sweep, and a migration run
 against the real household database.
 
+**Piece 44 (v0.19): fixed Project subcategories — done.** User wanted real
+base categories instead of the free-text "Project type" field. Added
+`PROJECT_SUBCATEGORIES` — Home Improvement → Building, Landscaping,
+Gardening, Maintenance & Repair; Personal Improvement → Education, Health,
+Habit, Relationship, Misc — replacing (not supplementing) the old free
+text. No schema change (`project_type` stays the same `TEXT` column);
+`PROJECT_FIELD_LABELS["project_type"]` relabeled "Project type" →
+"Subcategory". `project_form.html`'s free-text input became a `<select>`
+cascading via JS from the category select (same JS-driven-cascade pattern
+as Contacts' Type toggle, Piece 43, and the Requirements Editor's
+field-value datalist, Piece 41). `rules_page()`/`rule_directory()`'s
+"suggest a value" list switched from a live `SELECT DISTINCT` query to the
+full fixed vocabulary; the Requirements Library's type filter became a
+`<select>` narrowed to the current category filter. Verified via compile,
+Jinja parse sweep, a fresh-DB boot, a test-client cycle (both categories'
+subcategory sets render, a project saves with a real subcategory value, a
+new rule matching `project_type=Building` ties to a real project via
+`match_rules()`), a 40-route sweep, and a boot against the real household
+database.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
