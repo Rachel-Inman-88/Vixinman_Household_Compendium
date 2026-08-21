@@ -371,6 +371,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.14** — third of the Piece 41 cleanup: the Requirements Editor. Purged
+  all 145 `resource_rules` in the live database — every one matched a field
+  Part B just dropped (county/utility_provider/products/property_type/PV-
+  Generator-Battery variants), leftover NM-permit data from the original
+  solar business. The "…matches this value" field was blind free text (an
+  admin had to already know the exact stored string); it's now a datalist
+  that suggests real values — project_category's two fixed choices, or
+  whatever's already in use for project_type/site_location. Rebuilt the
+  Requirements Library's (`/directory`) filter bar around the new minimal
+  field set (category + type) in place of the old product/utility-
+  connection/mounting-type/manufactured-house/service-type/property-type
+  filters, and dropped the "Verification flags come from the NM reference
+  set" copy. Verified via a migration test and the actual purge run against
+  the real household database (145 → 0).
+
 - **v0.13** — second of the Piece 41 cleanup: the Project form itself. It was
   still a solar-sale intake form — Property type, County (with an NM county
   datalist), Utility provider, Warranty type, a required Payment dropdown,

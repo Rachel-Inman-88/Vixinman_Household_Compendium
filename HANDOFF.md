@@ -364,10 +364,21 @@ parts:
   call, confirmed dropped), a test-client cycle, a direct exercise of the AI
   assistant's project tools, a 40-route sweep, and the actual migration run
   against the real household database.
-- **Part C — Requirements Editor overhaul — not started.** Purge all 145
-  legacy solar-permit `resource_rules` outright (confirmed decision); make
-  `field_value` a real dropdown/datalist instead of blind free text; rebuild
-  `/directory`'s filter bar around the new minimal field set.
+- **Part C (v0.14) — Requirements Editor overhaul — done.** Purged all 145
+  legacy solar-permit `resource_rules` in the live database via a
+  meta-guarded migration (`legacy_solar_rules_purged_v1`) — confirmed 145 →
+  0 against the real database; every row matched a field Part B had just
+  dropped. `field_value` is now a datalist that repopulates via JS off the
+  `field_name` dropdown (project_category's two fixed values, or whatever's
+  already in use for project_type/site_location) instead of blind free
+  text. Rebuilt `/directory`'s filter bar around category + type in place
+  of the old product/connection/mounting/manufactured/service/property_type
+  filters; dropped the "NM reference set" copy. Removed `PRODUCTS` and its
+  sibling constants now that `rule_directory()` was their last consumer.
+  Verified via compile, Jinja parse sweep, a migration test, a test-client
+  cycle (a new rule against `project_category` matches a real project via
+  `match_rules()`), a 40-route sweep, and the actual purge run against the
+  real household database.
 - **Part D — Inventory rehaul — not started.** Purge the 439/49/11/52 legacy
   catalog rows (confirmed decision — every row is 0-available/0-needed
   solar-business reference data, not real household stock); categories become
