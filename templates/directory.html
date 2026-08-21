@@ -28,12 +28,13 @@ Each requirement is listed once with every scenario it applies to beneath it.
       </select>
     </div>
     <div class="field">
-      <label for="type">Project type</label>
-      <input id="type" name="type" value="{{ filters.type }}" list="type_list"
-             placeholder="e.g. Chicken coop">
-      <datalist id="type_list">
-        {% for t in distinct_types %}<option value="{{ t }}">{% endfor %}
-      </datalist>
+      <label for="type">Subcategory</label>
+      <select id="type" name="type">
+        <option value="">All subcategories</option>
+        {% for t in type_options %}
+        <option value="{{ t }}" {% if filters.type == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
     </div>
   </div>
   <div class="actions">

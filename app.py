@@ -197,11 +197,20 @@ PROJECT_FIELDS = ["job_name", "project_category", "project_type", "site_location
 # project within whichever category.
 PROJECT_CATEGORIES = ["Home Improvement", "Personal Improvement"]
 
+# Piece 44: each category's fixed subcategory list -- project_type (below)
+# is now a controlled value cascading from whichever category is picked,
+# not free text. A known, fixed vocabulary is also what makes project_type
+# useful for the Requirements Engine to match on reliably.
+PROJECT_SUBCATEGORIES = {
+    "Home Improvement": ["Building", "Landscaping", "Gardening", "Maintenance & Repair"],
+    "Personal Improvement": ["Education", "Health", "Habit", "Relationship", "Misc"],
+}
+
 # Labels used on the report and anywhere a field needs a human name.
 PROJECT_FIELD_LABELS = {
     "job_name": "Project name",
     "project_category": "Project category",
-    "project_type": "Project type",
+    "project_type": "Subcategory",
     "site_location": "Site location",
 }
 
@@ -3315,6 +3324,7 @@ def render_project_form(values, editing_job_id=None):
     return render_template(
         "project_form.html", values=values,
         project_categories=PROJECT_CATEGORIES,
+        project_subcategories=PROJECT_SUBCATEGORIES,
         editing_job_id=editing_job_id,
     )
 
@@ -5045,11 +5055,12 @@ def rules_page():
     ).fetchall()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    # Piece 41: suggest real values for the "…matches this value" field
-    # instead of leaving it blind free text.
-    distinct_types = [r[0] for r in db.execute(
-        "SELECT DISTINCT project_type FROM projects"
-        " WHERE COALESCE(project_type, '') != '' ORDER BY project_type").fetchall()]
+    # Piece 41 (fixed-vocabulary Piece 44): suggest real values for the
+    # "…matches this value" field instead of leaving it blind free text.
+    # project_type is now a controlled subcategory list -- show the full
+    # known vocabulary rather than only what's been used in real projects
+    # so far (which is empty on a fresh install).
+    distinct_types = sorted({s for lst in PROJECT_SUBCATEGORIES.values() for s in lst})
     distinct_locations = [r[0] for r in db.execute(
         "SELECT DISTINCT site_location FROM projects"
         " WHERE COALESCE(site_location, '') != '' ORDER BY site_location").fetchall()]
@@ -5216,13 +5227,15 @@ def rule_directory():
     ).fetchall() if visible(r)]
     groups = consolidate_rules(rules)
     total = sum(len(items) for _, items in groups)   # consolidated requirements
-    distinct_types = [r[0] for r in db.execute(
-        "SELECT DISTINCT project_type FROM projects"
-        " WHERE COALESCE(project_type, '') != '' ORDER BY project_type").fetchall()]
+    # Piece 44: project_type is now a fixed subcategory list -- narrow the
+    # type filter's options to the chosen category's subcategories (or the
+    # full known vocabulary when no category is picked yet).
+    all_subcats = sorted({s for lst in PROJECT_SUBCATEGORIES.values() for s in lst})
+    type_options = PROJECT_SUBCATEGORIES.get(category, all_subcats)
     return render_template(
         "directory.html", groups=groups, total=total,
         field_labels=PROJECT_FIELD_LABELS,
-        project_categories=PROJECT_CATEGORIES, distinct_types=distinct_types,
+        project_categories=PROJECT_CATEGORIES, type_options=type_options,
         filters={"category": category, "type": ptype},
         filtering=bool(category or ptype),
     )

@@ -26,8 +26,13 @@ recordkeeping.</p>
       </select>
     </div>
     <div class="field">
-      <label for="project_type">Project type <span class="muted">(optional — e.g. "Chicken coop", "EMT certification")</span></label>
-      <input id="project_type" name="project_type" value="{{ values.get('project_type', '') }}">
+      <label for="project_type">Subcategory <span class="muted">(optional)</span></label>
+      <select id="project_type" name="project_type">
+        <option value="" {% if not values.get('project_type') %}selected{% endif %}>— pick a category first —</option>
+        {% if values.get('project_type') %}
+        <option value="{{ values.get('project_type') }}" selected>{{ values.get('project_type') }}</option>
+        {% endif %}
+      </select>
     </div>
     <div class="field wide">
       <label for="site_location">Site location <span class="muted">(optional — where is this happening?)</span></label>
@@ -45,4 +50,41 @@ recordkeeping.</p>
     {% endif %}
   </div>
 </form>
+<script>
+  // Piece 44: Subcategory cascades from the chosen Project category.
+  (function () {
+    var subcatsByCategory = {{ project_subcategories|tojson }};
+    var categorySel = document.getElementById("project_category");
+    var subcatSel = document.getElementById("project_type");
+    var savedValue = {{ values.get('project_type', '')|tojson }};
+    function rebuild() {
+      var options = subcatsByCategory[categorySel.value] || [];
+      var keep = subcatSel.value || savedValue;
+      subcatSel.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = options.length ? "— none —" : "— pick a category first —";
+      subcatSel.appendChild(placeholder);
+      options.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        if (opt === keep) o.selected = true;
+        subcatSel.appendChild(o);
+      });
+      // A previously saved subcategory that no longer belongs to this
+      // category's list (e.g. the category was changed after the project
+      // was created) stays offered rather than silently dropped.
+      if (keep && options.indexOf(keep) === -1) {
+        var o = document.createElement("option");
+        o.value = keep;
+        o.textContent = keep;
+        o.selected = true;
+        subcatSel.appendChild(o);
+      }
+    }
+    categorySel.addEventListener("change", rebuild);
+    rebuild();
+  })();
+</script>
 {% endblock %}
