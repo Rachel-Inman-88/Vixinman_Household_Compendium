@@ -63,23 +63,17 @@
       {{ "✅" if stage.tasks_done >= stage.tasks_total else "⬜" }} Stage tasks
       <strong>{{ stage.tasks_done }}/{{ stage.tasks_total }}</strong> done</span>
     {% endif %}
-    {% if stage.status == "Planning" %}
-    <span title="Electric loads are collected during the walkthrough, not at project creation">
-      {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded</span>
-    {% endif %}
-    {% if stage.status == "Prep" %}
-    <span title="Permit-category requirements with a filed document">
-      {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
+    {% if stage.permits_total %}
+    <span title="Certification/Permit/Prerequisite requirements with a filed document">
+      {{ "✅" if stage.permits_ok else "⬜" }} Requirements filed
       <strong>{{ stage.permits_filed }}/{{ stage.permits_total }}</strong></span>
+    {% endif %}
     <form method="post" action="{{ url_for('set_install_date', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center;">
-      <span>{{ "✅" if project["install_date"] else "⬜" }} Install date</span>
+      <span class="muted" style="font-size:0.82rem;">📅 Target/completion date</span>
       <input type="date" name="install_date" value="{{ project['install_date'] or '' }}" style="padding:0.2rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button>
     </form>
-    {% elif project["install_date"] %}
-    <span class="muted" style="font-size:0.82rem;">📅 Install date {{ project["install_date"] }}</span>
-    {% endif %}
     {% if stage.next %}
     <form method="post" action="{{ url_for('set_project_status', project_id=project['id']) }}" style="margin:0 0 0 auto;"
           {% if not stage.ready %}onsubmit="return confirm('This stage isn’t complete ({{ stage.pending|join(', ') }}). Advance to {{ stage.next }} anyway?');"{% endif %}>

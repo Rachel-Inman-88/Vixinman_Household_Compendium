@@ -503,20 +503,18 @@ PROJECT_STATUS_CLASS = {
     "Wrap-up": "warn", "Done": "", "Abandoned": "danger",
 }
 DEFAULT_PROJECT_STATUS = "Planning"
-# Piece 18 (revised Piece 35): the exit criteria to advance each pipeline
-# status. Used to be role/department-staffed (the "team" key, resolved via
-# best_assignee_for_lane on the BPMN lane) — a household doesn't have
-# per-stage staffing, so that's gone; `dept` is now just descriptive text.
+# Piece 18 (revised Piece 35, de-gated Piece 41): the exit criteria to advance
+# each pipeline status. `dept` is a boolean sentinel used by project_detail.html
+# ("—" means no advance panel is shown, e.g. Done/Abandoned) — its text is
+# never displayed. `exit` is displayed ("To advance: ...") and is now generic,
+# not install-job-specific — no stage has a hard-coded permits/install-date/
+# electric-loads requirement anymore (Piece 41 dropped that gating entirely).
 STATUS_OWNERSHIP = {
-    "Planning": {"dept": "Sales", "exit": "Sales signs the contract."},
-    "Prep": {"dept": "Prep work",
-                 "exit": "All permits filed and an install date set "
-                         "(setting the install date advances the project)."},
-    "In Progress": {"dept": "Installation", "exit": "Install complete."},
-    # Piece 34: merged from the old Inspections + Closing stages.
-    "Wrap-up": {"dept": "Wrap-up — sign-off, then one final task each",
-                "exit": "Inspection passed and signed off; final invoice,"
-                        " walkthrough, and paperwork done."},
+    "Planning": {"dept": "Planning", "exit": "Move to Prep once you're ready to start on it."},
+    "Prep": {"dept": "Prep", "exit": "Move to In Progress once prep work is done."},
+    "In Progress": {"dept": "In Progress", "exit": "Move to Wrap-up once the work itself is complete."},
+    "Wrap-up": {"dept": "Wrap-up",
+                "exit": "Mark Done once any final paperwork or cleanup is finished."},
     "Done": {"dept": "—", "exit": "Project closed."},
     "Abandoned": {"dept": "—", "exit": ""},
 }
@@ -2670,7 +2668,7 @@ def dashboard():
     # Active-projects overview: every non-terminal project, grouped by stage
     # (replaces the old per-department project lists).
     active_projects = db.execute(
-        "SELECT id, job_name, status, install_date, electric_loads"
+        "SELECT id, job_name, status, install_date"
         " FROM projects WHERE status NOT IN ('Abandoned', 'Done')"
         " ORDER BY status, id").fetchall()
     by_stage = {}
@@ -2680,73 +2678,42 @@ def dashboard():
                  "projects": by_stage[stage]}
                 for stage in STAGE_ORDER[:-1] if stage in by_stage]
 
-    # Progress + loads-recorded status for every active project.
+    # Progress for every active project.
     progress_by_job = {}
-    loads_by_job = {}
     for j in active_projects:
         progress_by_job[j["id"]] = build_project_progress(db, j)
-        loads_by_job[j["id"]] = _loads_recorded(db, j)
 
-    # Permits-filed coverage (X/Y) for projects where it matters — Prep and Wrap-up.
+    # Requirements-filed coverage (X/Y) — Piece 41: shown for any active
+    # project with 1+ applicable rules, not gated to a particular stage
+    # (that gating was an install-job assumption; a household project can
+    # need a permit/certification filed at any stage).
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     permits_by_job = {}
     for j in active_projects:
-        if j["status"] in ("Prep", "Wrap-up"):
-            full = db.execute("SELECT * FROM projects WHERE id = ?", (j["id"],)).fetchone()
-            permits_by_job[j["id"]] = project_permit_coverage(db, full, rules)
+        full = db.execute("SELECT * FROM projects WHERE id = ?", (j["id"],)).fetchone()
+        permits_by_job[j["id"]] = project_permit_coverage(db, full, rules)
 
-    # Materials/procurement rollup — material counts by status, Prep-stage projects.
+    # Materials/procurement rollup — Piece 41: shown for any active project
+    # with 1+ materials on file, not gated to the Prep stage.
     procurement = []
     for j in active_projects:
-        if j["status"] == "Prep":
-            counts = {s: 0 for s in MATERIAL_STATUSES}
-            total = 0
-            for m in db.execute(
-                    "SELECT status, COUNT(*) AS n FROM project_materials"
-                    " WHERE project_id = ? GROUP BY status", (j["id"],)).fetchall():
-                counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
-                total += m["n"]
+        counts = {s: 0 for s in MATERIAL_STATUSES}
+        total = 0
+        for m in db.execute(
+                "SELECT status, COUNT(*) AS n FROM project_materials"
+                " WHERE project_id = ? GROUP BY status", (j["id"],)).fetchall():
+            counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
+            total += m["n"]
+        if total:
             outstanding = (counts.get("Needed", 0) + counts.get("Quoted", 0)
                            + counts.get("Backordered", 0))
             procurement.append({"project": j, "counts": counts, "total": total,
                                 "outstanding": outstanding})
 
-    # Install-date buckets — In Progress / Wrap-up projects split by timing.
+    # Piece 22.3 (revised Piece 35, de-install-ified Piece 41): whole-household
+    # snapshot — pipeline counts, money in flight, what needs attention, and a
+    # Wrap-up worklist. Shown to every signed-in member, not admin-gated.
     today_d = datetime.now().date()
-    week_end = today_d + timedelta(days=7)
-
-    def _idate(j):
-        try:
-            return datetime.strptime(j["install_date"], "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            return None
-    wk, up, other = [], [], []
-    for j in active_projects:
-        if j["status"] in ("In Progress", "Wrap-up"):
-            d = _idate(j)
-            if d and today_d <= d <= week_end:
-                wk.append((d, j))
-            elif d and d > week_end:
-                up.append((d, j))
-            else:
-                other.append((d, j))
-
-    def _srt(rows):
-        return [j for _d, j in sorted(
-            rows, key=lambda x: (x[0] is None, x[0] or date.max))]
-    install_buckets = [
-        {"key": "week", "label": "🔨 This week",
-         "hint": "installs in the next 7 days", "projects": _srt(wk)},
-        {"key": "upcoming", "label": "📅 Upcoming",
-         "hint": "scheduled further out", "projects": _srt(up)},
-        {"key": "other", "label": "🔎 Wrap-up / unscheduled",
-         "hint": "install date passed or not set yet", "projects": _srt(other)},
-    ]
-
-    # Piece 22.3 (revised Piece 35): Executive company-overview — a whole-
-    # household snapshot: pipeline counts, money in flight, what needs
-    # attention, this week's installs, and a Wrap-up worklist. Shown to
-    # every signed-in member now, not admin-gated.
     today_s = today_d.strftime("%Y-%m-%d")
     exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
     counts = {s: 0 for s in exec_stages}
@@ -2775,19 +2742,12 @@ def dashboard():
         " WHERE j.status NOT IN ('Abandoned', 'Done')"
         " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
         " ORDER BY last", (cutoff,)).fetchall()
-    wk_end = (today_d + timedelta(days=7)).strftime("%Y-%m-%d")
-    installs_week = db.execute(
-        "SELECT id, job_name, status, install_date FROM projects"
-        " WHERE install_date != '' AND install_date BETWEEN ? AND ?"
-        " AND status != 'Abandoned' ORDER BY install_date",
-        (today_s, wk_end)).fetchall()
     closing_jobs = _closing_worklist(db)
     gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
           "approvals": db.execute(
               "SELECT COUNT(*) FROM field_submissions"
               " WHERE status = 'Pending'").fetchone()[0],
-          "overdue": overdue, "stalled": stalled,
-          "installs_week": installs_week, "closing": closing_jobs}
+          "overdue": overdue, "stalled": stalled, "closing": closing_jobs}
 
     # Payments/Finance table across every active project (all in-flight
     # money — deposits, invoices, expenses).
@@ -2816,10 +2776,10 @@ def dashboard():
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
         payments=payments, pay_totals=pay_totals,
         today=today_s,
-        progress_by_job=progress_by_job, loads_by_job=loads_by_job,
+        progress_by_job=progress_by_job,
         permits_by_job=permits_by_job,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
-        install_buckets=install_buckets, gm=gm, closing_jobs=closing_jobs,
+        gm=gm, closing_jobs=closing_jobs,
         job_status_class=PROJECT_STATUS_CLASS)
 
 
@@ -4306,33 +4266,16 @@ def projects_list():
 
 @app.route("/projects/<int:project_id>/install-date", methods=["POST"])
 def set_install_date(project_id):
-    """Set the project's install date; in Prep, advancing it to In Progress once
-    all permits are filed (Piece 18 — the install-date setter triggers the
-    hand-off)."""
+    """Set (or clear) the project's target/completion date. Piece 41: this used
+    to auto-advance Prep -> In Progress once permits were filed too (an
+    install-job-specific handoff) — that gating is gone, so this just saves
+    the date."""
     project = fetch_project(project_id)
     db = get_db()
     date = request.form.get("install_date", "").strip()
     db.execute("UPDATE projects SET install_date = ? WHERE id = ?", (date, project_id))
-    advanced = False
-    if date and (project["status"] or DEFAULT_PROJECT_STATUS) == "Prep":
-        rules = db.execute("SELECT * FROM resource_rules").fetchall()
-        groups = group_rules(match_rules(project, rules))
-        filed = {f["rule_label"] for f in db.execute(
-            "SELECT rule_label FROM project_files WHERE project_id = ?", (project_id,))
-            if f["rule_label"]}
-        if stage_info(db, project, groups, filed)["permits_ok"]:
-            db.execute("UPDATE projects SET status = 'In Progress' WHERE id = ?", (project_id,))
-            advanced = True
-            actor = current_user()  # Piece 29.4: alert the Installation team
-            notify_stage_turnover(db, project, "In Progress",
-                                  exclude_id=actor["id"] if actor else None)
     db.commit()
-    if advanced:
-        flash("Install date set and all permits filed — advanced to In Progress.")
-    elif date:
-        flash("Install date saved. Prep stays open until all permits are filed.")
-    else:
-        flash("Install date cleared.")
+    flash("Target date saved." if date else "Target date cleared.")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -4457,51 +4400,31 @@ def project_permit_coverage(db, project, rules):
     return _permit_coverage(groups, filed_labels)
 
 
-def _loads_recorded(db, project):
-    """True once the walkthrough's electric-loads summary is filled in. Used
-    to gate the Planning stage."""
-    return bool(
-        (project["electric_loads"] if "electric_loads" in project.keys() else "").strip())
-
-
 def stage_info(db, project, groups, filed_labels):
-    """Piece 18 (revised Piece 35): the project's current stage, its exit
-    criteria, and Project-Prep prerequisites."""
+    """Piece 18 (revised Piece 35, de-gated Piece 41): the project's current
+    stage, its exit criteria, and requirements-filed coverage. No stage has a
+    hard-coded install-job requirement anymore (no permits/install-date/
+    electric-loads gate) — advancing just needs this stage's own tasks done.
+    permits_filed/permits_total/permits_ok are still returned for the
+    informational Requirements-coverage badge shown on the dashboard and
+    project page; they no longer affect `ready`."""
     status = project["status"] or DEFAULT_PROJECT_STATUS
     spec = STATUS_OWNERSHIP.get(status, {"dept": "—", "exit": ""})
     filed, total = _permit_coverage(groups, filed_labels)
     permits_ok = filed >= total
     install_date = project["install_date"] if "install_date" in project.keys() else ""
-    # Loads are collected during the walkthrough, not at project creation — the
-    # Planning stage requires them recorded before it can advance. "Recorded"
-    # means either the structured Loads & Sizing worksheet has entries or the
-    # free-text loads summary is filled.
-    loads_ok = _loads_recorded(db, project)
     # Progress: this stage's own tasks (tagged with pipeline_status = status).
     tdone, ttotal = db.execute(
         "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM project_tasks"
         " WHERE project_id = ? AND pipeline_status = ?", (project["id"], status)).fetchone()
-    # Ready to advance? All this stage's tasks done; Planning also needs the
-    # loads collected; Prep also needs permits filed + an install date.
     ready = (ttotal == 0 or tdone >= ttotal)
     pending = []
     if ttotal and tdone < ttotal:
         pending.append(f"{ttotal - tdone} task(s) still open")
-    if status == "Planning":
-        if not loads_ok:
-            pending.append("electric loads not recorded")
-        ready = ready and loads_ok
-    if status == "Prep":
-        if not permits_ok:
-            pending.append(f"{total - filed} permit(s) not filed")
-        if not install_date:
-            pending.append("no install date set")
-        ready = ready and permits_ok and bool(install_date)
     return {
         "status": status, "dept": spec["dept"], "exit": spec["exit"],
         "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
         "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
-        "loads_ok": loads_ok,
         "ready": ready, "pending": pending, "next": next_stage(status),
     }
 

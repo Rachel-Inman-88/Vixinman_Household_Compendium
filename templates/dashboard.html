@@ -5,12 +5,16 @@
 {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
 <div class="toolbar">
   <h1>👋 {% if user %}{{ user["name"].split(" ")[0] }}'s dashboard{% else %}Dashboard{% endif %}</h1>
+  <div style="display:flex; gap:0.4rem;">
+    <a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>
+    <a href="{{ url_for('projects_list') }}" class="btn btn-secondary">📁 View projects</a>
+  </div>
 </div>
 
 {# ---- Executive (household) overview: whole-household snapshot, shown to everyone ---- #}
 {% if gm %}
 <details class="card sect" open style="border-left:4px solid var(--brand);">
-  <summary>⭐ Company overview</summary>
+  <summary>🏠 Household overview</summary>
 
   {% set panel = "background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:0.75rem 0.9rem; margin-bottom:0.85rem;" %}
   {% set panelh = "font-weight:700; margin:0 0 0.5rem; font-size:0.95rem;" %}
@@ -71,29 +75,6 @@
       </tbody>
     </table>
     </div>
-    {% endif %}
-  </section>
-
-  {# This week's installs #}
-  <section style="{{ panel }}">
-    <div style="font-weight:800; margin:0 0 0.5rem; font-size:1.1rem;">🔨 This week's installs <span class="muted" style="font-weight:400; font-size:0.92rem;">— next 7 days</span></div>
-    {% if gm.installs_week %}
-    <div style="overflow-x:auto;">
-    <table>
-      <thead><tr><th>Install date</th><th>Project</th><th>Stage</th></tr></thead>
-      <tbody>
-        {% for j in gm.installs_week %}
-        <tr>
-          <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] }}</td>
-          <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
-          <td><span class="badge {{ job_status_class.get(j['status'], 'neutral') }}">{{ j["status"] }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="empty" style="margin:0;">No installs scheduled in the next 7 days.</p>
     {% endif %}
   </section>
 
@@ -168,7 +149,7 @@
   {% endif %}
 </details>
 
-{# ---- Procurement: materials by status, Prep-stage projects ---- #}
+{# ---- Procurement: materials by status, any active project with materials on file ---- #}
 <details class="card sect" open>
   <summary>📦 Procurement <span class="sect-count">{{ procurement|length }} project{{ "s" if procurement|length != 1 }}</span></summary>
   {% if procurement %}
@@ -198,42 +179,13 @@
   {% endif %}
 </details>
 
-{# ---- Install-date buckets: In Progress / Wrap-up projects by timing ---- #}
-<details class="card sect" open>
-  <summary>🔨 Installs <span class="sect-count">{{ install_buckets|map(attribute='projects')|map('length')|sum }}</span></summary>
-  {% for bucket in install_buckets %}
-  <div style="margin-bottom:0.8rem;">
-    <div style="font-weight:700; margin:0.2rem 0 0.4rem; display:flex; gap:0.4rem; align-items:baseline;">
-      {{ bucket.label }} <span class="muted" style="font-weight:400; font-size:0.8rem;">— {{ bucket.hint }} · {{ bucket.projects|length }}</span>
-    </div>
-    {% if bucket.projects %}
-    <div style="overflow-x:auto;">
-    <table>
-      <thead><tr><th>Install date</th><th>Project</th><th style="min-width:200px;">Progress</th></tr></thead>
-      <tbody>
-        {% for j in bucket.projects %}
-        <tr>
-          <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] or "—" }}{% if j["install_date"] and j["install_date"] < today and bucket.key != 'other' %} <span class="badge danger">past</span>{% endif %}</td>
-          <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
-          <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="empty" style="margin:0 0 0.4rem;">None.</p>
-    {% endif %}
-  </div>
-  {% endfor %}
-</details>
-
 {# ---- Active projects, grouped by stage. A Planning-only section reads as
-       "In Planning". Columns: Progress · Project · Loads (Planning) ·
-       Permits (Prep/Wrap-up) · Install date. ---- #}
+       "In Planning". Columns are the same for every stage now (Piece 41 —
+       no more stage-specific Loads/Permits gating): Project · Requirements ·
+       Target date · Progress. The Requirements badge only shows when the
+       project has 1+ applicable Requirements Engine rules. ---- #}
 {% for s in sections %}
 {% set proposals = s.name == "Planning" %}
-{% set is_permits = s.name in ("Prep", "Wrap-up") %}
 <details class="card sect" open>
   <summary>{{ s.icon }} {% if proposals %}In Planning{% else %}{{ s.name }}{% endif %}
     <span class="sect-count">{{ s.projects|length }}</span>
@@ -242,30 +194,17 @@
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>
-      {% if proposals %}
-      <th style="min-width:200px;">Progress</th><th>Project</th><th title="Electric loads recorded from the walkthrough">Loads</th><th>Install date</th>
-      {% else %}
-      <th>Project</th>{% if is_permits %}<th title="Permit documents filed / required">Permits</th>{% endif %}<th>Install date</th><th style="min-width:200px;">Progress</th>
-      {% endif %}
+      <th>Project</th><th title="Certification/Permit/Prerequisite documents filed / required">Requirements</th><th>Target date</th><th style="min-width:200px;">Progress</th>
     </tr></thead>
     <tbody>
       {% for j in s.projects %}
       <tr>
-        {% if proposals %}
-        <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
         <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
-        <td title="{{ 'Loads recorded' if loads_by_job[j['id']] else 'Loads not recorded yet' }}">{{ "✅" if loads_by_job[j['id']] else "⬜" }}</td>
-        <td class="muted">{{ j["install_date"] or "—" }}</td>
-        {% else %}
-        <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
-        {% if is_permits %}
         {% set pc = permits_by_job[j['id']] %}
-        <td><a href="{{ url_for('project_detail', project_id=j['id'], _anchor='requirements') }}" title="Permit documents filed">
+        <td><a href="{{ url_for('project_detail', project_id=j['id'], _anchor='requirements') }}" title="Requirements documents filed">
           {% if pc[1] %}<span class="badge {{ '' if pc[0] >= pc[1] else 'warn' }}">{{ pc[0] }}/{{ pc[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</a></td>
-        {% endif %}
         <td class="muted">{{ j["install_date"] or "—" }}</td>
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
