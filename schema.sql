@@ -543,3 +543,15 @@ CREATE TABLE IF NOT EXISTS inventory_vehicles (
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 48: persisted brainstorm chat, scoped to one project (the "🧠 Plan"
+-- tab on project_detail.html). role is 'user' or 'assistant'; author is the
+-- household member's display name for a user turn, blank for an assistant turn.
+CREATE TABLE IF NOT EXISTS project_plan_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    role       TEXT NOT NULL DEFAULT 'user',   -- 'user' / 'assistant'
+    author     TEXT DEFAULT '',                -- household member name; blank for assistant
+    content    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

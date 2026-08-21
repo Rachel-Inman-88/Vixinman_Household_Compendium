@@ -421,7 +421,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.22"
+VERSION = "0.23"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3891,6 +3891,15 @@ def project_detail(project_id):
         "SELECT * FROM project_notes WHERE project_id = ? ORDER BY id DESC",
         (project_id,)).fetchall()
 
+    # Piece 48: the "🧠 Plan" tab's brainstorm chat -- config + saved history.
+    plan_cfg = assistant_settings(db)
+    plan_providers = assistant_available_providers(plan_cfg)
+    plan_default_provider = plan_cfg["default_provider"] if plan_cfg["default_provider"] in plan_providers else (
+        plan_providers[0] if plan_providers else "claude")
+    plan_messages = db.execute(
+        "SELECT * FROM project_plan_messages WHERE project_id = ? ORDER BY id",
+        (project_id,)).fetchall()
+
     return render_template(
         "project_detail.html", project=project, groups=groups, versions=versions,
         project_notes=project_notes,
@@ -3906,6 +3915,8 @@ def project_detail(project_id):
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
+        plan_providers=plan_providers, plan_default_provider=plan_default_provider,
+        plan_messages=plan_messages,
     )
 
 
@@ -4575,6 +4586,10 @@ def add_task(project_id):
     status = request.form.get("status", "To do")
     if status not in TASK_STATUSES:
         status = "To do"
+    # Piece 48: an optional stage tag, so a task added from the "🧠 Plan" tab's
+    # suggestions counts toward stage_info()'s ready-count for that stage. The
+    # generic Tasks-tab form never sends this, so its behavior is unchanged.
+    pipeline_status = request.form.get("pipeline_status", "").strip()
     db = get_db()
     next_order = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_tasks WHERE project_id = ?",
@@ -4582,11 +4597,11 @@ def add_task(project_id):
     db.execute(
         "INSERT INTO project_tasks"
         " (project_id, household_member_id, title, status, due_date, notes, sort_order,"
-        "  completed_at, updated_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+        "  pipeline_status, completed_at, updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
         (project_id, _task_assignee(project_id), title, status,
          request.form.get("due_date", "").strip(),
-         request.form.get("notes", "").strip(), next_order,
+         request.form.get("notes", "").strip(), next_order, pipeline_status,
          datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""),
     )
     db.commit()
@@ -6265,6 +6280,30 @@ ASSISTANT_SYSTEM_PROMPT = (
     "to do something, explain how the user can do it in Compendium."
 )
 
+# Piece 48: a second, project-scoped system prompt for the "🧠 Plan" tab's
+# brainstorm chat -- same read-only design as the assistant above (no
+# write-tools exist for either), but it may propose concrete next-step tasks
+# via a fixed "TASK: " line convention that the Plan tab's JS parses into an
+# "➕ Add to project" button. The human still has to click it -- nothing is
+# ever saved by the model itself.
+PROJECT_PLAN_SYSTEM_PROMPT = (
+    "You are a project-planning brainstorming aide inside the Compendium Assistant, "
+    "scoped to ONE household project. Help the user think through how to complete "
+    "THIS project — break down remaining work, surface risks or blockers, ask "
+    "clarifying questions, and suggest a rough plan tailored to its category and "
+    "subcategory.\n\n"
+    "You are given PROJECT CONTEXT (category/subcategory, stage, existing tasks, "
+    "recent field notes) plus the same read-only household tools as the general "
+    "assistant, for extra grounding if needed. You are read-only: you cannot save "
+    "anything yourself. If a concrete, addable next-step task occurs to you, put it "
+    "alone on its own line in EXACTLY this form (nothing else on that line):\n"
+    "TASK: <short task title>\n"
+    "Use this sparingly, only for genuinely actionable next steps — not for every "
+    "idea. Never use this line format for anything else. Everything else is normal "
+    "conversational prose. Be concise and specific to this project; don't repeat "
+    "tasks or notes that already exist."
+)
+
 
 def assistant_settings(db):
     """Current AI-assistant configuration, read from `meta`."""
@@ -6359,6 +6398,45 @@ def build_assistant_snapshot(db, user):
             f"Active projects with a contract total: {row['n']}, "
             f"summing ${row['t']:,.0f}.")
 
+    return "\n".join(lines)
+
+
+def build_project_plan_context(db, project):
+    """Piece 48: compact, project-scoped grounding for the "🧠 Plan" tab's
+    brainstorm chat -- mirrors build_assistant_snapshot's compactness above,
+    but scoped to ONE project instead of the whole household."""
+    lines = [f"Project: {project['job_name'] or 'Project #' + str(project['id'])}"]
+    cat, sub = project["project_category"] or "", project["project_type"] or ""
+    if cat or sub:
+        lines.append(f"Category: {cat or '—'}" + (f" · Subcategory: {sub}" if sub else ""))
+    lines.append(f"Current stage: {project['status'] or 'Planning'}")
+    if project["site_location"]:
+        lines.append(f"Site/location: {project['site_location']}")
+    lines.append(f"Target/completion date: {project['install_date'] or 'not set'}")
+
+    tasks = db.execute(
+        "SELECT title, status, due_date, COALESCE(pipeline_status,'') AS ps"
+        " FROM project_tasks WHERE project_id = ? ORDER BY (status='Done'), sort_order LIMIT 40",
+        (project["id"],)).fetchall()
+    open_tasks = [t for t in tasks if t["status"] != "Done"]
+    done_count = sum(1 for t in tasks if t["status"] == "Done")
+    if open_tasks:
+        lines.append(f"Open tasks ({len(open_tasks)}, {done_count} done):")
+        for t in open_tasks:
+            lines.append(f"  • {t['title']} — due {t['due_date'] or 'no date'}"
+                         f" [{t['status']}{'/' + t['ps'] if t['ps'] else ''}]")
+    else:
+        lines.append(f"No open tasks yet ({done_count} done).")
+
+    notes = db.execute(
+        "SELECT note, created_at FROM project_notes WHERE project_id = ?"
+        " ORDER BY id DESC LIMIT 5", (project["id"],)).fetchall()
+    total_notes = db.execute(
+        "SELECT COUNT(*) FROM project_notes WHERE project_id = ?", (project["id"],)).fetchone()[0]
+    if notes:
+        lines.append(f"Recent field notes ({total_notes} total):")
+        for n in notes:
+            lines.append(f"  • {(n['created_at'] or '')[:10]}: {n['note']}")
     return "\n".join(lines)
 
 
@@ -6589,6 +6667,60 @@ def assistant_ask():
                                         ASSISTANT_SYSTEM_PROMPT, prompt, tools)
     except ai_assistant.AssistantError as e:
         return jsonify({"error": str(e)}), 502
+    return jsonify({"answer": answer, "provider": provider})
+
+
+@app.route("/projects/<int:project_id>/plan/ask", methods=["POST"])
+def project_plan_ask(project_id):
+    """Piece 48: the "🧠 Plan" tab's brainstorm chat. Same read-only design as
+    /assistant/ask -- the model never writes anything; it may only suggest a
+    task via a "TASK: " line, which the tab's JS turns into an ➕ Add button
+    that a human has to click. The conversation itself is persisted per
+    project so it can be reopened/continued later."""
+    project = fetch_project(project_id)
+    db = get_db()
+    cfg = assistant_settings(db)
+    message = (request.form.get("message", "") or "").strip()
+    provider = request.form.get("provider", cfg["default_provider"]) or "claude"
+    if provider not in ("claude", "gemini"):
+        provider = "claude"
+    if not message:
+        return jsonify({"error": "Type a message first."}), 400
+    if not _provider_configured(cfg, provider):
+        return jsonify({"error": f"No API key is set for {provider.title()}. "
+                        "An admin can add one under AI settings."}), 400
+    user = current_user()
+    author = user["name"] if user else ""
+
+    # Persist the user's turn immediately so it isn't lost if the AI call fails.
+    db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
+               " VALUES (?, 'user', ?, ?)", (project_id, author, message))
+    db.commit()
+
+    prior = db.execute(
+        "SELECT role, author, content FROM project_plan_messages"
+        " WHERE project_id = ? ORDER BY id", (project_id,)).fetchall()
+    history_lines = []
+    for r in prior[:-1][-20:]:  # last 20 prior turns -- hard cap, no unbounded growth
+        who = f"User ({r['author']})" if r["role"] == "user" and r["author"] else (
+            "User" if r["role"] == "user" else "Assistant")
+        history_lines.append(f"{who}: {r['content']}")
+    history_block = ("Previous conversation:\n" + "\n".join(history_lines) + "\n\n") if history_lines else ""
+
+    context = build_project_plan_context(db, project)
+    prompt = (f"PROJECT CONTEXT:\n{context}\n\n{history_block}"
+              f"NEW MESSAGE from {author or 'the user'}: {message}")
+    key = cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]
+    model = cfg["gemini_model"] if provider == "gemini" else cfg["claude_model"]
+    tools = build_assistant_tools(db, user)
+    try:
+        answer = ai_assistant.run_agent(provider, key, model,
+                                        PROJECT_PLAN_SYSTEM_PROMPT, prompt, tools)
+    except ai_assistant.AssistantError as e:
+        return jsonify({"error": str(e)}), 502
+    db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
+               " VALUES (?, 'assistant', '', ?)", (project_id, answer))
+    db.commit()
     return jsonify({"answer": answer, "provider": provider})
 
 

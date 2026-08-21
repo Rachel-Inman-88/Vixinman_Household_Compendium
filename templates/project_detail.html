@@ -113,6 +113,7 @@
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
   <button class="tab-btn" data-tab="general">General details</button>
+  <button class="tab-btn" data-tab="plan" title="Brainstorm this project with AI">🧠 Plan</button>
   <button class="tab-btn" data-tab="requirements" title="Certifications / Permits / Prerequisites">Requirements ({{ req_total }})</button>
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
@@ -164,6 +165,66 @@
   </ul>
 </div>
 {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-plan">
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🧠 Plan — brainstorm this project</h2>
+  {% if project["status"] in ("Done", "Abandoned") %}
+  <p class="muted" style="margin:0;">Planning chat is turned off for a
+    {{ "finished" if project["status"] == "Done" else "cancelled" }} project.</p>
+  {% elif not plan_providers %}
+  <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+    🔌 <strong>No AI provider is set up yet.</strong>
+    {% if is_admin %}Add a Claude or Gemini API key under
+      <a href="{{ url_for('assistant_settings_page') }}">AI settings</a> to switch it on.
+    {% else %}Ask an admin to add a Claude or Gemini API key in AI settings.{% endif %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:0;">Think through how to finish this project — the assistant
+    can suggest tasks and you decide what to keep. It's <strong>read-only</strong>: nothing is saved
+    unless you click ➕ or 💾 yourself. Needs an internet connection.</p>
+  <div id="plan-chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
+    {% if not plan_messages %}
+    <div class="muted" id="plan-chat-empty" style="font-size:0.9rem;">
+      Try: "What am I missing before I can start?", "Break this down into steps", or
+      "What should I do first?"
+    </div>
+    {% endif %}
+    {% for m in plan_messages %}
+    <div class="plan-bubble" data-role="{{ m['role'] }}" style="max-width:92%; padding:0.55rem 0.8rem; border-radius:10px; white-space:pre-wrap; line-height:1.4;
+      {{ 'align-self:flex-end; background:var(--brand); color:#fff;' if m['role'] == 'user' else 'align-self:flex-start; background:var(--bg); border:1px solid var(--border);' }}">
+      <div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">{{ m['author'] if m['role'] == 'user' else 'Assistant' }}</div>
+      <div class="plan-bubble-text">{{ m["content"] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div id="plan-status" class="flash" style="display:none;"></div>
+  <form id="plan-ask-form" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+    <div class="field" style="flex:1 1 20rem;">
+      <label for="plan-message">Message</label>
+      <textarea id="plan-message" name="message" rows="2" placeholder="Ask about this project…" required></textarea>
+    </div>
+    {% if plan_providers|length > 1 %}
+    <div class="field" style="flex:0 0 auto;">
+      <label for="plan-provider">Model</label>
+      <select id="plan-provider" name="provider">
+        {% for p in plan_providers %}
+        <option value="{{ p }}" {% if p == plan_default_provider %}selected{% endif %}>
+          {{ 'Claude' if p == 'claude' else 'Gemini' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <input type="hidden" id="plan-provider" name="provider" value="{{ plan_default_provider }}">
+    {% endif %}
+    <div class="field" style="flex:0 0 auto;">
+      <label>&nbsp;</label>
+      <button type="submit" id="plan-ask-btn" class="btn">Send</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
 </div>
 
 <div class="tab-panel" id="tab-requirements">
@@ -639,7 +700,7 @@
 <script>
   // Tabs remember their state through the URL hash, so form posts that
   // redirect back (materials, uploads) land on the tab you were using.
-  const TABS = ["general", "requirements", "materials", "documents", "tasks", "billing"];
+  const TABS = ["general", "plan", "requirements", "materials", "documents", "tasks", "billing"];
   function activateTab(name, updateHash) {
     if (!TABS.includes(name)) name = "general";
     document.querySelectorAll(".tab-btn").forEach(b =>
@@ -653,5 +714,139 @@
   window.addEventListener("hashchange", () =>
     activateTab(location.hash.slice(1) || "general", false));
   activateTab(location.hash.slice(1) || "general", false);
+</script>
+
+{# Piece 48: the "🧠 Plan" tab's brainstorm chat. Mirrors assistant.html's
+   fetch()-based chat pattern, plus parsing "TASK: " lines out of an assistant
+   reply into an inline "➕ Add to project" button (posts to the existing
+   add_task route with pipeline_status set) and a "💾 Save as project note"
+   button (posts to the existing add_project_note route). The AI never writes
+   anything itself -- both buttons are ordinary user-clicked POSTs. #}
+<script>
+(function () {
+  var chat = document.getElementById("plan-chat");
+  var form = document.getElementById("plan-ask-form");
+  if (!chat || !form) return; // gated off (no provider / Done / Abandoned)
+  var empty = document.getElementById("plan-chat-empty");
+  var box = document.getElementById("plan-message");
+  var btn = document.getElementById("plan-ask-btn");
+  var status = document.getElementById("plan-status");
+  var providerEl = document.getElementById("plan-provider");
+  var askUrl = "{{ url_for('project_plan_ask', project_id=project['id']) }}";
+  var addTaskUrl = "{{ url_for('add_task', project_id=project['id']) }}";
+  var addNoteUrl = "{{ url_for('add_project_note') }}";
+  var pipelineStatus = {{ (project['status'] or '')|tojson }};
+  var projectId = {{ project['id'] }};
+
+  function msg(text, kind) {
+    status.textContent = text || "";
+    status.className = "flash " + (kind || "");
+    status.style.display = text ? "block" : "none";
+  }
+  function extractTasks(text) {
+    var out = [], re = /^TASK:\s*(.+)$/gm, m;
+    while ((m = re.exec(text))) out.push(m[1].trim());
+    return out;
+  }
+  function addActions(wrap, role, text) {
+    var bar = document.createElement("div");
+    bar.style.cssText = "margin-top:0.4rem; display:flex; gap:0.4rem; flex-wrap:wrap;";
+    extractTasks(text).forEach(function (title) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "btn btn-secondary";
+      b.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
+      b.textContent = "➕ Add: " + title;
+      b.addEventListener("click", function () {
+        b.disabled = true; b.textContent = "Adding…";
+        var data = new URLSearchParams();
+        data.append("title", title);
+        data.append("pipeline_status", pipelineStatus);
+        fetch(addTaskUrl, {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: data.toString()
+        }).then(function () { b.textContent = "Added ✓"; })
+          .catch(function () { b.disabled = false; b.textContent = "➕ Add: " + title; });
+      });
+      bar.appendChild(b);
+    });
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "button"; saveBtn.className = "btn btn-secondary";
+    saveBtn.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
+    saveBtn.textContent = "💾 Save as project note";
+    saveBtn.addEventListener("click", function () {
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+      var data = new URLSearchParams();
+      data.append("project_id", String(projectId));
+      data.append("note", text);
+      fetch(addNoteUrl, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: data.toString()
+      }).then(function () { saveBtn.textContent = "Saved ✓"; })
+        .catch(function () { saveBtn.disabled = false; saveBtn.textContent = "💾 Save as project note"; });
+    });
+    bar.appendChild(saveBtn);
+    wrap.appendChild(bar);
+  }
+  function bubble(who, text, role, skipActions) {
+    if (empty) { empty.remove(); empty = null; }
+    var wrap = document.createElement("div");
+    wrap.className = "plan-bubble";
+    wrap.dataset.role = role;
+    wrap.style.cssText = "max-width:92%; padding:0.55rem 0.8rem; border-radius:10px; white-space:pre-wrap; line-height:1.4;" +
+      (role === "user"
+        ? " align-self:flex-end; background:var(--brand); color:#fff;"
+        : " align-self:flex-start; background:var(--bg); border:1px solid var(--border);");
+    var head = document.createElement("div");
+    head.style.cssText = "font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;";
+    head.textContent = who;
+    var body = document.createElement("div");
+    body.className = "plan-bubble-text";
+    body.textContent = text;
+    wrap.appendChild(head); wrap.appendChild(body);
+    chat.appendChild(wrap);
+    if (role === "assistant" && !skipActions) addActions(wrap, role, text);
+    wrap.scrollIntoView({ block: "nearest" });
+    return wrap;
+  }
+
+  // Server-rendered history: give every saved assistant turn its action buttons.
+  document.querySelectorAll('#plan-chat .plan-bubble[data-role="assistant"]').forEach(function (wrap) {
+    var textEl = wrap.querySelector(".plan-bubble-text");
+    if (textEl) addActions(wrap, "assistant", textEl.textContent);
+  });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var q = box.value.trim();
+    if (!q) return;
+    if (!navigator.onLine) { msg("You're offline — the planning chat needs an internet connection.", "error"); return; }
+    msg("", "");
+    bubble("You", q, "user");
+    box.value = "";
+    btn.disabled = true; btn.textContent = "Thinking…";
+    var thinking = bubble("Assistant", "…", "assistant", true);
+    var data = new URLSearchParams();
+    data.append("message", q);
+    data.append("provider", providerEl.value);
+    fetch(askUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      body: data.toString()
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        thinking.remove();
+        if (!res.ok || res.d.error) {
+          msg(res.d.error || "Something went wrong.", "error");
+        } else {
+          bubble("Assistant", res.d.answer, "assistant");
+        }
+      }).catch(function () {
+        thinking.remove();
+        msg("Couldn't reach the assistant. Check your connection and try again.", "error");
+      }).finally(function () {
+        btn.disabled = false; btn.textContent = "Send";
+      });
+  });
+})();
 </script>
 {% endblock %}
