@@ -35,10 +35,6 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from inventory_seed import INVENTORY_CATEGORY_SPECS
-from inventory_research import (
-    RESEARCH, RESEARCH_VERSION, TOOLS_RESEARCH, TOOLS_RESEARCH_VERSION,
-)
 import ai_assistant  # Piece 32.0: Compendium AI assistant (Claude / Gemini)
 
 # Code assets (schema.sql, templates) sit next to this file — except under
@@ -794,15 +790,10 @@ VIEW_PERMISSION = {
     # catalog stays open to any signed-in user).
     "inventory_item_new": "inventory.manage",
     "inventory_item_edit": "inventory.manage",
-    "inventory_item_adjust": "inventory.manage",
     "inventory_tool_new": "inventory.manage",
     "inventory_tool_edit": "inventory.manage",
     "inventory_vehicle_new": "inventory.manage",
     "inventory_vehicle_edit": "inventory.manage",
-    "inventory_stale": "inventory.manage",
-    "inventory_stale_keep": "inventory.manage",
-    "inventory_stale_discontinue": "inventory.manage",
-    "inventory_toggle_stale": "inventory.manage",   # Piece 30.4
 }
 
 
@@ -1456,202 +1447,6 @@ def seed_org_team(db):
     db.commit()
 
 
-# Piece 23.7: vendor standardization. Rename to canonical spelling; merge true
-# duplicates (reassigning their items to the survivor); drop stray combined
-# entries. Bump VENDOR_STD_VERSION to re-run after adding more.
-VENDOR_STD_VERSION = 1
-VENDOR_RENAME = {2446: "Megarevo"}          # Magerevo/Megavero typo -> brand
-VENDOR_MERGE = {1487: 2000}                 # Battery Systems -> Continental Battery Systems (2021 merger)
-VENDOR_REMOVE = {1804}                       # "Summit/Graybar" stray combined entry (0 items)
-
-# Piece 23.8: make (manufacturer) standardization. Runs before research so the
-# research keys reference canonical makes.
-MAKE_STD_VERSION = 1
-MAKE_FIX = {
-    "MidNite": "MidNite Solar", "Midnite Solar": "MidNite Solar",
-    "Outback": "Outback Power", "Schneider": "Schneider Electric",
-    "Solar Rackworks": "Solar Rack Works",
-    "Solar Rack Works Top of Pole": "Solar Rack Works",
-    "Solar World": "SolarWorld", "Calb": "CALB",
-    "Vicrton BlueSolar MPPT 150-60--Tr": "Victron",
-    "MILBANK U7021-RL-TG-200 1PH": "Milbank", "Milbank or Equivalent": "Milbank",
-}
-MAKE_FLAG = {  # Make column holds a part type/description, not a manufacturer.
-    "MTWC-0000-BLK": "Make column holds a part number, not a manufacturer — assign the real make.",
-    "MTWC-0000-Red": "Make column holds a part number, not a manufacturer — assign the real make.",
-    'Single Swivel Socket - 2"': "Make column holds a description, not a manufacturer — review.",
-    "Structural Pipe": "Make column holds a generic part type, not a manufacturer — review.",
-    "Fuse": "Make column holds a generic part type, not a manufacturer — review.",
-    "Surge Protector": "Make column holds a generic part type, not a manufacturer — review.",
-    "O'Reilly's or equivalent": "Generic placeholder — specify the actual make.",
-    "Y/T Branch Connectors": "Make column holds a description, not a manufacturer — review.",
-    "Snap It Small EMP Suppressors": "Make column holds a description, not a manufacturer — review.",
-    "Vicrton BlueSolar MPPT 150-60--Tr": "Make had model text; set to Victron — move 'BlueSolar MPPT 150/60' to Model.",
-}
-
-
-def standardize_makes(db):
-    """Consolidate manufacturer-name spellings and flag rows whose Make column
-    actually holds a part type/description. Runs once (or on version bump)."""
-    _mv = db.execute("SELECT value FROM meta WHERE key = 'make_std_v'").fetchone()
-    if _mv and int(_mv[0] or 0) >= MAKE_STD_VERSION:
-        return
-    for mk, flag in MAKE_FLAG.items():   # flag by original make, before rename
-        db.execute("UPDATE inventory_items SET flags = ?"
-                   " WHERE make = ? AND COALESCE(flags, '') = ''", (flag, mk))
-    for old, new in MAKE_FIX.items():
-        db.execute("UPDATE inventory_items SET make = ? WHERE make = ?", (new, old))
-    db.execute("INSERT INTO meta (key, value) VALUES ('make_std_v', ?)"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-               (str(MAKE_STD_VERSION),))
-    db.commit()
-
-
-def standardize_vendors(db):
-    """Fold vendor duplicates/typos into a canonical supplier list once (or when
-    VENDOR_STD_VERSION bumps). Item vendor_ids on merged vendors are reassigned
-    to the survivor before the duplicate is removed."""
-    _sv = db.execute("SELECT value FROM meta WHERE key = 'vendor_std_v'").fetchone()
-    if _sv and int(_sv[0] or 0) >= VENDOR_STD_VERSION:
-        return
-    for vid, name in VENDOR_RENAME.items():
-        db.execute("UPDATE inventory_vendors SET name = ? WHERE id = ?", (name, vid))
-    for old, survivor in VENDOR_MERGE.items():
-        for tbl in ("inventory_items", "inventory_tools", "inventory_vehicles"):
-            db.execute(f"UPDATE {tbl} SET vendor_id = ? WHERE vendor_id = ?",
-                       (survivor, old))
-        db.execute("DELETE FROM inventory_vendors WHERE id = ?", (old,))
-    for vid in VENDOR_REMOVE:
-        used = db.execute(
-            "SELECT (SELECT COUNT(*) FROM inventory_items WHERE vendor_id = ?)"
-            " + (SELECT COUNT(*) FROM inventory_tools WHERE vendor_id = ?)"
-            " + (SELECT COUNT(*) FROM inventory_vehicles WHERE vendor_id = ?)",
-            (vid, vid, vid)).fetchone()[0]
-        if used == 0:
-            db.execute("DELETE FROM inventory_vendors WHERE id = ?", (vid,))
-    db.execute("INSERT INTO meta (key, value) VALUES ('vendor_std_v', ?)"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-               (str(VENDOR_STD_VERSION),))
-    db.commit()
-
-
-def apply_inventory_research(db):
-    """Piece 23.3: fold web-research overrides (inventory_research.py) into the
-    seeded items — corrected/completed specs, datasheet + purchase URLs, web
-    price, Active/Discontinued, and flags. Never touches Cost. Re-applies whenever
-    RESEARCH_VERSION increases (so each research batch flows into existing DBs),
-    matched by category+make+model."""
-    _rv = db.execute("SELECT value FROM meta WHERE key = 'inventory_research_v'").fetchone()
-    if _rv and int(_rv[0] or 0) >= RESEARCH_VERSION:
-        return
-    for key, upd in RESEARCH.items():
-        cat, make, model = key.split("||")
-        for rid, raw_specs in db.execute(
-                "SELECT id, specs FROM inventory_items"
-                " WHERE category = ? AND make = ? AND model = ?",
-                (cat, make, model)).fetchall():
-            try:
-                specs = json.loads(raw_specs or "{}")
-            except (ValueError, TypeError):
-                specs = {}
-            specs.update(upd.get("specs", {}))
-            db.execute(
-                "UPDATE inventory_items SET specs = ?,"
-                " manual_url = COALESCE(NULLIF(?, ''), manual_url),"
-                " purchase_url = COALESCE(NULLIF(?, ''), purchase_url),"
-                " web_price = COALESCE(?, web_price),"
-                " price_checked_on = COALESCE(NULLIF(?, ''), price_checked_on),"
-                " status = COALESCE(NULLIF(?, ''), status),"
-                " flags = ? WHERE id = ?",
-                (json.dumps(specs, default=str), upd.get("manual_url", ""),
-                 upd.get("purchase_url", ""), upd.get("web_price"),
-                 upd.get("price_checked_on", ""), upd.get("status", ""),
-                 upd.get("flags", ""), rid))
-    db.execute("INSERT INTO meta (key, value) VALUES ('inventory_research_v', ?)"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-               (str(RESEARCH_VERSION),))
-    db.commit()
-
-
-def apply_tools_research(db):
-    """Piece 24.2: enrich the seeded tool kit (INVENTORY_TOOLS was seeded with
-    only name + category) with a standard make/model, a store listing URL, and
-    an approx price flagged for verification. Matched by tool name. Re-applies
-    whenever TOOLS_RESEARCH_VERSION increases. Only fills rows still blank
-    (make = '') so any later in-app edits are preserved."""
-    _tv = db.execute("SELECT value FROM meta WHERE key = 'tools_research_v'").fetchone()
-    if _tv and int(_tv[0] or 0) >= TOOLS_RESEARCH_VERSION:
-        return
-    for name, upd in TOOLS_RESEARCH.items():
-        db.execute(
-            "UPDATE inventory_tools SET"
-            " make = ?, model = ?, purchase_url = ?, notes = ?,"
-            " cost = COALESCE(cost, ?)"
-            " WHERE name = ? AND COALESCE(make, '') = ''",
-            (upd.get("make", ""), upd.get("model", ""), upd.get("purchase_url", ""),
-             upd.get("notes", ""), upd.get("cost"), name))
-    db.execute("INSERT INTO meta (key, value) VALUES ('tools_research_v', ?)"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-               (str(TOOLS_RESEARCH_VERSION),))
-    db.commit()
-
-
-INV_CLEANUP_VERSION = 1
-
-
-def cleanup_inventory(db):
-    """Piece 24.3: catalog cleanup that changes category/model (so it can't live
-    in apply_inventory_research, which matches on those). Runs once per version:
-    (1) recategorize the Schneider PDP / connection / breaker-kit accessories out
-    of Inverter into Electrical; (2) disambiguate the two AP Smart rows that were
-    mislabeled with an identical model — one is the RSD transmitter, the other a
-    RSD push-button; (3) flag the genuine duplicate line-pairs (same model, two
-    entries at different recorded costs) for reconciliation rather than deleting
-    real purchase history. Plain sqlite3 connection here — no row factory."""
-    _cv = db.execute("SELECT value FROM meta WHERE key = 'inv_cleanup_v'").fetchone()
-    if _cv and int(_cv[0] or 0) >= INV_CLEANUP_VERSION:
-        return
-    # (1) Schneider accessories: Inverter -> Electrical.
-    schneider_models = (
-        "Breaker Kit for Conext XW+PDP #RNW865121501",
-        "XW Connection kit for Inverter 2 (RNW865102002",
-        "XW+ mini Power Distribution Panel RNW865101301",
-        "XW+ POWER DISTIBUTION PANEL (RNW865101501)",
-    )
-    for model in schneider_models:
-        db.execute(
-            "UPDATE inventory_items SET category = 'Electrical',"
-            " flags = 'Recategorized from Inverter to Electrical — accessory (PDP /"
-            " connection kit / breaker kit), not an inverter.'"
-            " WHERE category = 'Inverter' AND make = 'Schneider Electric'"
-            " AND model = ?", (model,))
-    # (2) AP Smart: the two rows share model 'APsmart transmitter APS 406001 Single
-    #     Core' but are different devices; split them by vendor part number.
-    db.execute(
-        "UPDATE inventory_items SET model = 'APsmart RSD Transmitter (APS 406001)',"
-        " flags = 'PLC rapid-shutdown transmitter — one per array; not a per-module"
-        " optimizer.' WHERE make = 'AP Smart' AND vendor_number = '300-00252'")
-    db.execute(
-        "UPDATE inventory_items SET model = 'APsmart RSD Push Button (APS 406001)',"
-        " flags = 'Rapid-shutdown initiation push-button (NO/NC contacts) — not a"
-        " transmitter or optimizer; model corrected (was mislabeled as the"
-        " transmitter).' WHERE make = 'AP Smart' AND vendor_number = '300-00253'")
-    # (3) Genuine duplicate line-pairs: flag, don't delete (they carry different
-    #     recorded costs = real purchase history to reconcile by hand).
-    db.execute(
-        "UPDATE inventory_items SET flags = 'Possible duplicate line — two"
-        " XR-1000-210M rail entries at different recorded costs; reconcile qty &"
-        " price, then trash one.' WHERE make = 'IronRidge' AND model = 'XR-1000-210M'")
-    db.execute(
-        "UPDATE inventory_items SET flags = 'Possible duplicate line — two"
-        " MNTRANSFER-60A entries at different recorded costs; reconcile, then trash"
-        " one.' WHERE make = 'MidNite Solar' AND model = 'MNTRANSFER-60A'")
-    db.execute("INSERT INTO meta (key, value) VALUES ('inv_cleanup_v', ?)"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-               (str(INV_CLEANUP_VERSION),))
-    db.commit()
-
-
 def init_db():
     """Create tables if missing and upgrade older databases."""
     db = sqlite3.connect(DATABASE)
@@ -1862,35 +1657,6 @@ def init_db():
         db.execute("INSERT INTO meta (key, value) VALUES ('projects_rename_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
-    ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
-    ensure_columns(db, "inventory_items", ["stale_flag"])   # Piece 30.4: manual "stale" mark
-    db.execute("UPDATE inventory_items SET status = 'Active'"
-               " WHERE COALESCE(status, '') = ''")
-    standardize_vendors(db)
-    standardize_makes(db)
-    apply_inventory_research(db)
-    apply_tools_research(db)
-    cleanup_inventory(db)
-    # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
-    # are researched in a later phase; blank ones stay flagged.
-    if not db.execute("SELECT 1 FROM meta WHERE key = 'inv_fcc_flagged'").fetchone():
-        for rid, raw in db.execute(
-                "SELECT id, specs FROM inventory_items"
-                " WHERE category = 'Inverter'").fetchall():
-            try:
-                sp = json.loads(raw or "{}")
-            except (ValueError, TypeError):
-                sp = {}
-            if not sp.get("FCC ID#"):
-                sp["FCC ID#"] = ""
-                db.execute(
-                    "UPDATE inventory_items SET specs = ?,"
-                    " flags = CASE WHEN COALESCE(flags,'') = '' THEN"
-                    " 'FCC ID# pending (later phase)' ELSE flags END WHERE id = ?",
-                    (json.dumps(sp, default=str), rid))
-        db.execute("INSERT INTO meta (key, value) VALUES ('inv_fcc_flagged', '1')"
-                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-        db.commit()
     # Piece 36: barcode/asset-tag scanning is cut (built for a multi-person crew
     # truck-loading parts — doesn't fit household scale). Drop its tables from
     # any existing database; a no-op on a genuinely fresh one.
@@ -1971,6 +1737,53 @@ def init_db():
             legacy_fields + legacy_fields)
         db.execute("INSERT INTO meta (key, value) VALUES"
                    " ('legacy_solar_rules_purged_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
+    # Piece 41 Part D: Inventory rehaul. The categories/spec-field system
+    # (INVENTORY_CATEGORY_SPECS), the needed/available/on-PO stock model, the
+    # inventory_txns ledger, and the managed inventory_vendors entity all
+    # existed to serve the original solar-parts catalog and a crew consuming
+    # parts across jobs -- a household just wants "I have this or I don't."
+    # Purge the legacy catalog (confirmed every row is 0-available/0-needed
+    # solar-business reference data, not real household stock -- 439 items /
+    # 49 tools / 11 vehicles / 52 vendors in the household's real database),
+    # add the new minimal columns, and drop the old ones + the ledger/vendor
+    # tables. A no-op on a fresh install.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'inventory_rehaul_v1'").fetchone():
+        for tbl in ("inventory_items", "inventory_tools", "inventory_vehicles"):
+            db.execute(f"DELETE FROM {tbl}")
+        ensure_columns(db, "inventory_items", ["purchased_from", "notes"])
+        # quantity is numeric -- add it directly rather than via
+        # ensure_columns() (which always adds TEXT columns, which would make
+        # every quantity value a string on a migrated database).
+        try:
+            db.execute(
+                "ALTER TABLE inventory_items ADD COLUMN quantity"
+                " INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        ensure_columns(db, "inventory_tools", ["purchased_from"])
+        ensure_columns(db, "inventory_vehicles", ["purchased_from"])
+        for col in ("vendor_id", "vendor_number", "web_price", "price_checked_on",
+                    "needed", "available", "on_po", "status", "last_used",
+                    "specs", "flags", "stock_reviewed_on", "stale_flag"):
+            try:
+                db.execute(f"ALTER TABLE inventory_items DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        for col in ("vendor_id", "needed", "available"):
+            try:
+                db.execute(f"ALTER TABLE inventory_tools DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        try:
+            db.execute("ALTER TABLE inventory_vehicles DROP COLUMN vendor_id")
+        except sqlite3.OperationalError:
+            pass
+        db.execute("DROP TABLE IF EXISTS inventory_txns")
+        db.execute("DROP TABLE IF EXISTS inventory_vendors")
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('inventory_rehaul_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
     tag_tasks_by_stage(db)
@@ -2745,10 +2558,9 @@ def dashboard():
         " WHERE i.status = 'Backlog'"
         " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
     ).fetchall()
-    stale_stock = len(stale_stock_items(db))
     return render_template(
         "dashboard.html", user=user,
-        stale_stock=stale_stock, task_groups=task_groups, my_chores=my_chores,
+        task_groups=task_groups, my_chores=my_chores,
         my_requirements=my_requirements,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
         payments=payments, pay_totals=pay_totals,
@@ -3562,164 +3374,58 @@ def delete_project_note(note_id):
     return _workbag_redirect(anchor="notes")
 
 
-INVENTORY_CAT_ORDER = [
-    "PV Module", "Inverter", "Battery", "Charge Controller", "Optimizer",
-    "Generator", "Breaker", "Breaker Panel", "Controls", "Electrical", "Wire",
-    "Monitoring", "Enclosure", "Pumping", "Racking",
-]
-# Piece 23.4: category -> spec fields that should always exist even when no
-# seeded item carries them yet. FCC ID# is inverter-only and brand-new (blank
-# for now, researched later), so it shows as a column and gets flagged.
-INVENTORY_EXTRA_SPECS = {"Inverter": ["FCC ID#"]}
-
-
-def inventory_category_specs():
-    """Ordered spec-field names per category, unioned from the seed's category
-    map (keyed by sheet) plus the always-present extras. Sheet 'PV' maps to the
-    'PV Module' category value; others match their sheet name."""
-    out = {}
-    for sheet, fields in INVENTORY_CATEGORY_SPECS.items():
-        cat = "PV Module" if sheet == "PV" else sheet
-        out[cat] = list(fields)
-    for cat, extra in INVENTORY_EXTRA_SPECS.items():
-        out.setdefault(cat, [])
-        for f in extra:
-            if f not in out[cat]:
-                out[cat].append(f)
-    return out
-
-
-# --- Stock ledger + stale-stock rule (Piece 24.4) ----------------------------
-STALE_MONTHS = 6
-
-
-def apply_stock_txn(db, item_id, kind, delta, project_id=None, note="", user_name=""):
-    """Write one stock-ledger row and update the item's cached balance. `delta`
-    is the signed change to `available` (received > 0, used < 0, count = target −
-    current). A 'used' movement stamps last_used = today, which the stale-stock
-    notice keys off. This is the single choke-point every stock change flows
-    through — the later BOM auto-deduct will call it too."""
-    db.execute(
-        "INSERT INTO inventory_txns (item_id, kind, qty, project_id, note, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (item_id, kind, delta, project_id, note, user_name))
-    db.execute("UPDATE inventory_items SET available = MAX(0, COALESCE(available, 0) + ?)"
-               " WHERE id = ?", (delta, item_id))
-    if kind == "used":
-        db.execute("UPDATE inventory_items SET last_used = date('now') WHERE id = ?",
-                   (item_id,))
-    db.commit()
-
-
-def stale_stock_items(db):
-    """Items the stale-stock rule flags for the Designer: Active, zero on hand,
-    and last actually used more than STALE_MONTHS ago — excluding any dismissed
-    ('kept') within that window. Items never used aren't flagged yet (no usage
-    history to judge; they surface once the ledger has real runway)."""
-    win = f"-{STALE_MONTHS} months"
-    # Piece 30.4: an item is stale if it was manually flagged (stale_flag), OR it
-    # meets the automatic rule (zero on hand + unused 6+ months, not recently kept).
-    return db.execute(
-        "SELECT i.*, v.name AS vendor_name FROM inventory_items i"
-        " LEFT JOIN inventory_vendors v ON v.id = i.vendor_id"
-        " WHERE i.active = 1 AND i.status = 'Active' AND ("
-        "   COALESCE(i.stale_flag, '') = '1'"
-        "   OR (COALESCE(i.available, 0) <= 0"
-        "       AND COALESCE(i.last_used, '') != '' AND date(i.last_used) <= date('now', ?)"
-        "       AND (COALESCE(i.stock_reviewed_on, '') = ''"
-        "            OR date(i.stock_reviewed_on) <= date('now', ?)))"
-        " ) ORDER BY (COALESCE(i.stale_flag,'') = '1') DESC, i.last_used",
-        (win, win)).fetchall()
-
-
 @app.route("/inventory")
 def inventory_page():
-    """Piece 23.2 (revised Piece 36): the household's own inventory — starts
-    empty, grouped by category with per-category specs, plus the tool kit
-    and the vehicle/heavy-equipment list. Feeds the Loads & Sizing calculator
-    and (later) the designer → procurement auto-fill."""
+    """Piece 23.2 (revised Piece 36, rehauled Piece 41): the household's own
+    inventory — items grouped by free-text category, plus the tool kit and
+    the vehicle list."""
     db = get_db()
-    vendors = {v["id"]: v["name"]
-               for v in db.execute("SELECT id, name FROM inventory_vendors").fetchall()}
     items = db.execute(
         "SELECT * FROM inventory_items WHERE active = 1"
         " ORDER BY category, make, model").fetchall()
     by_cat = {}
     for it in items:
-        by_cat.setdefault(it["category"], []).append(it)
-    cat_specs = inventory_category_specs()
-    sections = []
-    for cat in sorted(by_cat, key=lambda c: (INVENTORY_CAT_ORDER.index(c)
-                      if c in INVENTORY_CAT_ORDER else 99, c)):
-        rows = []
-        # Start with the category's canonical spec order (so blank-but-expected
-        # fields like the inverter FCC ID# still appear), then add any extras
-        # seen on actual items.
-        spec_order = list(cat_specs.get(cat, []))
-        for it in by_cat[cat]:
-            try:
-                sp = json.loads(it["specs"] or "{}")
-            except (ValueError, TypeError):
-                sp = {}
-            for k in sp:
-                if k not in spec_order:
-                    spec_order.append(k)
-            d = dict(it)
-            d["specs"] = sp
-            d["vendor_name"] = vendors.get(it["vendor_id"], "")
-            rows.append(d)
-        sections.append({"category": cat, "specs": spec_order, "items": rows,
-                         "count": len(rows)})
-    tools = db.execute("SELECT t.*, v.name AS vendor_name FROM inventory_tools t"
-                       " LEFT JOIN inventory_vendors v ON v.id = t.vendor_id"
-                       " WHERE t.active = 1 ORDER BY t.category, t.name").fetchall()
-    vehicles = db.execute("SELECT v.*, ve.name AS vendor_name FROM inventory_vehicles v"
-                          " LEFT JOIN inventory_vendors ve ON ve.id = v.vendor_id"
-                          " WHERE v.active = 1 ORDER BY v.category, v.name").fetchall()
-    vendor_list = db.execute(
-        "SELECT id, name FROM inventory_vendors ORDER BY name").fetchall()
+        by_cat.setdefault(it["category"] or "Uncategorized", []).append(it)
+    sections = [{"category": cat, "items": rows, "count": len(rows)}
+                for cat, rows in sorted(by_cat.items())]
+    tools = db.execute(
+        "SELECT * FROM inventory_tools WHERE active = 1"
+        " ORDER BY category, name").fetchall()
+    vehicles = db.execute(
+        "SELECT * FROM inventory_vehicles WHERE active = 1"
+        " ORDER BY category, name").fetchall()
     return render_template(
         "inventory.html", sections=sections, tools=tools, vehicles=vehicles,
-        item_total=len(items), vendor_count=len(vendors),
-        stale_count=len(stale_stock_items(db)),
-        vendor_list=vendor_list, cat_specs=inventory_category_specs())
+        item_total=len(items))
+
+
+def _inventory_category_choices(db):
+    return [r[0] for r in db.execute(
+        "SELECT DISTINCT category FROM inventory_items"
+        " WHERE COALESCE(category, '') != '' ORDER BY category").fetchall()]
 
 
 def _inventory_form_values():
-    """Pull an inventory item's core fields + specs out of the POSTed form."""
-    cat = request.form.get("category", "").strip()
-    spec_fields = inventory_category_specs().get(cat, [])
-    specs = {}
-    for name in spec_fields:
-        val = request.form.get(f"spec__{name}", "").strip()
-        if val:
-            num = _to_float(val)
-            specs[name] = num if num is not None else val
-    vid = request.form.get("vendor_id", "")
+    """Pull an inventory item's fields out of the POSTed form."""
     return {
-        "category": cat,
+        "category": request.form.get("category", "").strip(),
         "make": request.form.get("make", "").strip(),
         "model": request.form.get("model", "").strip(),
         "description": request.form.get("description", "").strip(),
-        "vendor_id": int(vid) if vid.isdigit() else None,
-        "vendor_number": request.form.get("vendor_number", "").strip(),
+        "purchased_from": request.form.get("purchased_from", "").strip(),
         "cost": _to_float(request.form.get("cost")),
         "purchase_url": request.form.get("purchase_url", "").strip(),
         "manual_url": request.form.get("manual_url", "").strip(),
-        "needed": int(_to_float(request.form.get("needed")) or 0),
-        "available": int(_to_float(request.form.get("available")) or 0),
-        "on_po": int(_to_float(request.form.get("on_po")) or 0),
-        "status": request.form.get("status", "Active").strip() or "Active",
-        "flags": request.form.get("flags", "").strip(),
-        "specs": json.dumps(specs, default=str),
+        "quantity": int(_to_float(request.form.get("quantity")) or 0),
+        "notes": request.form.get("notes", "").strip(),
     }
 
 
 @app.route("/inventory/items/new", methods=["GET", "POST"])
 @admin_required
 def inventory_item_new():
-    """Piece 23.4: add a new inventory item from inside the app (the per-category
-    'New product' button preselects the category)."""
+    """Add a new inventory item (the per-category "New item" button preselects
+    the category)."""
     db = get_db()
     if request.method == "POST":
         v = _inventory_form_values()
@@ -3728,29 +3434,24 @@ def inventory_item_new():
             return redirect(url_for("inventory_item_new", category=v["category"]))
         db.execute(
             "INSERT INTO inventory_items (category, make, model, description,"
-            " vendor_id, vendor_number, cost, purchase_url, manual_url, needed,"
-            " available, on_po, status, flags, specs)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " purchased_from, cost, purchase_url, manual_url, quantity, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (v["category"], v["make"], v["model"], v["description"],
-             v["vendor_id"], v["vendor_number"], v["cost"], v["purchase_url"],
-             v["manual_url"], v["needed"], v["available"], v["on_po"],
-             v["status"], v["flags"], v["specs"]))
+             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["quantity"], v["notes"]))
         db.commit()
         flash(f"Added {v['make']} {v['model']}.".strip())
         return redirect(url_for("inventory_page", _anchor=v["category"]))
     category = request.args.get("category", "")
     return render_template(
         "inventory_item_form.html", item=None, category=category,
-        spec_fields=inventory_category_specs().get(category, []),
-        categories=INVENTORY_CAT_ORDER,
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+        categories=_inventory_category_choices(db))
 
 
 @app.route("/inventory/items/<int:item_id>/edit", methods=["GET", "POST"])
 @admin_required
 def inventory_item_edit(item_id):
-    """Piece 23.4: update an existing inventory item in place."""
+    """Update an existing inventory item in place."""
     db = get_db()
     row = db.execute("SELECT * FROM inventory_items WHERE id = ?",
                      (item_id,)).fetchone()
@@ -3760,34 +3461,17 @@ def inventory_item_edit(item_id):
         v = _inventory_form_values()
         db.execute(
             "UPDATE inventory_items SET category = ?, make = ?, model = ?,"
-            " description = ?, vendor_id = ?, vendor_number = ?, cost = ?,"
-            " purchase_url = ?, manual_url = ?, needed = ?, available = ?,"
-            " on_po = ?, status = ?, flags = ?, specs = ? WHERE id = ?",
+            " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
+            " manual_url = ?, quantity = ?, notes = ? WHERE id = ?",
             (v["category"], v["make"], v["model"], v["description"],
-             v["vendor_id"], v["vendor_number"], v["cost"], v["purchase_url"],
-             v["manual_url"], v["needed"], v["available"], v["on_po"],
-             v["status"], v["flags"], v["specs"], item_id))
+             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["quantity"], v["notes"], item_id))
         db.commit()
         flash("Item updated.")
         return redirect(url_for("inventory_page", _anchor=v["category"]))
-    item = dict(row)
-    try:
-        item["specs"] = json.loads(row["specs"] or "{}")
-    except (ValueError, TypeError):
-        item["specs"] = {}
-    txns = db.execute(
-        "SELECT t.kind, t.qty, t.note, t.created_by, t.created_at, j.job_name"
-        " FROM inventory_txns t LEFT JOIN projects j ON j.id = t.project_id"
-        " WHERE t.item_id = ? ORDER BY t.id DESC LIMIT 10", (item_id,)).fetchall()
-    projects = db.execute(
-        "SELECT id, job_name FROM projects WHERE status != 'Abandoned'"
-        " ORDER BY id DESC").fetchall()
     return render_template(
-        "inventory_item_form.html", item=item, category=item["category"],
-        spec_fields=inventory_category_specs().get(item["category"], []),
-        categories=INVENTORY_CAT_ORDER, txns=txns, projects=projects,
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+        "inventory_item_form.html", item=dict(row), category=row["category"],
+        categories=_inventory_category_choices(db))
 
 
 @app.route("/inventory/items/<int:item_id>/delete", methods=["POST"])
@@ -3799,121 +3483,19 @@ def inventory_item_delete(item_id):
     return redirect(url_for("inventory_page"))
 
 
-@app.route("/inventory/items/<int:item_id>/adjust", methods=["POST"])
-@admin_required
-def inventory_item_adjust(item_id):
-    """Piece 24.4: record a stock movement (received / used / count correction)
-    through the ledger. 'Used' can be tied to a project and stamps last_used."""
-    db = get_db()
-    row = db.execute("SELECT available FROM inventory_items WHERE id = ?",
-                     (item_id,)).fetchone()
-    if row is None:
-        abort(404)
-    kind = request.form.get("kind", "used")
-    qty = int(_to_float(request.form.get("qty")) or 0)
-    job_raw = request.form.get("project_id", "")
-    project_id = int(job_raw) if job_raw.isdigit() else None
-    note = request.form.get("note", "").strip()
-    cur = row["available"] or 0
-    if kind == "received":
-        delta = abs(qty)
-    elif kind == "used":
-        delta = -abs(qty)
-    elif kind == "count":
-        delta = qty - cur          # qty is the counted on-hand total
-    else:
-        delta = qty
-    if delta == 0 and kind != "count":
-        flash("Enter a quantity to record.", "error")
-        return redirect(url_for("inventory_item_edit", item_id=item_id))
-    user = current_user()
-    apply_stock_txn(db, item_id, kind, delta, project_id, note,
-                    user["name"] if user else "")
-    flash({"received": "Stock received.", "used": "Usage recorded.",
-           "count": "Count updated."}.get(kind, "Stock adjusted."))
-    return redirect(url_for("inventory_item_edit", item_id=item_id))
-
-
-@app.route("/inventory/stale")
-@admin_required
-def inventory_stale():
-    """Piece 24.4: the Designer's stale-stock review queue — zero on hand and
-    unused for 6+ months. Keep active / Discontinue / Move to trash."""
-    db = get_db()
-    items = [dict(r) for r in stale_stock_items(db)]
-    return render_template("inventory_stale.html", items=items, months=STALE_MONTHS)
-
-
-@app.route("/inventory/stale/<int:item_id>/keep", methods=["POST"])
-@admin_required
-def inventory_stale_keep(item_id):
-    """Dismiss a stale-stock flag: mark reviewed today (re-checks in 6 months)."""
-    db = get_db()
-    db.execute("UPDATE inventory_items SET stock_reviewed_on = date('now'),"
-               " stale_flag = '' WHERE id = ?", (item_id,))   # clears a manual mark too
-    db.commit()
-    flash("Kept active — cleared the stale mark (auto re-checks in 6 months).")
-    return redirect(url_for("inventory_stale"))
-
-
-@app.route("/inventory/stale/<int:item_id>/discontinue", methods=["POST"])
-@admin_required
-def inventory_stale_discontinue(item_id):
-    """Soft-retire a stale item: mark Discontinued (keeps the record)."""
-    db = get_db()
-    db.execute("UPDATE inventory_items SET status = 'Discontinued',"
-               " stock_reviewed_on = date('now'), stale_flag = '' WHERE id = ?",
-               (item_id,))
-    db.commit()
-    flash("Marked Discontinued.")
-    return redirect(url_for("inventory_stale"))
-
-
-@app.route("/inventory/<int:item_id>/toggle-stale", methods=["POST"])
-@admin_required
-def inventory_toggle_stale(item_id):
-    """Piece 30.4: manually flag (or unflag) an inventory item as stale, from the
-    inventory listing — independent of the automatic zero-on-hand/unused rule.
-    Flagged items show a Stale badge and appear in the stale review queue."""
-    db = get_db()
-    row = db.execute("SELECT stale_flag, description, make, model FROM inventory_items"
-                     " WHERE id = ?", (item_id,)).fetchone()
-    if row is None:
-        abort(404)
-    now_stale = (row["stale_flag"] or "") != "1"
-    db.execute("UPDATE inventory_items SET stale_flag = ? WHERE id = ?",
-               ("1" if now_stale else "", item_id))
-    db.commit()
-    name = row["description"] or (f"{row['make']} {row['model']}").strip() or "Item"
-    flash(f"“{name}” marked stale." if now_stale else f"“{name}” is no longer stale.")
-    return redirect(url_for("inventory_page"))
-
-
-@app.route("/inventory/stale/<int:item_id>/trash", methods=["POST"])
-@delete_required
-def inventory_stale_trash(item_id):
-    """Retire a stale item to the trash (restorable, GM-only)."""
-    ok, msg = trash_item("inventory_item", item_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("inventory_stale"))
-
-
 # --- Tools CRUD (Piece 24.3) -------------------------------------------------
 def _tool_form_values():
     """Pull a tool's fields out of the POSTed form."""
-    vid = request.form.get("vendor_id", "")
     return {
         "name": request.form.get("name", "").strip(),
         "category": request.form.get("category", "").strip(),
         "make": request.form.get("make", "").strip(),
         "model": request.form.get("model", "").strip(),
         "description": request.form.get("description", "").strip(),
-        "vendor_id": int(vid) if vid.isdigit() else None,
+        "purchased_from": request.form.get("purchased_from", "").strip(),
         "cost": _to_float(request.form.get("cost")),
         "purchase_url": request.form.get("purchase_url", "").strip(),
         "manual_url": request.form.get("manual_url", "").strip(),
-        "needed": int(_to_float(request.form.get("needed")) or 0),
-        "available": int(_to_float(request.form.get("available")) or 0),
         "notes": request.form.get("notes", "").strip(),
     }
 
@@ -3930,18 +3512,15 @@ def inventory_tool_new():
             return redirect(url_for("inventory_tool_new"))
         db.execute(
             "INSERT INTO inventory_tools (name, category, make, model, description,"
-            " vendor_id, cost, purchase_url, manual_url, needed, available, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " purchased_from, cost, purchase_url, manual_url, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (v["name"], v["category"], v["make"], v["model"], v["description"],
-             v["vendor_id"], v["cost"], v["purchase_url"], v["manual_url"],
-             v["needed"], v["available"], v["notes"]))
+             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["notes"]))
         db.commit()
         flash(f"Added tool: {v['name']}.")
         return redirect(url_for("inventory_page", _anchor="tools"))
-    return render_template(
-        "inventory_tool_form.html", tool=None,
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+    return render_template("inventory_tool_form.html", tool=None)
 
 
 @app.route("/inventory/tools/<int:tool_id>/edit", methods=["GET", "POST"])
@@ -3956,18 +3535,15 @@ def inventory_tool_edit(tool_id):
         v = _tool_form_values()
         db.execute(
             "UPDATE inventory_tools SET name = ?, category = ?, make = ?, model = ?,"
-            " description = ?, vendor_id = ?, cost = ?, purchase_url = ?,"
-            " manual_url = ?, needed = ?, available = ?, notes = ? WHERE id = ?",
+            " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
+            " manual_url = ?, notes = ? WHERE id = ?",
             (v["name"], v["category"], v["make"], v["model"], v["description"],
-             v["vendor_id"], v["cost"], v["purchase_url"], v["manual_url"],
-             v["needed"], v["available"], v["notes"], tool_id))
+             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["notes"], tool_id))
         db.commit()
         flash("Tool updated.")
         return redirect(url_for("inventory_page", _anchor="tools"))
-    return render_template(
-        "inventory_tool_form.html", tool=dict(row),
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+    return render_template("inventory_tool_form.html", tool=dict(row))
 
 
 @app.route("/inventory/tools/<int:tool_id>/delete", methods=["POST"])
@@ -3981,8 +3557,7 @@ def inventory_tool_delete(tool_id):
 
 # --- Vehicles CRUD (Piece 24.3) ----------------------------------------------
 def _vehicle_form_values():
-    """Pull a vehicle/heavy-equipment unit's fields out of the POSTed form."""
-    vid = request.form.get("vendor_id", "")
+    """Pull a vehicle's fields out of the POSTed form."""
     return {
         "name": request.form.get("name", "").strip(),
         "nickname": request.form.get("nickname", "").strip(),
@@ -3991,7 +3566,7 @@ def _vehicle_form_values():
         "model": request.form.get("model", "").strip(),
         "year": request.form.get("year", "").strip(),
         "description": request.form.get("description", "").strip(),
-        "vendor_id": int(vid) if vid.isdigit() else None,
+        "purchased_from": request.form.get("purchased_from", "").strip(),
         "cost": _to_float(request.form.get("cost")),
         "purchase_url": request.form.get("purchase_url", "").strip(),
         "manual_url": request.form.get("manual_url", "").strip(),
@@ -4002,33 +3577,30 @@ def _vehicle_form_values():
 @app.route("/inventory/vehicles/new", methods=["GET", "POST"])
 @admin_required
 def inventory_vehicle_new():
-    """Add a vehicle / heavy-equipment unit."""
+    """Add a vehicle to the household's registry."""
     db = get_db()
     if request.method == "POST":
         v = _vehicle_form_values()
         if not v["name"]:
-            flash("A unit name is required.", "error")
+            flash("A vehicle name is required.", "error")
             return redirect(url_for("inventory_vehicle_new"))
         db.execute(
             "INSERT INTO inventory_vehicles (name, nickname, category, make, model,"
-            " year, description, vendor_id, cost, purchase_url, manual_url, notes)"
+            " year, description, purchased_from, cost, purchase_url, manual_url, notes)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (v["name"], v["nickname"], v["category"], v["make"], v["model"],
-             v["year"], v["description"], v["vendor_id"], v["cost"],
+             v["year"], v["description"], v["purchased_from"], v["cost"],
              v["purchase_url"], v["manual_url"], v["notes"]))
         db.commit()
-        flash(f"Added unit: {v['name']}.")
+        flash(f"Added: {v['name']}.")
         return redirect(url_for("inventory_page", _anchor="vehicles"))
-    return render_template(
-        "inventory_vehicle_form.html", vehicle=None,
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+    return render_template("inventory_vehicle_form.html", vehicle=None)
 
 
 @app.route("/inventory/vehicles/<int:vehicle_id>/edit", methods=["GET", "POST"])
 @admin_required
 def inventory_vehicle_edit(vehicle_id):
-    """Update a vehicle / heavy-equipment unit in place."""
+    """Update a vehicle in place."""
     db = get_db()
     row = db.execute("SELECT * FROM inventory_vehicles WHERE id = ?",
                      (vehicle_id,)).fetchone()
@@ -4038,24 +3610,21 @@ def inventory_vehicle_edit(vehicle_id):
         v = _vehicle_form_values()
         db.execute(
             "UPDATE inventory_vehicles SET name = ?, nickname = ?, category = ?,"
-            " make = ?, model = ?, year = ?, description = ?, vendor_id = ?,"
+            " make = ?, model = ?, year = ?, description = ?, purchased_from = ?,"
             " cost = ?, purchase_url = ?, manual_url = ?, notes = ? WHERE id = ?",
             (v["name"], v["nickname"], v["category"], v["make"], v["model"],
-             v["year"], v["description"], v["vendor_id"], v["cost"],
+             v["year"], v["description"], v["purchased_from"], v["cost"],
              v["purchase_url"], v["manual_url"], v["notes"], vehicle_id))
         db.commit()
-        flash("Unit updated.")
+        flash("Vehicle updated.")
         return redirect(url_for("inventory_page", _anchor="vehicles"))
-    return render_template(
-        "inventory_vehicle_form.html", vehicle=dict(row),
-        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
-                               " ORDER BY name").fetchall())
+    return render_template("inventory_vehicle_form.html", vehicle=dict(row))
 
 
 @app.route("/inventory/vehicles/<int:vehicle_id>/delete", methods=["POST"])
 @delete_required
 def inventory_vehicle_delete(vehicle_id):
-    """Send a vehicle / heavy-equipment unit to the trash (restorable, GM-only)."""
+    """Send a vehicle to the trash (restorable, GM-only)."""
     ok, msg = trash_item("inventory_vehicle", vehicle_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="vehicles"))

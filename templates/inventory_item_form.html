@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit item" if item else "New product" }}{% endblock %}
+{% block title %}{{ "Edit item" if item else "New item" }}{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>📦 {{ "Edit inventory item" if item else "New product" }}</h1>
+  <h1>📦 {{ "Edit inventory item" if item else "New item" }}</h1>
   <a href="{{ url_for('inventory_page') }}" class="btn btn-secondary">← Back to Inventory</a>
 </div>
 
@@ -10,103 +10,30 @@
   <form method="post" action="{{ url_for('inventory_item_edit', item_id=item['id']) if item else url_for('inventory_item_new') }}">
     <div class="form-grid">
       <div class="field">
-        <label>Category *</label>
-        <select name="category" required {% if not item %}onchange="location.href='{{ url_for('inventory_item_new') }}?category='+encodeURIComponent(this.value)"{% endif %}>
-          {% for c in categories %}<option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-          {% if category and category not in categories %}<option value="{{ category }}" selected>{{ category }}</option>{% endif %}
-        </select>
-        {% if not item %}<span class="muted" style="font-size:0.75rem;">Changing the category reloads its spec fields.</span>{% endif %}
+        <label for="category">Category *</label>
+        <input id="category" name="category" list="category_list" required
+               value="{{ item['category'] if item else category }}"
+               placeholder="e.g. Pantry, Tools, Electronics">
+        <datalist id="category_list">
+          {% for c in categories %}<option value="{{ c }}">{% endfor %}
+        </datalist>
       </div>
       <div class="field"><label>Make</label><input name="make" value="{{ item['make'] if item else '' }}"></div>
       <div class="field"><label>Model</label><input name="model" value="{{ item['model'] if item else '' }}"></div>
       <div class="field wide"><label>Description</label><input name="description" value="{{ item['description'] if item else '' }}"></div>
-      <div class="field">
-        <label>Vendor</label>
-        <select name="vendor_id">
-          <option value="">— none —</option>
-          {% for v in vendor_list %}<option value="{{ v['id'] }}" {% if item and item['vendor_id'] == v['id'] %}selected{% endif %}>{{ v['name'] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Vendor part #</label><input name="vendor_number" value="{{ item['vendor_number'] if item else '' }}"></div>
-      <div class="field"><label>Cost $ (your quoted/paid price)</label><input name="cost" type="number" step="0.01" min="0" value="{{ '%.2f'|format(item['cost']) if item and item['cost'] is not none else '' }}"></div>
-      <div class="field">
-        <label>Status</label>
-        <select name="status">
-          {% for s in ["Active", "Discontinued"] %}<option value="{{ s }}" {% if item and item['status'] == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Available</label><input name="available" type="number" min="0" value="{{ item['available'] if item else 0 }}"></div>
-      <div class="field"><label>Needed</label><input name="needed" type="number" min="0" value="{{ item['needed'] if item else 0 }}"></div>
-      <div class="field"><label>On PO</label><input name="on_po" type="number" min="0" value="{{ item['on_po'] if item else 0 }}"></div>
+      <div class="field"><label>Purchased from</label><input name="purchased_from" value="{{ item['purchased_from'] if item else '' }}" placeholder="e.g. Amazon, Home Depot"></div>
+      <div class="field"><label>Cost $</label><input name="cost" type="number" step="0.01" min="0" value="{{ '%.2f'|format(item['cost']) if item and item['cost'] is not none else '' }}"></div>
+      <div class="field"><label>Quantity</label><input name="quantity" type="number" min="0" value="{{ item['quantity'] if item else 0 }}"></div>
       <div class="field wide"><label>Purchase URL</label><input name="purchase_url" value="{{ item['purchase_url'] if item else '' }}" placeholder="https://…"></div>
       <div class="field wide"><label>Manual / datasheet URL</label><input name="manual_url" value="{{ item['manual_url'] if item else '' }}" placeholder="https://…"></div>
+      <div class="field wide"><label>Notes</label><input name="notes" value="{{ item['notes'] if item else '' }}"></div>
     </div>
 
-    {% if spec_fields %}
-    <h2 style="font-size:1rem; margin:1rem 0 0.4rem;">Specs <span class="muted" style="font-weight:400; font-size:0.82rem;">— {{ category }}</span></h2>
-    <div class="form-grid">
-      {% for sp in spec_fields %}
-      <div class="field"><label>{{ sp }}</label><input name="spec__{{ sp }}" value="{{ (item['specs'].get(sp, '') if item else '') }}"></div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <div class="field wide" style="margin-top:0.6rem;"><label>Flags / notes</label><input name="flags" value="{{ item['flags'] if item else '' }}" placeholder="e.g. FCC ID# pending"></div>
-
-    <div class="actions" style="margin-top:0.8rem;"><button type="submit" class="btn">{{ "Save changes" if item else "＋ Add product" }}</button></div>
+    <div class="actions" style="margin-top:0.8rem;"><button type="submit" class="btn">{{ "Save changes" if item else "＋ Add item" }}</button></div>
   </form>
 </div>
 
 {% if item %}
-<div class="card">
-  <h2 style="font-size:1rem; margin:0 0 0.5rem;">📊 Stock movement
-    <span class="muted" style="font-weight:400; font-size:0.82rem;">— on hand now:
-      <strong>{{ item['available'] }}</strong>{% if item['last_used'] %} · last used {{ item['last_used'] }}{% endif %}</span></h2>
-  <form method="post" action="{{ url_for('inventory_item_adjust', item_id=item['id']) }}">
-    <div class="form-grid">
-      <div class="field">
-        <label>Movement</label>
-        <select name="kind" id="txn-kind" onchange="document.getElementById('txn-job').style.display=(this.value=='used')?'':'none';">
-          <option value="received">Received (+)</option>
-          <option value="used" selected>Used on project (−)</option>
-          <option value="count">Count correction (set on-hand)</option>
-        </select>
-      </div>
-      <div class="field"><label>Quantity</label><input name="qty" type="number" min="0" step="1" value="1"></div>
-      <div class="field" id="txn-job">
-        <label>Project (for “used”)</label>
-        <select name="project_id">
-          <option value="">— none —</option>
-          {% for j in projects %}<option value="{{ j['id'] }}">{{ j['job_name'] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field wide"><label>Note</label><input name="note" placeholder="e.g. PO #1042, or count after warehouse audit"></div>
-    </div>
-    <div class="actions" style="margin-top:0.5rem;"><button type="submit" class="btn">Record movement</button></div>
-  </form>
-
-  {% if txns %}
-  <h3 style="font-size:0.9rem; margin:1rem 0 0.3rem;">Recent activity</h3>
-  <div class="inv-scroll" style="overflow-x:auto;">
-  <table class="inv-table" style="font-size:0.82rem;">
-    <thead><tr><th>When</th><th>Movement</th><th style="text-align:right;">Qty</th><th>Project</th><th>Note</th><th>By</th></tr></thead>
-    <tbody>
-      {% for t in txns %}
-      <tr>
-        <td style="white-space:nowrap;">{{ t['created_at'][:10] }}</td>
-        <td>{{ {'received':'Received','used':'Used','count':'Count','adjust':'Adjust'}.get(t['kind'], t['kind']) }}</td>
-        <td style="text-align:right;">{{ '+' if t['qty'] > 0 else '' }}{{ t['qty'] }}</td>
-        <td class="muted">{{ t['job_name'] or '—' }}</td>
-        <td class="muted">{{ t['note'] or '' }}</td>
-        <td class="muted">{{ t['created_by'] or '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</div>
-
 <div class="card">
   <form method="post" action="{{ url_for('inventory_item_delete', item_id=item['id']) }}"
         onsubmit="return confirm('Move this item to the trash?');" style="margin:0;">

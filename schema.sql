@@ -406,36 +406,24 @@ CREATE TABLE IF NOT EXISTS project_transactions (
     created_by  TEXT DEFAULT ''
 );
 
--- Piece 23.2: Inventory database (seeded from Vixinman's Inventory_respec workbook).
--- Vendors are the canonical supplier list; items carry the shared core fields
--- plus per-category specs as JSON. web_price/price_checked_on hold web-verified
--- pricing alongside (not replacing) the quoted Cost.
-CREATE TABLE IF NOT EXISTS inventory_vendors (
-    id   INTEGER PRIMARY KEY,      -- canonical vendor id from the workbook
-    name TEXT NOT NULL DEFAULT ''
-);
-
+-- Piece 23.2 (rehauled Piece 41): household inventory. Category is free text
+-- (no fixed list, no per-category spec system -- that machinery only ever
+-- served the original solar-parts catalog). "Vendor" is a plain optional
+-- purchased_from text field rather than a managed entity -- see
+-- inventory_vendors_removed_v1 in init_db() for the table/column drop.
 CREATE TABLE IF NOT EXISTS inventory_items (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     category         TEXT NOT NULL DEFAULT '',
     make             TEXT DEFAULT '',
     model            TEXT DEFAULT '',
     description      TEXT DEFAULT '',
-    vendor_id        INTEGER REFERENCES inventory_vendors(id),
-    vendor_number    TEXT DEFAULT '',
-    cost             REAL,                    -- Vixinman's quoted/paid price
-    web_price        REAL,                    -- web-verified price (Phase B)
-    price_checked_on TEXT DEFAULT '',         -- YYYY-MM-DD of the web check
-    purchase_url     TEXT DEFAULT '',         -- where to buy (from research)
+    purchased_from   TEXT DEFAULT '',
+    cost             REAL,
+    purchase_url     TEXT DEFAULT '',         -- where to buy
     manual_url       TEXT DEFAULT '',         -- datasheet / user manual
-    needed           INTEGER NOT NULL DEFAULT 0,
-    available        INTEGER NOT NULL DEFAULT 0,
-    on_po            INTEGER NOT NULL DEFAULT 0,
+    quantity         INTEGER NOT NULL DEFAULT 0,
+    notes            TEXT DEFAULT '',
     active           INTEGER NOT NULL DEFAULT 1,
-    status           TEXT NOT NULL DEFAULT 'Active',  -- Active / Discontinued (Piece 23.3)
-    last_used        TEXT DEFAULT '',              -- Piece 23.4: last time used on a project (for the stale-stock notice)
-    specs            TEXT NOT NULL DEFAULT '{}',   -- JSON of category-specific specs
-    flags            TEXT DEFAULT '',              -- standardization / research notes
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -447,19 +435,16 @@ CREATE TABLE IF NOT EXISTS inventory_tools (
     make         TEXT DEFAULT '',
     model        TEXT DEFAULT '',
     description  TEXT DEFAULT '',
-    vendor_id    INTEGER REFERENCES inventory_vendors(id),
+    purchased_from TEXT DEFAULT '',
     cost         REAL,
     purchase_url TEXT DEFAULT '',
     manual_url   TEXT DEFAULT '',
-    needed       INTEGER NOT NULL DEFAULT 0,
-    available    INTEGER NOT NULL DEFAULT 0,
     notes        TEXT DEFAULT '',
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 23.2: heavy equipment & vehicles (lift truck, ditch witch, ...), each
--- with a shop nickname.
+-- Piece 23.2: vehicles (car, truck, mower, ...), each with an optional nickname.
 CREATE TABLE IF NOT EXISTS inventory_vehicles (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL DEFAULT '',
@@ -469,7 +454,7 @@ CREATE TABLE IF NOT EXISTS inventory_vehicles (
     model        TEXT DEFAULT '',
     year         TEXT DEFAULT '',
     description  TEXT DEFAULT '',
-    vendor_id    INTEGER REFERENCES inventory_vendors(id),
+    purchased_from TEXT DEFAULT '',
     cost         REAL,
     purchase_url TEXT DEFAULT '',
     manual_url   TEXT DEFAULT '',
@@ -477,19 +462,3 @@ CREATE TABLE IF NOT EXISTS inventory_vehicles (
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
--- Piece 24.4: stock ledger — every inventory movement (received / used / count
--- correction / adjust) writes a dated, signed row here. `inventory_items.available`
--- stays a cached running balance the ledger updates; `last_used` is the date of
--- the most recent 'used' row, which drives the stale-stock notice.
-CREATE TABLE IF NOT EXISTS inventory_txns (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id     INTEGER NOT NULL REFERENCES inventory_items(id),
-    kind        TEXT NOT NULL DEFAULT 'used',   -- received | used | count | adjust
-    qty         INTEGER NOT NULL DEFAULT 0,      -- signed delta applied to available
-    project_id  INTEGER REFERENCES projects(id), -- optional, for 'used' on a project
-    note        TEXT DEFAULT '',
-    created_by  TEXT DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_inventory_txns_item ON inventory_txns(item_id);

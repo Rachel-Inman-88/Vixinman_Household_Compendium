@@ -216,18 +216,6 @@
 </details>
 {% endfor %}
 
-{# ---- Stale stock notice (zero on hand + unused 6+ months) ---- #}
-{% if stale_stock %}
-<div class="card" style="border-left:4px solid #f5a623;">
-  <h2 style="margin-top:0; font-size:1.05rem;">🕰️ Stale stock</h2>
-  <p style="margin:0 0 0.5rem;"><strong>{{ stale_stock }}</strong> active
-    item{{ "s" if stale_stock != 1 }} {{ "are" if stale_stock != 1 else "is" }} at
-    zero on hand and haven't been used in 6+ months. Confirm whether {{ "they're" if stale_stock != 1 else "it's" }}
-    still carried.</p>
-  <a href="{{ url_for('inventory_stale') }}" class="btn">Review stale stock →</a>
-</div>
-{% endif %}
-
 {# ---- Backlog worklist (above My tasks) — household ideas not yet started ---- #}
 <details class="card sect" open style="border-left:4px solid #f5a623;">
   <summary>🗂 Backlog <span class="sect-count">{{ backlog_worklist|length }}</span></summary>

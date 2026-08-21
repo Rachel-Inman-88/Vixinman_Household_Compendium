@@ -18,19 +18,11 @@
       <div class="field"><label>Make</label><input name="make" value="{{ tool['make'] if tool else '' }}"></div>
       <div class="field"><label>Model</label><input name="model" value="{{ tool['model'] if tool else '' }}"></div>
       <div class="field wide"><label>Description</label><input name="description" value="{{ tool['description'] if tool else '' }}"></div>
-      <div class="field">
-        <label>Vendor</label>
-        <select name="vendor_id">
-          <option value="">— none —</option>
-          {% for vend in vendor_list %}<option value="{{ vend['id'] }}" {% if tool and tool['vendor_id'] == vend['id'] %}selected{% endif %}>{{ vend['name'] }}</option>{% endfor %}
-        </select>
-      </div>
+      <div class="field"><label>Purchased from</label><input name="purchased_from" value="{{ tool['purchased_from'] if tool else '' }}" placeholder="e.g. Home Depot"></div>
       <div class="field"><label>Cost $</label><input name="cost" type="number" step="0.01" min="0" value="{{ '%.2f'|format(tool['cost']) if tool and tool['cost'] is not none else '' }}"></div>
-      <div class="field"><label>Available</label><input name="available" type="number" min="0" value="{{ tool['available'] if tool else 0 }}"></div>
-      <div class="field"><label>Needed</label><input name="needed" type="number" min="0" value="{{ tool['needed'] if tool else 0 }}"></div>
       <div class="field wide"><label>Purchase / listing URL</label><input name="purchase_url" value="{{ tool['purchase_url'] if tool else '' }}" placeholder="https://…"></div>
       <div class="field wide"><label>Manual / datasheet URL</label><input name="manual_url" value="{{ tool['manual_url'] if tool else '' }}" placeholder="https://…"></div>
-      <div class="field wide"><label>Notes</label><input name="notes" value="{{ tool['notes'] if tool else '' }}" placeholder="e.g. Pro tier. Approx price — verify at listing."></div>
+      <div class="field wide"><label>Notes</label><input name="notes" value="{{ tool['notes'] if tool else '' }}"></div>
     </div>
     <div class="actions" style="margin-top:0.8rem;"><button type="submit" class="btn">{{ "Save changes" if tool else "＋ Add tool" }}</button></div>
   </form>
