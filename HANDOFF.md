@@ -437,6 +437,36 @@ cycle (one-time vs. recurring "done" behavior, reminder fires exactly once,
 `build_ics()`'s timed-vs-all-day branching, `my_calendar_ics()` end-to-end),
 a 40-route sweep, and a boot against the real household database.
 
+**Piece 43 (v0.18): rework External Helpers into Contacts, link to
+Appointments — done.** User asked to broaden External Helpers to also
+cover organizations (subscription services, co-ops) and to be able to add
+an appointment directly from a contact. Renamed to "Contacts" in every
+visible label (page title, nav, `TRASH_REGISTRY`'s `found_in`); internal
+names unchanged (`external_helpers` table, `external_helpers_page`/
+`new_external_helper`/etc. routes, `/external-helpers` URL — same
+precedent as "Chores" staying `routine_tasks`). Added a `kind` column
+('Person'/'Organization', existing rows default to Person) plus six
+organization-only fields (`website`/`account_number`/`contact_person`/
+`contact_phone`/`contact_email`/`renewal_date`), shown/hidden by a Type
+selector on the form. `appointments` gained a nullable `external_helper_id`
+— the Appointments form gained a "Related contact" dropdown, the list
+gained a Contact column, and each Contacts row shows an upcoming-
+appointment count + a "＋ Add appointment" quick-link
+(`/appointments?prefill_contact=<id>`) that pre-fills a new, linked
+appointment. **Bug caught by the test suite before shipping**: this app
+runs with `PRAGMA foreign_keys=ON`, so deleting a contact still referenced
+by an appointment raised a raw `sqlite3.IntegrityError` instead of a
+friendly message — fixed by adding an `in_use` check to
+`TRASH_REGISTRY["external_helper"]` (same pattern as every other
+in-use-blocked entity) that counts linked appointments and blocks the
+delete instead. Migration is purely additive; the real household database
+has 0 rows in both tables, so no data was at risk. Verified via compile,
+Jinja parse sweep, a migration test (legacy rows survive, new columns get
+sane defaults), a test-client cycle (Person/Organization save correctly,
+quick-add prefill works, the FK-delete block is correctly enforced then
+correctly lifted once unlinked), a 40-route sweep, and a migration run
+against the real household database.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

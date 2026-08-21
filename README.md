@@ -163,7 +163,10 @@ can confirm a pull/update took effect.
   auto-computed; if it's one-time, it just drops off the upcoming list.
   Filter by Mine / All / Unassigned and Upcoming / All. A **📅 Upcoming
   appointments** card on the dashboard shows what's coming up, and reminders
-  land in the same notifications inbox as Chores and Requirements.
+  land in the same notifications inbox as Chores and Requirements. Can be
+  **linked to a Contact** (a person or organization) — a "＋ Add
+  appointment" quick-link on a contact's row starts a new one already
+  linked to it.
 - **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboard. It opens on a **projects landing** that lists just the projects in the
@@ -219,11 +222,17 @@ can confirm a pull/update took effect.
   ties into the **Requirements Engine** (a project page can show whether anyone
   in the household holds the certifications it needs, and warn when one has
   lapsed).
-- **External Helpers** (🧰 Databases → External Helpers): a reusable contact
-  roster — name, specialty, phone, email, notes — for contractors, tutors,
-  coaches, and anyone else who helps but isn't a household member. Doubles as
-  the household's vendor/contractor directory (electricians, plumbers,
-  warranty lines).
+- **Contacts** (🧰 Databases → Contacts, was "External Helpers"): a reusable
+  roster for people (contractors, tutors, coaches) **and organizations**
+  (subscription services, co-ops, utilities). A **Type** toggle switches the
+  form between the two: a Person keeps the original name/specialty/phone/
+  email/notes; an Organization adds website, account/member number, a main
+  contact person (name/phone/email), and a renewal date. Each contact can
+  have **Appointments linked to it** — a "＋ Add appointment" quick-link on
+  its row pre-fills a new appointment and links it, and the row shows its
+  upcoming-appointment count + soonest date. Doubles as the household's
+  vendor/contractor directory (electricians, plumbers, warranty lines) as
+  well as a place to track memberships and subscriptions.
 - **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
   pipeline turnovers, project cancellations, chore/requirement reminders, and
   security notices; each notification **clears when the recipient accesses it**.
@@ -383,6 +392,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.18** — reworked **External Helpers into Contacts**: broadened to
+  cover organizations (subscription services, co-ops, utilities), not just
+  people. A Type toggle (Person/Organization) shows/hides six new
+  organization-only fields (website, account/member number, a main contact
+  person, renewal date) — existing entries default to Person, unaffected.
+  Renamed to "Contacts" everywhere visible; internal table/route/endpoint
+  names are unchanged. Appointments can now link to a contact — a "＋ Add
+  appointment" quick-link on a contact's row pre-fills a new, linked
+  appointment, and the row shows its upcoming-appointment count. Caught and
+  fixed a real bug along the way: the new `external_helper_id` foreign key
+  (this app runs with `PRAGMA foreign_keys=ON`) made deleting a still-
+  referenced contact raise a raw database error instead of the app's usual
+  friendly "still in use" message — added the missing in-use check, same
+  pattern already used for rules/employees/etc.
 
 - **v0.17** — new feature: **Appointments**, making scheduling/tracking
   dates a core function rather than something only Chores or a project's
