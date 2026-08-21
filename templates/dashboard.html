@@ -312,6 +312,35 @@
   {% endif %}
 </details>
 
+{# ---- Upcoming appointments (assigned to me or whole-household) ---- #}
+<details class="card sect" open>
+  <summary>📅 Upcoming appointments <span class="sect-count">{{ my_appointments|length }}</span></summary>
+  {% if my_appointments %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Appointment</th><th>When</th><th>Location</th><th></th></tr></thead>
+    <tbody>
+      {% for a in my_appointments %}
+      {% set overdue = a["when_date"] and a["when_date"] < today %}
+      <tr>
+        <td>{{ a["title"] }}{% if a["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ a["notes"] }}</span>{% endif %}</td>
+        <td style="white-space:nowrap;">{{ a["when_date"] or "—" }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td class="muted">{{ a["location"] or "—" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="margin:0;">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No upcoming appointments. <a href="{{ url_for('appointments_page') }}">Set one up →</a></p>
+  {% endif %}
+</details>
+
 {# ---- My requirements (standalone recurring, not tied to a project) ---- #}
 <details class="card sect" open>
   <summary>📋 My requirements <span class="sect-count">{{ my_requirements|length }}</span></summary>

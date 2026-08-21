@@ -122,6 +122,36 @@ def ensure_routine_task_reminders(db):
         db.commit()
 
 
+# --------------------------------------------------------------- appointments
+def ensure_appointment_reminders(db):
+    """Piece 42: due-date reminders for appointments, through the same
+    notifications inbox as ensure_routine_task_reminders. Each appointment
+    reminds once per when_date (reminder_sent flag), to whoever it's
+    assigned to — or every member with a login, if unassigned. Called both
+    on dashboard load and from the background scheduler (run_maintenance)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    all_members = [r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    made = False
+    for appt in db.execute(
+            "SELECT * FROM appointments WHERE when_date != '' AND when_date <= ?"
+            " AND COALESCE(completed_at, '') = '' AND COALESCE(reminder_sent, '') != '1'",
+            (today,)).fetchall():
+        recipients = ([appt["household_member_id"]] if appt["household_member_id"]
+                      else all_members)
+        if not recipients:
+            continue
+        when = appt["when_date"] + (f" {appt['when_time']}" if appt["when_time"] else "")
+        notify_employees(
+            db, recipients, f"📅 Appointment: {appt['title']} ({when})",
+            link="/appointments", kind="appointment")
+        db.execute("UPDATE appointments SET reminder_sent = '1' WHERE id = ?",
+                   (appt["id"],))
+        made = True
+    if made:
+        db.commit()
+
+
 # ------------------------------------------------- Piece 38: standalone requirements
 def ensure_requirement_reminders(db):
     """Due-date reminders for standalone recurring requirements (resource_rules
@@ -946,6 +976,9 @@ TRASH_REGISTRY = {
     "routine_task": {"table": "routine_tasks", "label": lambda r: r["title"],
                      "found_in": lambda db, r: "Chores",
                      "in_use": lambda db, r: []},
+    "appointment": {"table": "appointments", "label": lambda r: r["title"],
+                    "found_in": lambda db, r: "Appointments",
+                    "in_use": lambda db, r: []},
     "external_helper": {"table": "external_helpers", "label": lambda r: r["name"],
                         "found_in": lambda db, r: "External Helpers",
                         "in_use": lambda db, r: []},
@@ -2382,6 +2415,162 @@ def chore_delete(chore_id):
     return redirect(url_for("chores_page"))
 
 
+# ------------------------------------------------------------- appointments
+# Piece 42: a scheduled date+time, not tied to a project and not always-
+# recurring like Chores. "One-time" (0 days) is the default — most
+# appointments happen once; recurring ones (checkups, etc.) use the same
+# mark-done-advances-the-date cadence Chores already use.
+APPOINTMENT_RECURRENCE_PRESETS = [
+    (0, "One-time"), (1, "Daily"), (7, "Weekly"), (30, "Monthly"),
+    (182, "Every 6 months"), (365, "Yearly"),
+]
+
+
+def _notify_appointment_assignee(db, title, assignee_id, actor):
+    """Tell a household member an appointment was assigned to them (skip self / login-less)."""
+    if not assignee_id or (actor and actor["id"] == assignee_id):
+        return
+    row = db.execute("SELECT COALESCE(username,'') AS u FROM household_members WHERE id = ?",
+                     (assignee_id,)).fetchone()
+    if not row or not row["u"]:
+        return
+    notify_employees(db, [assignee_id], f"📅 Appointment assigned to you: {title}",
+                     link="/appointments", kind="appointment")
+
+
+@app.route("/appointments")
+def appointments_page():
+    """The Appointments list — scheduled dates/times, not tied to a project.
+    Filter by assignee (mine / unassigned / a person / all) and by
+    upcoming-vs-all (one-time appointments drop off the upcoming view once
+    marked done)."""
+    db = get_db()
+    me = current_user()
+    who = request.args.get("who", "mine" if me else "all")
+    show = request.args.get("show", "upcoming")
+    sql = ("SELECT a.*, e.name AS assignee_name FROM appointments a"
+           " LEFT JOIN household_members e ON e.id = a.household_member_id WHERE 1 = 1")
+    params = []
+    if who == "mine" and me:
+        sql += " AND a.household_member_id = ?"
+        params.append(me["id"])
+    elif who == "unassigned":
+        sql += " AND a.household_member_id IS NULL"
+    elif who.isdigit():
+        sql += " AND a.household_member_id = ?"
+        params.append(int(who))
+    if show != "all":
+        sql += " AND COALESCE(a.completed_at, '') = ''"
+    sql += " ORDER BY (a.when_date = ''), a.when_date, a.when_time, a.id"
+    appointments = db.execute(sql, params).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    edit_id = request.args.get("edit", type=int)
+    edit_appt = db.execute(
+        "SELECT * FROM appointments WHERE id = ?", (edit_id,)
+    ).fetchone() if edit_id else None
+    return render_template(
+        "appointments.html", appointments=appointments, employees=employees,
+        who=who, show=show, edit_appt=edit_appt,
+        recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
+        today=datetime.now().strftime("%Y-%m-%d"))
+
+
+def _appointment_form_values():
+    assignee = request.form.get("household_member_id", "")
+    days = int(_to_float(request.form.get("recurrence_days")) or 0)
+    return {
+        "title": request.form.get("title", "").strip(),
+        "location": request.form.get("location", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "household_member_id": int(assignee) if assignee.isdigit() else None,
+        "recurrence_days": max(0, days),
+        "when_date": request.form.get("when_date", "").strip()
+                    or datetime.now().strftime("%Y-%m-%d"),
+        "when_time": request.form.get("when_time", "").strip(),
+    }
+
+
+@app.route("/appointments/new", methods=["POST"])
+def appointment_new():
+    values = _appointment_form_values()
+    if not values["title"]:
+        flash("An appointment needs a title.", "error")
+        return redirect(url_for("appointments_page"))
+    db = get_db()
+    me = current_user()
+    db.execute(
+        "INSERT INTO appointments (title, location, notes, household_member_id,"
+        " recurrence_days, when_date, when_time, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (values["title"], values["location"], values["notes"],
+         values["household_member_id"], values["recurrence_days"],
+         values["when_date"], values["when_time"], me["name"] if me else ""))
+    _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
+    db.commit()
+    flash(f"Appointment added: {values['title']}")
+    return redirect(url_for("appointments_page"))
+
+
+@app.route("/appointments/<int:appt_id>/edit", methods=["POST"])
+def appointment_edit(appt_id):
+    db = get_db()
+    appt = db.execute("SELECT * FROM appointments WHERE id = ?",
+                      (appt_id,)).fetchone()
+    if appt is None:
+        abort(404)
+    values = _appointment_form_values()
+    if not values["title"]:
+        flash("An appointment needs a title.", "error")
+        return redirect(url_for("appointments_page", edit=appt_id))
+    me = current_user()
+    db.execute(
+        "UPDATE appointments SET title = ?, location = ?, notes = ?,"
+        " household_member_id = ?, recurrence_days = ?, when_date = ?,"
+        " when_time = ? WHERE id = ?",
+        (values["title"], values["location"], values["notes"],
+         values["household_member_id"], values["recurrence_days"],
+         values["when_date"], values["when_time"], appt_id))
+    if values["household_member_id"] != appt["household_member_id"]:
+        _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
+    db.commit()
+    flash(f"Appointment updated: {values['title']}")
+    return redirect(url_for("appointments_page"))
+
+
+@app.route("/appointments/<int:appt_id>/done", methods=["POST"])
+def appointment_done(appt_id):
+    db = get_db()
+    appt = db.execute("SELECT * FROM appointments WHERE id = ?",
+                      (appt_id,)).fetchone()
+    if appt is None:
+        abort(404)
+    me = current_user()
+    today = datetime.now()
+    if appt["recurrence_days"]:
+        next_due = (today + timedelta(days=appt["recurrence_days"])).strftime("%Y-%m-%d")
+        db.execute(
+            "UPDATE appointments SET when_date = ?, reminder_sent = '' WHERE id = ?",
+            (next_due, appt_id))
+        db.commit()
+        flash(f"Marked done: {appt['title']} — next due {next_due}.")
+    else:
+        db.execute(
+            "UPDATE appointments SET completed_at = ?, completed_by = ? WHERE id = ?",
+            (today.strftime("%Y-%m-%d"), me["name"] if me else "", appt_id))
+        db.commit()
+        flash(f"Marked done: {appt['title']}.")
+    return redirect(url_for("appointments_page"))
+
+
+@app.route("/appointments/<int:appt_id>/delete", methods=["POST"])
+@delete_required
+def appointment_delete(appt_id):
+    ok, msg = trash_item("appointment", appt_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("appointments_page"))
+
+
 def _closing_worklist(db):
     """Projects in the Wrap-up stage with balance due and remaining close-out
     steps — the Executive overview's Wrap-up worklist, also the Sales
@@ -2419,6 +2608,7 @@ def dashboard():
     ensure_backlog_reminders(db)
     ensure_routine_task_reminders(db)
     ensure_requirement_reminders(db)
+    ensure_appointment_reminders(db)
 
     my_tasks = []
     if user is not None:
@@ -2454,6 +2644,15 @@ def dashboard():
             "SELECT * FROM resource_rules WHERE field_name = ''"
             " AND household_member_id = ?"
             " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
+
+    # Piece 42: this member's upcoming appointments (assigned to them or
+    # whole-household), soonest first.
+    my_appointments = []
+    if user is not None:
+        my_appointments = db.execute(
+            "SELECT * FROM appointments WHERE COALESCE(completed_at, '') = ''"
+            " AND (household_member_id = ? OR household_member_id IS NULL)"
+            " ORDER BY (when_date = ''), when_date, when_time", (user["id"],)).fetchall()
 
     # Active-projects overview: every non-terminal project, grouped by stage
     # (replaces the old per-department project lists).
@@ -2561,7 +2760,7 @@ def dashboard():
     return render_template(
         "dashboard.html", user=user,
         task_groups=task_groups, my_chores=my_chores,
-        my_requirements=my_requirements,
+        my_requirements=my_requirements, my_appointments=my_appointments,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
         payments=payments, pay_totals=pay_totals,
         today=today_s,
@@ -2589,8 +2788,12 @@ def _ics_fold(line):
 
 
 def build_ics(calname, events):
-    """Build a VCALENDAR of all-day events. Each event: {uid, date (YYYY-MM-DD),
-    summary, description}. Stable UIDs let a re-import update instead of dupe."""
+    """Build a VCALENDAR. Each event: {uid, date (YYYY-MM-DD), summary,
+    description}, plus an optional "time" (HH:MM 24h) -- present, it becomes
+    a timed VEVENT (a 60-minute default duration, floating local time, no
+    TZID/Z -- consistent with every other date in this app being naive/
+    local); absent, it stays an all-day event like before. Stable UIDs let a
+    re-import update instead of dupe."""
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
              "PRODID:-//Vixinman Designs//Compendium//EN", "CALSCALE:GREGORIAN",
@@ -2600,11 +2803,22 @@ def build_ics(calname, events):
             start = datetime.strptime(e["date"], "%Y-%m-%d")
         except (ValueError, TypeError):
             continue
-        end = (start + timedelta(days=1)).strftime("%Y%m%d")
-        lines += ["BEGIN:VEVENT", f"UID:{e['uid']}", f"DTSTAMP:{stamp}",
-                  f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
-                  f"DTEND;VALUE=DATE:{end}",
-                  _ics_fold("SUMMARY:" + _ics_escape(e["summary"]))]
+        time_str = e.get("time")
+        dt_lines = []
+        if time_str:
+            try:
+                start = datetime.strptime(f"{e['date']} {time_str}", "%Y-%m-%d %H:%M")
+                end_dt = start + timedelta(minutes=60)
+                dt_lines = [f"DTSTART:{start.strftime('%Y%m%dT%H%M%S')}",
+                            f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}"]
+            except ValueError:
+                time_str = None   # fall through to all-day below
+        if not time_str:
+            end = (start + timedelta(days=1)).strftime("%Y%m%d")
+            dt_lines = [f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
+                        f"DTEND;VALUE=DATE:{end}"]
+        lines += ["BEGIN:VEVENT", f"UID:{e['uid']}", f"DTSTAMP:{stamp}"] + dt_lines
+        lines.append(_ics_fold("SUMMARY:" + _ics_escape(e["summary"])))
         if e.get("description"):
             lines.append(_ics_fold("DESCRIPTION:" + _ics_escape(e["description"])))
         lines += ["TRANSP:TRANSPARENT", "END:VEVENT"]
@@ -2632,8 +2846,9 @@ def _task_events(rows):
 
 @app.route("/calendar/my.ics")
 def my_calendar_ics():
-    """The signed-in person's task due dates + install dates for their projects,
-    as an importable calendar. In open mode (no login) exports everything."""
+    """The signed-in person's task due dates, install dates for their
+    projects, and their appointments, as an importable calendar. In open
+    mode (no login) exports everything."""
     db = get_db()
     user = current_user()
     tsql = ("SELECT t.*, j.job_name FROM project_tasks t"
@@ -2641,10 +2856,13 @@ def my_calendar_ics():
             " WHERE COALESCE(t.due_date, '') != ''")
     jsql = ("SELECT DISTINCT id, job_name, install_date FROM projects"
             " WHERE COALESCE(install_date, '') != ''")
+    asql = ("SELECT * FROM appointments"
+            " WHERE COALESCE(when_date, '') != '' AND COALESCE(completed_at, '') = ''")
     params = []
     if user:
         tsql += " AND t.household_member_id = ?"
         jsql += " AND id IN (SELECT project_id FROM project_tasks WHERE household_member_id = ?)"
+        asql += " AND (household_member_id = ? OR household_member_id IS NULL)"
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
@@ -2652,6 +2870,11 @@ def my_calendar_ics():
                        "date": j["install_date"],
                        "summary": f"🔧 Install: {j['job_name'] or 'Project #' + str(j['id'])}",
                        "description": ""})
+    for a in db.execute(asql, params).fetchall():
+        events.append({"uid": f"compendium-appt-{a['id']}@vixinmandesigns",
+                       "date": a["when_date"], "time": a["when_time"] or None,
+                       "summary": f"📅 {a['title']}",
+                       "description": a["location"] or ""})
     name = f"Compendium — {user['name']}" if user else "Compendium — due dates"
     return _ics_response(name, events, "compendium-my-dates.ics")
 
@@ -5479,6 +5702,7 @@ def run_maintenance():
         ensure_backlog_reminders(conn)
         ensure_routine_task_reminders(conn)
         ensure_requirement_reminders(conn)
+        ensure_appointment_reminders(conn)
     finally:
         conn.close()
 

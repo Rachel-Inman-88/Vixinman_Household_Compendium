@@ -302,6 +302,25 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
     created_by           TEXT DEFAULT '',
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 42: Appointments -- a scheduled date+time, not tied to a project and
+-- not always-recurring like Chores. recurrence_days NULL/0 = one-time (marks
+-- completed_at when done); a positive value advances when_date the same way
+-- a Chore's next_due advances.
+CREATE TABLE IF NOT EXISTS appointments (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    title                TEXT NOT NULL,
+    location             TEXT DEFAULT '',
+    notes                TEXT DEFAULT '',
+    household_member_id  INTEGER REFERENCES household_members(id),  -- NULL = whole-household
+    when_date            TEXT NOT NULL DEFAULT '',   -- YYYY-MM-DD
+    when_time            TEXT DEFAULT '',            -- HH:MM 24h, optional
+    recurrence_days      INTEGER,                    -- NULL/0 = one-time
+    completed_at         TEXT DEFAULT '',
+    completed_by         TEXT DEFAULT '',
+    reminder_sent        TEXT DEFAULT '',
+    created_by           TEXT DEFAULT '',
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id INTEGER NOT NULL REFERENCES household_members(id),

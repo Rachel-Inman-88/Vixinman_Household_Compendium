@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Appointments{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>📅 Appointments <span class="muted" style="font-size:0.95rem; font-weight:400;">— scheduled dates &amp; times, not tied to a project</span></h1>
+</div>
+<p class="muted" style="margin-top:0;">Anything with a date and time — a doctor's visit, a
+delivery window, a trip. Most are one-time; mark one done and it's off your upcoming list.
+A recurring one (a checkup, say) comes back due after its interval instead.</p>
+
+{# ---- filters ---- #}
+<div class="card" style="display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0.9rem;">
+  <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+    <span class="muted" style="font-size:0.85rem;">Show:</span>
+    <a href="{{ url_for('appointments_page', who=who, show='upcoming') }}" class="btn {{ '' if show == 'upcoming' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Upcoming</a>
+    <a href="{{ url_for('appointments_page', who=who, show='all') }}" class="btn {{ '' if show == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+  </div>
+  <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+    <span class="muted" style="font-size:0.85rem;">Who:</span>
+    <a href="{{ url_for('appointments_page', who='mine', show=show) }}" class="btn {{ '' if who == 'mine' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
+    <a href="{{ url_for('appointments_page', who='all', show=show) }}" class="btn {{ '' if who == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+    <a href="{{ url_for('appointments_page', who='unassigned', show=show) }}" class="btn {{ '' if who == 'unassigned' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
+  </div>
+</div>
+
+{# ---- list ---- #}
+<div class="card">
+  {% if appointments %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Appointment</th><th>Assigned to</th><th>When</th><th>Location</th><th>Every</th><th></th></tr></thead>
+    <tbody>
+      {% for a in appointments %}
+      {% set overdue = a["when_date"] and a["when_date"] < today and not a["completed_at"] %}
+      <tr{% if a["completed_at"] %} class="muted"{% endif %}>
+        <td>{{ a["title"] }}{% if a["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ a["notes"] }}</span>{% endif %}
+          {% if a["completed_at"] %}<span class="badge" style="font-size:0.7rem;">done {{ a["completed_at"] }}</span>{% endif %}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ a["assignee_name"] or "— whole household —" }}</td>
+        <td style="white-space:nowrap;">{{ a["when_date"] or "—" }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td class="muted">{{ a["location"] or "—" }}</td>
+        <td class="muted">{% if a["recurrence_days"] %}{{ a["recurrence_days"] }} day{{ "s" if a["recurrence_days"] != 1 }}{% else %}—{% endif %}</td>
+        <td style="white-space:nowrap;">
+          {% if not a["completed_at"] %}
+          <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
+          </form>
+          {% endif %}
+          <a href="{{ url_for('appointments_page', who=who, show=show, edit=a['id']) }}#appt-form"
+             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+          {% if can('delete') %}
+          <form method="post" action="{{ url_for('appointment_delete', appt_id=a['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Send this appointment to the trash?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No appointments here — add one below.</p>
+  {% endif %}
+</div>
+
+{# ---- new / edit appointment ---- #}
+<div class="card" id="appt-form">
+  {% set ea = edit_appt %}
+  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit appointment" if ea else "＋ New appointment" }}</h2>
+  <form method="post" action="{{ url_for('appointment_edit', appt_id=ea['id']) if ea else url_for('appointment_new') }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Appointment *</label>
+        <input id="title" name="title" required value="{{ ea['title'] if ea else '' }}" placeholder="e.g. Dentist — Victor"></div>
+      <div class="field"><label for="household_member_id">Assign to (optional)</label>
+        <select id="household_member_id" name="household_member_id">
+          <option value="">— whole household —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if ea and ea['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="location">Location (optional)</label>
+        <input id="location" name="location" value="{{ ea['location'] if ea else '' }}" placeholder="e.g. Dr. Smith's office"></div>
+      <div class="field"><label for="when_date">Date *</label>
+        <input id="when_date" name="when_date" type="date" required value="{{ ea['when_date'] if ea else today }}"></div>
+      <div class="field"><label for="when_time">Time (optional)</label>
+        <input id="when_time" name="when_time" type="time" value="{{ ea['when_time'] if ea else '' }}"></div>
+      <div class="field"><label for="recurrence_preset">Repeats</label>
+        <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
+          {% for days, label in recurrence_presets %}
+          <option value="{{ days }}" {% if (ea['recurrence_days'] if ea and ea['recurrence_days'] else 0) == days %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="">Custom — enter days →</option>
+        </select>
+      </div>
+      <div class="field"><label for="recurrence_days">…or custom (days, blank/0 = one-time)</label>
+        <input id="recurrence_days" name="recurrence_days" type="number" min="0"
+               value="{{ ea['recurrence_days'] if ea and ea['recurrence_days'] else 0 }}"></div>
+      <div class="field wide"><label for="notes">Notes (optional)</label>
+        <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}" placeholder="anything else about it"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ea else "＋ Add appointment" }}</button>
+      {% if ea %}<a href="{{ url_for('appointments_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
