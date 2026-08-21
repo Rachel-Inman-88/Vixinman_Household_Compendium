@@ -178,7 +178,8 @@ can confirm a pull/update took effect.
 - **Submit-as-done with a single hours total**: instead of a status dropdown, each
   task has a single **✓ Submit as done** (and a **⚠ Can't finish** → Blocked).
   Submitting captures **the time it took** as one number, held for **whoever has
-  the "Approve field work" permission** to approve — a single review step;
+  the "approvals" permission** to approve — a single review step (this same
+  permission also covers approving Wishlist requests);
   there's no payroll behind it (display-only recordkeeping). All edits are saved
   on-device and submit when back online.
 - **Project photos from the field**: every pipeline step that requires photos — the
@@ -296,6 +297,16 @@ can confirm a pull/update took effect.
   there's no account-level auto-lock (that mechanism went away with the
   emergency-lockout system it used to belong to).
 
+### Wishlist
+- **🎁 Wishlist**: anyone can add something they want, with an optional link
+  to an existing **Inventory item** ("more of this"), a **Project**, and/or
+  a **Contact** — all three independent and optional, all at once if
+  wanted. Every item sits as **Pending** until a Parent/Admin (the same
+  "approvals" permission the Work Bag's field-work approvals already use)
+  approves or rejects it. **Approving doesn't do anything automatic** — no
+  Inventory row gets created for you — it just flips status so the
+  household knows it's OK to buy. Filter by Mine/All and Pending/All.
+
 ### Finance & billing
 - **Per-project billing ledger** (💵 Billing tab): set the contract total and record
   every **income** (deposits, invoices, rebates) and **expense** (materials,
@@ -394,6 +405,22 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.20** — new feature: **Wishlist**. Anyone can add something they
+  want, optionally linked to an existing Inventory item ("more of this"),
+  a Project, and/or a Contact — all independent and optional. Each
+  submission sits as Pending until a Parent/Admin approves or rejects it,
+  reusing the existing "approvals" permission (relabeled "Approve field
+  work & wishlist requests") rather than adding a new one — the same
+  parental-oversight concept the Work Bag's field-work approvals already
+  use. Approving does nothing automatic; it just marks it OK to buy.
+  New `wishlist_items` table (no migration needed, purely additive).
+  Fixed a latent FK-safety gap along the way: `TRASH_REGISTRY`
+  `["inventory_item"]`'s in-use check was hardcoded empty (harmless until
+  now) — refactored the Contacts in-use check from Piece 43 into a
+  reusable `_contact_uses()` helper and added a matching one for Inventory
+  items, both now correctly block deletion of anything still referenced
+  by a wishlist item instead of raising a raw database error.
 
 - **v0.19** — replaced the Project form's free-text "Project type" field
   with a fixed **Subcategory** dropdown that cascades from the chosen

@@ -487,7 +487,38 @@ new rule matching `project_type=Building` ties to a real project via
 `match_rules()`), a 40-route sweep, and a boot against the real household
 database.
 
+**Piece 45 (v0.20): Wishlist — done.** First of two features requested
+together (the second, household expense/budget/receipt tracking, is
+Piece 46, planned but not yet built). New `wishlist_items` table — anyone
+adds something they want, optionally linked to an existing Inventory item
+("more of this"), a Project, and/or a Contact, all three independent and
+optional. Sits Pending until a Parent/Admin approves or rejects it —
+confirmed reuse of the existing `"approvals"` permission (relabeled
+"Approve field work & wishlist requests") rather than a new one, and
+confirmed approval does nothing automatic (no auto-created Inventory row).
+`wishlist_approve()`/`wishlist_reject()` are much simpler than
+`approve_submission()` since there's no downstream data to apply. The nav
+Approvals badge now also counts pending wishlist items.
+**FK-safety fix (the Piece 43 lesson, this app runs with `PRAGMA
+foreign_keys=ON`)**: refactored the ad-hoc Contacts in-use check into a
+reusable `_contact_uses()` and fixed `TRASH_REGISTRY["inventory_item"]`'s
+in-use check, which was hardcoded empty (harmless until a wishlist item
+could reference an Inventory row — now genuinely wrong without the fix).
+Verified via compile, Jinja parse sweep, a fresh-DB boot, a test-client
+cycle (a wishlist item links to a real Inventory item + Project + Contact
+simultaneously, approving sets status/reviewed_by/reviewed_at with zero
+side effects on the linked Inventory item, deleting a still-referenced
+Contact or Inventory item is correctly blocked then deletes cleanly once
+unlinked), a 40-route sweep, and a migration run against the real
+household database.
+
 **NOT done yet:**
+- **Piece 46: household expense/budget/receipt tracking** — planned (see
+  the reusable plan file) but not yet built. A new `household_transactions`
+  ledger + `household_budgets` (category + monthly target amount,
+  compared against actual spend) alongside the existing untouched
+  per-project `project_transactions` ledger; receipts/expenses can
+  optionally link to a Contact.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
