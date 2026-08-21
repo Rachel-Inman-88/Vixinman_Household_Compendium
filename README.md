@@ -371,6 +371,22 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.15** — fourth of the Piece 41 cleanup: Inventory. It was still a
+  solar-parts catalog — a hardcoded 15-category taxonomy (PV Module/
+  Inverter/Battery/Charge Controller/...) with per-category electrical spec
+  fields (Voc/Vmp/FCC ID#), a needed/available/on-PO stock model plus a full
+  stock ledger and a 6-month stale-stock review queue, and a managed vendor
+  entity with no add-vendor UI at all. Purged the legacy catalog (confirmed
+  every row in the real database was solar-business reference data — 439
+  items/49 tools/11 vehicles/52 vendors, all at 0 available/0 needed, none
+  of it real household stock). Categories are now free text with a
+  datalist. Collapsed needed/available/on-PO to a single `quantity` column;
+  dropped the stock ledger, the stale-stock workflow, and the managed
+  vendor entity (replaced with a plain "purchased from" text field).
+  Deleted `inventory_seed.py`/`inventory_research.py` outright. Verified
+  via a migration test and the actual purge run against the real household
+  database (439/49/11/52 → 0).
+
 - **v0.14** — third of the Piece 41 cleanup: the Requirements Editor. Purged
   all 145 `resource_rules` in the live database — every one matched a field
   Part B just dropped (county/utility_provider/products/property_type/PV-

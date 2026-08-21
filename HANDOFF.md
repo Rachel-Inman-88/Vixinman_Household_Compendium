@@ -379,11 +379,26 @@ parts:
   cycle (a new rule against `project_category` matches a real project via
   `match_rules()`), a 40-route sweep, and the actual purge run against the
   real household database.
-- **Part D — Inventory rehaul — not started.** Purge the 439/49/11/52 legacy
-  catalog rows (confirmed decision — every row is 0-available/0-needed
-  solar-business reference data, not real household stock); categories become
-  free-text; drop the spec-field system, the needed/available/on-PO ledger
-  and stale-stock workflow, and the managed vendor entity.
+- **Part D (v0.15) — Inventory rehaul — done.** Purged the 439/49/11/52
+  legacy catalog rows via a meta-guarded migration
+  (`inventory_rehaul_v1`) — confirmed 0-available/0-needed solar-business
+  reference data, not real household stock; 439/49/11/52 → 0 against the
+  real database. Categories are now free text with a datalist (no more
+  `INVENTORY_CATEGORY_SPECS`/per-category electrical spec fields). Collapsed
+  `needed`/`available`/`on_po` to a single `quantity` column; dropped
+  `inventory_txns` (the stock ledger) and the whole stale-stock workflow
+  (`inventory_stale.html` + 5 routes); dropped `inventory_vendors` entirely
+  in favor of a plain `purchased_from` text field on all three tables (there
+  was no add-vendor UI anyway — vendors only ever came from dead seed code).
+  Deleted `standardize_makes()`/`standardize_vendors()`/
+  `apply_inventory_research()`/`apply_tools_research()`/`cleanup_inventory()`
+  and their MAKE_*/VENDOR_*/RESEARCH_VERSION constants, plus
+  `inventory_seed.py`/`inventory_research.py` outright. Verified via
+  compile, Jinja parse sweep, a migration test (confirmed `quantity` lands
+  as true INTEGER, not TEXT — `ensure_columns()` always adds TEXT columns,
+  so this needed an explicit typed `ALTER TABLE`), a test-client cycle, a
+  39-route sweep, and the actual purge run against the real household
+  database.
 - **Part E — Help/FAQ tutorial sweep — not started.** Last, once the other
   four parts settle the real feature set.
 
