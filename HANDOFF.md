@@ -412,7 +412,32 @@ parts:
 
 **This closes out Piece 41** — five parts (dashboard/pipeline, Project
 form, Requirements Editor, Inventory, Help sweep), all committed, verified,
-and pushed. **NOT done yet:**
+and pushed.
+
+**Piece 42 (v0.17): Appointments — done.** The user asked to make
+scheduling/tracking dates and appointments a core function. New
+`appointments` table modeled directly on Chores (Piece 37) — same
+completion-driven recurrence cadence, same reminder mechanics through the
+notifications inbox — plus two real additions Chores never needed: an
+optional `when_time` field, and a nullable `recurrence_days` (0/NULL =
+one-time; Chores are always recurring, but most appointments aren't).
+Marking a one-time appointment done stamps `completed_at` and drops it off
+the upcoming list instead of advancing a date. New `/appointments` page
+(who=mine/all/unassigned/`<id>` + a new show=upcoming/all toggle), a "📅
+Upcoming appointments" dashboard card, and a nav entry next to Chores.
+`build_ics()` now emits real timed `VEVENT`s (not just all-day) when an
+event carries a time — `my_calendar_ics()` folds in the user's own +
+unassigned appointments alongside task due dates and install dates.
+Also fixed two stale README claims left over from Piece 41 Part A (the
+pipeline description and the turnover-notification list both still
+described the install-date auto-advance gating that Part A removed — never
+caught since that piece's Help sweep only covered `templates/help.html`).
+Verified via compile, Jinja parse sweep, a fresh-DB boot, a test-client
+cycle (one-time vs. recurring "done" behavior, reminder fires exactly once,
+`build_ics()`'s timed-vs-all-day branching, `my_calendar_ics()` end-to-end),
+a 40-route sweep, and a boot against the real household database.
+
+**NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate

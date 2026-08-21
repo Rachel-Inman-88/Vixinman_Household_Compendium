@@ -118,17 +118,18 @@ can confirm a pull/update took effect.
 
 ### Pipeline, tasks & scheduling
 - **Standardized pipeline**: Planning → Prep → In Progress → Wrap-up → Done
-  (plus Abandoned), each stage carrying a descriptive label and defined exit
-  criteria; Prep is gated by prerequisites (all permits filed + an install date
-  set — setting the install date auto-advances the project).
+  (plus Abandoned) — a stage advances once its own tasks are done; nothing
+  auto-advances a project on its own. Requirements-filed coverage (X/Y) and
+  the materials/procurement rollup are shown alongside, for any stage that
+  has applicable requirements or materials on file.
 - **Per-project progress widget** — a segmented progress bar (one per project) that shows
   at a glance where the project sits in the pipeline, with the **next step called
   out**. Appears on the dashboard and each project's header.
 - **Pipeline-turnover notifications**: whenever a project advances to a new stage
-  (from Planning onward — new projects, manual stage changes, and the install-date
-  auto-advance), **every household member with a login** is notified in
-  their in-app inbox. Each recipient's copy **clears the first time they access
-  it** (opening the notification or the project); the person who made the move isn't
+  (from Planning onward — new projects and manual stage changes), **every
+  household member with a login** is notified in their in-app inbox. Each
+  recipient's copy **clears the first time they access it** (opening the
+  notification or the project); the person who made the move isn't
   notified, and backward moves don't fire.
 - **Project cancellation (Abandoned) with a reason**: a "Cancel this project" control marks it
   **Abandoned** with a **required reason** recorded in the audit log (who/when), and
@@ -147,10 +148,22 @@ can confirm a pull/update took effect.
 - **Default task deadlines**: a new task defaults to **7 days out**; when a task is
   marked Done, the next open task on the project is re-defaulted to 7 days after
   that completion. Hand-editable per task.
-- **Calendar export (.ics)**: download your task due dates + install dates
-  (`/calendar/my.ics`) or a single project's dates (`/projects/<id>/calendar.ics`) and
-  import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
-  updates events instead of duplicating.
+- **Calendar export (.ics)**: download your task due dates, install dates, and
+  appointments (`/calendar/my.ics`) or a single project's dates
+  (`/projects/<id>/calendar.ics`) and import into Google Calendar (or
+  Outlook/Apple). Appointments with a time export as real timed events, not
+  just all-day placeholders. Stable IDs so re-importing updates events
+  instead of duplicating.
+- **Appointments** (📅 in the top nav): a scheduled date (and usually time)
+  that isn't a recurring Chore and isn't tied to a project — a doctor's
+  visit, a delivery window, a trip. Optional location, optional assignment
+  to one household member (or left for the whole household), and optional
+  **recurrence** (checkups, etc.) using the same completion-driven cadence as
+  Chores — mark one done and, if it repeats, the next occurrence is
+  auto-computed; if it's one-time, it just drops off the upcoming list.
+  Filter by Mine / All / Unassigned and Upcoming / All. A **📅 Upcoming
+  appointments** card on the dashboard shows what's coming up, and reminders
+  land in the same notifications inbox as Chores and Requirements.
 - **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboard. It opens on a **projects landing** that lists just the projects in the
@@ -370,6 +383,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.17** — new feature: **Appointments**, making scheduling/tracking
+  dates a core function rather than something only Chores or a project's
+  target date could half-cover. Modeled directly on Chores (same table
+  shape, same completion-driven recurrence, same reminder mechanics) with
+  two real additions: an optional time-of-day field, and a one-time-vs-
+  recurring toggle (Chores are always recurring; most appointments aren't).
+  A new `/appointments` page, a dashboard card, a nav entry, and folded into
+  the `.ics` calendar export (which now emits real timed events, not just
+  all-day placeholders, when a time is set). Also fixed two stale README
+  claims left over from Piece 41 Part A — the pipeline description still
+  said Prep gated on "all permits filed + an install date set" and that
+  stage turnovers included "the install-date auto-advance"; both were
+  removed when Part A de-gated the pipeline, just never caught since that
+  piece's Help sweep only covered `templates/help.html`, not this file.
 
 - **v0.16** — last of the Piece 41 cleanup: a Help/FAQ sweep against
   everything Parts A-D changed. Fixed: the pipeline tutorial's claim that
