@@ -371,6 +371,28 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.12** — first of a new five-part cleanup (Piece 41): after logging into
+  the live app for the first time since the structural reorg, the household
+  found the surviving subsystems still shaped for a solar-installation
+  business rather than a household — the dashboard centered on "this week's
+  installs," the Project form was a solar-sale intake form, the Requirements
+  Editor still filtered on solar product categories, and Inventory was a
+  parts catalog. This part covers the dashboard + pipeline: removed the
+  duplicated "This week's installs" tile and "🔨 Installs" bucket table
+  (both keyed off `install_date`); every pipeline stage now advances on
+  "this stage's own tasks are done" only — dropped the Planning
+  electric-loads gate and the Prep permits-filed/install-date gate (and the
+  auto-advance from Prep to In Progress that used to trigger when both were
+  satisfied). Requirements-filed coverage and the materials/procurement
+  rollup are still shown (genuinely useful, not solar-specific), just no
+  longer restricted to a particular stage. Added "＋ New project"/"📁 View
+  projects" buttons to the dashboard (there was previously no way to start
+  or browse projects from it) and renamed "⭐ Company overview" to "🏠
+  Household overview." `install_date` itself stays as a plain optional field
+  (still used by calendar export and the Work Bag), relabeled "Target/
+  completion date." Parts B-E (Project form, Requirements Editor, Inventory,
+  a Help/FAQ sweep) are next.
+
 - **v0.11** — bugfix/cleanup, not a removal: the same audit that drove v0.9/v0.10
   found `templates/work_bag_photos.html` referenced an undefined template
   variable, hard-crashing (500) the Photos step of every Work Bag task. The

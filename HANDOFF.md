@@ -293,7 +293,74 @@ at a time; being landed as three parts of **Piece 40**:
   `approve_submission()` still flips the task to Done, `reject_submission()`
   still discards it), and a 40-route sweep with zero 500s.
 
-This closes out the full three-part audit cleanup. **NOT done yet:**
+This closes out the full three-part audit cleanup.
+
+**Post-Piece-40 login incident (2026-08-20): the household's real local
+checkout was 15 commits behind `origin/main`** (stuck at Piece 35/v0.4 from
+2026-08-15) — Pieces 36-40 had only ever been pushed to GitHub, never pulled
+into the folder the app is actually run from
+(`Management_App\job-creator-app\Vixinman_Household_Compendium`). This is
+what caused a real "my username and password aren't working" report — not a
+code bug; the stored credential came through the fast-forward pull
+completely intact once the folder was caught up. Fixed by pulling and
+resetting the account's password. Worth remembering: **this repo has two
+local checkouts** — an old, unrelated one at the sibling
+`Management_App\job-creator-app` root (predates the rebrand entirely, still
+has `bpmn_export.py`/`loads_seed.py`/`nm_directory.py`, a completely
+different lineage, not part of this project) and the real one nested inside
+it at `Vixinman_Household_Compendium\` — always verify `git log`/`git status`
+in the nested folder before assuming the household's live app reflects the
+latest pushed work.
+
+**Piece 41: de-solarize Projects, the Requirements Editor, and Inventory —
+in progress.** The household logged into the live app for the first time
+since the structural reorg and found the surviving subsystems still shaped
+for the original solar-installation business: the dashboard centered on
+"this week's installs," the Project form was a solar-sale intake form, the
+Requirements Editor's directory filtered on solar product categories, and
+Inventory was a parts catalog. A four-agent audit plus direct verification
+against the real household database found **zero live projects** (so the
+Project-form/pipeline redesign needs no data migration) but **145
+resource_rules — 100% of them keyed to solar fields** (county/
+utility_provider/products/property_type/PV-variant columns), and a fully
+solar-flavored Inventory (439 items/49 tools/11 vehicles/52 vendors, every
+row a catalog/reference entry, not real household stock). Landing as five
+parts:
+- **Part A (v0.12) — dashboard cleanup + de-gate the pipeline — done.**
+  Removed the duplicated "This week's installs" tile and "🔨 Installs"
+  bucket table (both keyed off `install_date`). Every pipeline stage now
+  advances on "this stage's own tasks are done" only — dropped the Planning
+  electric-loads gate, the Prep permits-filed/install-date gate, and the
+  auto-advance from Prep to In Progress that used to trigger on its own.
+  Requirements-filed coverage and the materials/procurement rollup stay
+  (genuinely useful), just no longer restricted to a particular stage.
+  Added "＋ New project"/"📁 View projects" buttons to the dashboard (there
+  was previously no way to start or browse projects from it). `install_date`
+  stays as a plain optional field, relabeled "Target/completion date."
+  Verified via compile, Jinja parse sweep, fresh-DB boot, a test-client cycle
+  (a project advances through every stage with no permits/install-date/loads
+  warning ever appearing), a 40-route sweep, and a boot against the real
+  household database.
+- **Part B — Project form + data model overhaul — not started.** Shrink
+  `PROJECT_FIELDS` down to name/category/type/site location; drop
+  `county`/`electric_loads`/`utility_provider`/`warranty_type`/`cost_method`/
+  `tax_credit`/`expand_option`/`products`+PV-variants/`service_type`/
+  `property_type` from the `projects` table (meta-guarded migration; the live
+  database has zero projects, so this is pure schema cleanup, no data to
+  preserve).
+- **Part C — Requirements Editor overhaul — not started.** Purge all 145
+  legacy solar-permit `resource_rules` outright (confirmed decision); make
+  `field_value` a real dropdown/datalist instead of blind free text; rebuild
+  `/directory`'s filter bar around the new minimal field set.
+- **Part D — Inventory rehaul — not started.** Purge the 439/49/11/52 legacy
+  catalog rows (confirmed decision — every row is 0-available/0-needed
+  solar-business reference data, not real household stock); categories become
+  free-text; drop the spec-field system, the needed/available/on-PO ledger
+  and stale-stock workflow, and the managed vendor entity.
+- **Part E — Help/FAQ tutorial sweep — not started.** Last, once the other
+  four parts settle the real feature set.
+
+**NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
