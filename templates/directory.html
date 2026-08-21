@@ -12,70 +12,36 @@ prerequisites</strong> items (and portals, phones, docs) a project needs, filter
 Each requirement is listed once with every scenario it applies to beneath it.
 <strong>Read-only</strong>{% if can('rules.manage') %} — to add or change a rule, use the
 <a href="{{ url_for('rules_page') }}">Requirements Editor</a>{% endif %}.</p>
-<p class="verify-legend">Verification flags come from the NM reference set:
+<p class="verify-legend">
   <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
   <span class="flag flag-unverified">⚠ Unverified</span> couldn't be checked online — confirm by phone.</p>
 
 <form method="get" class="card" id="filter_form">
   <div class="form-grid">
     <div class="field">
-      <label for="product">Project type</label>
-      <select id="product" name="product">
-        <option value="">All project types</option>
-        {% for p in products %}
-        <option value="{{ p }}" {% if filters.product == p %}selected{% endif %}>{{ p }}</option>
+      <label for="category">Project category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        {% for c in project_categories %}
+        <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="field">
-      <label for="connection">Utility connection</label>
-      <select id="connection" name="connection">
-        <option value="">Any</option>
-        {% for c in utility_connections %}
-        <option value="{{ c }}" {% if filters.connection == c %}selected{% endif %}>{{ c }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="mounting">Mounting type (PV)</label>
-      <select id="mounting" name="mounting">
-        <option value="">Any</option>
-        {% for m in mounting_types %}
-        <option value="{{ m }}" {% if filters.mounting == m %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="manufactured">Manufactured house (PV)</label>
-      <select id="manufactured" name="manufactured">
-        <option value="">Any</option>
-        <option value="Yes" {% if filters.manufactured == 'Yes' %}selected{% endif %}>Yes</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="service">Service type</label>
-      <select id="service" name="service">
-        <option value="">Any</option>
-        {% for s in service_types %}
-        <option value="{{ s }}" {% if filters.service == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="property">Property type</label>
-      <select id="property" name="property">
-        <option value="">Any</option>
-        {% for p in property_types %}
-        <option value="{{ p }}" {% if filters.property == p %}selected{% endif %}>{{ p }}</option>
-        {% endfor %}
-      </select>
+      <label for="type">Project type</label>
+      <input id="type" name="type" value="{{ filters.type }}" list="type_list"
+             placeholder="e.g. Chicken coop">
+      <datalist id="type_list">
+        {% for t in distinct_types %}<option value="{{ t }}">{% endfor %}
+      </datalist>
     </div>
   </div>
-  {% if filtering %}
   <div class="actions">
+    <button type="submit" class="btn">Filter</button>
+    {% if filtering %}
     <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">Clear filters</a>
+    {% endif %}
   </div>
-  {% endif %}
 </form>
 
 <div class="card">
@@ -95,7 +61,7 @@ Each requirement is listed once with every scenario it applies to beneath it.
         {# Shorthand for the rule, with the source + hyperlink. #}
         <div>
           <strong>{{ r["label"] }}</strong>
-          {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
+          {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="{{ 'Could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'Confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
           {% if 'est_cost' in r.keys() and (r["est_cost"] or r["est_time"] or r["maintenance_note"]) %}

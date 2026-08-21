@@ -248,26 +248,6 @@ HOUSEHOLD_ROSTER = [
     ("Gremory", "Assistant", False),
 ]
 
-UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
-MOUNTING_TYPES = ["Roof mounted", "Ground mount"]
-SERVICE_TYPES = ["General service", "Warranty service"]
-PROPERTY_TYPES = ["Residential", "Commercial"]
-
-# Which variant fields belong to which product — used by the rule
-# directory so filtering by project type also scopes its variants.
-VARIANT_OWNERS = {
-    "pv_utility_connection": "PV Systems",
-    "pv_mounting_type": "PV Systems",
-    "pv_manufactured_house": "PV Systems",
-    "generator_utility_connection": "Generators",
-    "battery_utility_connection": "Battery Banks",
-    "service_type": "Technician Service",
-}
-CONNECTION_FIELDS = {
-    "pv_utility_connection", "generator_utility_connection",
-    "battery_utility_connection",
-}
-
 # Standard documents every project collects, shown as their own upload slots on the
 # Documents tab (Piece 20.9) alongside the project's resolved requirements. Format
 # restrictions per slot to be added later.
@@ -401,21 +381,6 @@ CATEGORY_HEADINGS = {
 SEED_RULES = []
 SEED_BATCHES = {}
 SEED_BATCH_SQL = {}
-
-# Piece 41: county/utility_provider/GRID_CONNECTION_FIELDS (the project form's
-# county field + its NM datalist, and the shared PV/Generator/Battery utility-
-# connection picker) are gone along with the fields they fed — the project
-# form no longer has a county or utility-connection concept. PRODUCTS is kept
-# for now; the Requirements Library (`rule_directory()`) still filters on it
-# until Part C rebuilds that filter bar around the new minimal field set.
-PRODUCTS = [
-    "PV Systems",
-    "Generators",
-    "Battery Banks",
-    "Well Pumps",
-    "Mini Split Air Conditioners",
-    "Technician Service",
-]
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each update. Reset to semantic versioning
@@ -1980,6 +1945,32 @@ def init_db():
                 pass
         db.execute("INSERT INTO meta (key, value) VALUES"
                    " ('project_solar_fields_removed_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
+    # Piece 41 Part C: purge resource_rules left over from the original solar
+    # business — permit/interconnection rules keyed to the fields Part B just
+    # dropped (county/utility_provider/products/property_type/PV-Generator-
+    # Battery variants/etc.). Confirmed every existing rule in the household's
+    # database matched one of these fields (100% solar-permit data, none of
+    # it relevant to a household project) — purge outright rather than leave
+    # dead rows an admin has to notice and clean up by hand. A rule the
+    # household adds later against project_category/project_type/site_location
+    # is untouched (this only ever runs once, gated by the meta key below).
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'legacy_solar_rules_purged_v1'").fetchone():
+        legacy_fields = (
+            "county", "electric_loads", "utility_provider", "warranty_type",
+            "cost_method", "tax_credit", "expand_option", "products",
+            "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
+            "generator_utility_connection", "battery_utility_connection",
+            "service_type", "property_type",
+        )
+        placeholders = ",".join("?" * len(legacy_fields))
+        db.execute(
+            f"DELETE FROM resource_rules WHERE field_name IN ({placeholders})"
+            f" OR field_name2 IN ({placeholders})",
+            legacy_fields + legacy_fields)
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('legacy_solar_rules_purged_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
     tag_tasks_by_stage(db)
@@ -5188,12 +5179,22 @@ def rules_page():
     ).fetchall()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    # Piece 41: suggest real values for the "…matches this value" field
+    # instead of leaving it blind free text.
+    distinct_types = [r[0] for r in db.execute(
+        "SELECT DISTINCT project_type FROM projects"
+        " WHERE COALESCE(project_type, '') != '' ORDER BY project_type").fetchall()]
+    distinct_locations = [r[0] for r in db.execute(
+        "SELECT DISTINCT site_location FROM projects"
+        " WHERE COALESCE(site_location, '') != '' ORDER BY site_location").fetchall()]
     return render_template(
         "rules.html", rules=project_rules, groups=groups, from_job=from_job,
         edit_rule=edit_rule, category_headings=CATEGORY_HEADINGS,
         job_fields=[f for f in PROJECT_FIELDS if f != "job_name"],
         field_labels=PROJECT_FIELD_LABELS, categories=RULE_CATEGORIES,
         recurring=recurring, employees=employees,
+        project_categories=PROJECT_CATEGORIES, distinct_types=distinct_types,
+        distinct_locations=distinct_locations,
         today=datetime.now().strftime("%Y-%m-%d"),
     )
 
@@ -5322,63 +5323,42 @@ def update_rule(rule_id):
 
 @app.route("/directory")
 def rule_directory():
-    """Read-only, browsable view of every rule, filterable by project type
-    and by the product variants. No editing happens here."""
-    product = request.args.get("product", "")
-    connection = request.args.get("connection", "")
-    mounting = request.args.get("mounting", "")
-    manufactured = request.args.get("manufactured", "")
-    service = request.args.get("service", "")
-    property_type = request.args.get("property", "")
-
-    def value_ok(field, value):
-        """One condition against the variant filters."""
-        value = value.strip().lower()
-        if connection and field in CONNECTION_FIELDS and value != connection.lower():
-            return False
-        if mounting and field == "pv_mounting_type" and value != mounting.lower():
-            return False
-        if manufactured and field == "pv_manufactured_house" and value != manufactured.lower():
-            return False
-        if service and field == "service_type" and value != service.lower():
-            return False
-        if property_type and field == "property_type" and value != property_type.lower():
-            return False
-        return True
+    """Read-only, browsable view of every rule, filterable by project
+    category and type. No editing happens here."""
+    category = request.args.get("category", "")
+    ptype = request.args.get("type", "").strip()
 
     def visible(rule):
         conditions = [(rule["field_name"], rule["field_value"])]
         if rule["field_name2"]:
             conditions.append((rule["field_name2"], rule["field_value2"]))
-        if not all(value_ok(f, v) for f, v in conditions):
-            return False
-        if product:
-            # At least one condition must tie the rule to the chosen
-            # project type (its product row or one of its variant fields).
-            tied = any(
-                (f == "products" and v.strip().lower() == product.lower())
-                or (f in VARIANT_OWNERS and VARIANT_OWNERS[f] == product)
-                for f, v in conditions)
+        if category:
+            tied = any(f == "project_category" and v.strip().lower() == category.lower()
+                       for f, v in conditions)
+            if not tied:
+                return False
+        if ptype:
+            tied = any(f == "project_type" and ptype.lower() in v.strip().lower()
+                       for f, v in conditions)
             if not tied:
                 return False
         return True
 
-    rules = [r for r in get_db().execute(
+    db = get_db()
+    rules = [r for r in db.execute(
         "SELECT * FROM resource_rules ORDER BY category, label"
     ).fetchall() if visible(r)]
     groups = consolidate_rules(rules)
     total = sum(len(items) for _, items in groups)   # consolidated requirements
+    distinct_types = [r[0] for r in db.execute(
+        "SELECT DISTINCT project_type FROM projects"
+        " WHERE COALESCE(project_type, '') != '' ORDER BY project_type").fetchall()]
     return render_template(
         "directory.html", groups=groups, total=total,
         field_labels=PROJECT_FIELD_LABELS,
-        products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
-        mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
-        property_types=PROPERTY_TYPES,
-        filters={"product": product, "connection": connection,
-                 "mounting": mounting, "manufactured": manufactured,
-                 "service": service, "property": property_type},
-        filtering=any([product, connection, mounting, manufactured,
-                       service, property_type]),
+        project_categories=PROJECT_CATEGORIES, distinct_types=distinct_types,
+        filters={"category": category, "type": ptype},
+        filtering=bool(category or ptype),
     )
 
 

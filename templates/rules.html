@@ -85,8 +85,10 @@ To look up what applies to a given project type instead of editing, use the read
       </div>
       <div class="field">
         <label for="field_value">…matches this value</label>
-        <input id="field_value" name="field_value" value="{{ er['field_value'] if er else '' }}"
-               placeholder="e.g. Home Improvement, PV Systems, Torrance County">
+        <input id="field_value" name="field_value" list="field_value_list"
+               value="{{ er['field_value'] if er else '' }}"
+               placeholder="pick or type a value">
+        <datalist id="field_value_list"></datalist>
       </div>
       <div class="field">
         <label for="field_name2">AND this field (optional)</label>
@@ -99,8 +101,10 @@ To look up what applies to a given project type instead of editing, use the read
       </div>
       <div class="field">
         <label for="field_value2">…matches this value</label>
-        <input id="field_value2" name="field_value2" value="{{ er['field_value2'] if er else '' }}"
+        <input id="field_value2" name="field_value2" list="field_value2_list"
+               value="{{ er['field_value2'] if er else '' }}"
                placeholder="only if a second field is chosen">
+        <datalist id="field_value2_list"></datalist>
       </div>
       <div class="field">
         <label for="allowed_formats">Accepted file formats (optional)</label>
@@ -109,7 +113,7 @@ To look up what applies to a given project type instead of editing, use the read
                placeholder="blank = any · e.g. pdf, jpg, png">
         <datalist id="format-list">
           <option value="pdf"><option value="pdf, jpg, png"><option value="jpg, png, heic">
-          <option value="kmz, kml"><option value="docx, pdf"><option value="xlsx, csv">
+          <option value="docx, pdf"><option value="xlsx, csv">
         </datalist>
       </div>
     </div>
@@ -171,6 +175,35 @@ To look up what applies to a given project type instead of editing, use the read
     }
     box.addEventListener("change", sync);
     sync();
+  })();
+
+  // Piece 41: suggest real values instead of leaving "…matches this value"
+  // as blind free text — project_category has a fixed, small set of choices;
+  // project_type/site_location are open-ended, so suggest whatever's already
+  // in use across real projects.
+  (function() {
+    const valueOptions = {
+      "project_category": {{ project_categories|tojson }},
+      "project_type": {{ distinct_types|tojson }},
+      "site_location": {{ distinct_locations|tojson }},
+    };
+    function wire(selectId, datalistId) {
+      const sel = document.getElementById(selectId);
+      const dl = document.getElementById(datalistId);
+      if (!sel || !dl) return;
+      function update() {
+        dl.innerHTML = "";
+        (valueOptions[sel.value] || []).forEach(function (v) {
+          const opt = document.createElement("option");
+          opt.value = v;
+          dl.appendChild(opt);
+        });
+      }
+      sel.addEventListener("change", update);
+      update();
+    }
+    wire("field_name", "field_value_list");
+    wire("field_name2", "field_value2_list");
   })();
 </script>
 {% endif %}
