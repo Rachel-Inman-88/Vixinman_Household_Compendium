@@ -371,6 +371,23 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.13** — second of the Piece 41 cleanup: the Project form itself. It was
+  still a solar-sale intake form — Property type, County (with an NM county
+  datalist), Utility provider, Warranty type, a required Payment dropdown,
+  Tax credit, Expand option, and a required Products/services checklist (PV
+  Systems/Battery Banks/Generators/Well Pumps/Mini Split Air Conditioners/
+  Technician Service) with its own PV-mounting/manufactured-house/
+  service-type sub-options and a whole "pre-fill a service ticket" flow built
+  around picking Technician Service. None of it had anything left to serve
+  once Part A dropped the pipeline gating that read some of these fields and
+  Part C is slated to purge every one of the 145 resource_rules that match
+  on the rest. `PROJECT_FIELDS` shrinks from 18 columns to 4: project name,
+  category, type, and site location (now optional — not every project has
+  one). Dropped via a meta-guarded migration; verified as a pure schema
+  cleanup on the real household database, which had zero live projects.
+  Also fixed the AI assistant's project-lookup tools and global search,
+  which queried the now-gone `county`/`cost_method` columns directly.
+
 - **v0.12** — first of a new five-part cleanup (Piece 41): after logging into
   the live app for the first time since the structural reorg, the household
   found the surviving subsystems still shaped for a solar-installation

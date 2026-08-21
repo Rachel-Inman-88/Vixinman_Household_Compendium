@@ -341,13 +341,29 @@ parts:
   (a project advances through every stage with no permits/install-date/loads
   warning ever appearing), a 40-route sweep, and a boot against the real
   household database.
-- **Part B — Project form + data model overhaul — not started.** Shrink
-  `PROJECT_FIELDS` down to name/category/type/site location; drop
+- **Part B (v0.13) — Project form + data model overhaul — done.** Shrank
+  `PROJECT_FIELDS` from 18 columns to 4 (name/category/type/site location —
+  site location is now optional). Dropped
   `county`/`electric_loads`/`utility_provider`/`warranty_type`/`cost_method`/
-  `tax_credit`/`expand_option`/`products`+PV-variants/`service_type`/
-  `property_type` from the `projects` table (meta-guarded migration; the live
-  database has zero projects, so this is pure schema cleanup, no data to
-  preserve).
+  `tax_credit`/`expand_option`/`products`+PV-Generator-Battery variants/
+  `service_type`/`property_type` from the `projects` table via a
+  meta-guarded migration (`project_solar_fields_removed_v1`); confirmed a
+  pure schema cleanup against the real household database (0 live projects).
+  Also cut the "pre-fill a service ticket from an existing project" flow
+  entirely — it only ever existed to seed a Technician Service ticket — and
+  fixed the AI assistant's `find_projects`/`project_details` tools and
+  global search, both of which queried the now-gone `county`/`cost_method`
+  columns directly in raw SQL (the Requirements Engine's own rule-matching
+  path was already safe via `condition_met()`'s existing `field not in
+  project.keys()` guard). `PRODUCTS` and its sibling constants
+  (`UTILITY_CONNECTIONS`/`MOUNTING_TYPES`/`SERVICE_TYPES`/`PROPERTY_TYPES`/
+  `VARIANT_OWNERS`/`CONNECTION_FIELDS`) are deliberately kept for now — the
+  Requirements Library still filters on them until Part C rebuilds that
+  filter bar. Verified via compile, Jinja parse sweep, a migration test
+  (legacy solar-shaped columns injected before the first-ever `init_db()`
+  call, confirmed dropped), a test-client cycle, a direct exercise of the AI
+  assistant's project tools, a 40-route sweep, and the actual migration run
+  against the real household database.
 - **Part C — Requirements Editor overhaul — not started.** Purge all 145
   legacy solar-permit `resource_rules` outright (confirmed decision); make
   `field_value` a real dropdown/datalist instead of blind free text; rebuild
