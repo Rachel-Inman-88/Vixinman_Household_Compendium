@@ -458,6 +458,35 @@ CREATE TABLE IF NOT EXISTS project_transactions (
     created_by  TEXT DEFAULT ''
 );
 
+-- Piece 46: a household-wide (not tied to a project) income/expense ledger,
+-- alongside project_transactions above -- kept as a separate table rather
+-- than making project_id nullable there (SQLite can't relax a NOT NULL
+-- column without a full table rebuild). Same field shape for consistency,
+-- not code reuse.
+CREATE TABLE IF NOT EXISTS household_transactions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind                TEXT NOT NULL DEFAULT 'Expense',  -- Income / Expense
+    category            TEXT DEFAULT '',
+    description         TEXT DEFAULT '',
+    amount              REAL NOT NULL DEFAULT 0,
+    txn_date            TEXT DEFAULT '',                  -- YYYY-MM-DD
+    party               TEXT DEFAULT '',                  -- who paid / was paid
+    external_helper_id  INTEGER REFERENCES external_helpers(id),  -- NULL = no Contact link
+    reference           TEXT DEFAULT '',
+    method              TEXT DEFAULT '',
+    receipt_filename    TEXT DEFAULT '',                  -- optional photo/PDF, household_upload_dir()
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by          TEXT DEFAULT ''
+);
+-- Piece 46: a spending target per category per month, compared against
+-- actual household_transactions spend for the current month.
+CREATE TABLE IF NOT EXISTS household_budgets (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    category       TEXT NOT NULL,
+    monthly_amount REAL NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 23.2 (rehauled Piece 41): household inventory. Category is free text
 -- (no fixed list, no per-category spec system -- that machinery only ever
 -- served the original solar-parts catalog). "Vendor" is a plain optional

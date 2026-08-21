@@ -964,12 +964,11 @@ def _employee_uses(db, eid):
 
 
 def _contact_uses(db, hid):
-    """Piece 43/45: every real FK pointing at a Contact -- this app runs
+    """Piece 43/45/46: every real FK pointing at a Contact -- this app runs
     with PRAGMA foreign_keys=ON, so deleting a Contact still referenced
     anywhere would raise a raw IntegrityError instead of a friendly
     message. Keep this in sync with every table that gets an
-    external_helper_id column (Piece 46's household_transactions will add
-    a third check here)."""
+    external_helper_id column."""
     uses = []
     n = _count(db, "SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?", (hid,))
     if n:
@@ -977,6 +976,9 @@ def _contact_uses(db, hid):
     n = _count(db, "SELECT COUNT(*) FROM wishlist_items WHERE external_helper_id = ?", (hid,))
     if n:
         uses.append(f"{n} wishlist item(s)")
+    n = _count(db, "SELECT COUNT(*) FROM household_transactions WHERE external_helper_id = ?", (hid,))
+    if n:
+        uses.append(f"{n} household transaction(s)")
     return uses
 
 
@@ -1011,6 +1013,16 @@ TRASH_REGISTRY = {
                        "found_in": lambda db, r: "Household Files",
                        "in_use": lambda db, r: [],
                        "file": lambda r: UPLOADS_DIR / "household" / r["stored_name"]},
+    "household_transaction": {"table": "household_transactions",
+                              "label": lambda r: r["description"] or r["category"] or r["kind"],
+                              "found_in": lambda db, r: "Budget",
+                              "in_use": lambda db, r: [],
+                              # receipt_filename may be blank (no receipt attached) --
+                              # unlink(missing_ok=True) on purge_trash() no-ops fine either way.
+                              "file": lambda r: UPLOADS_DIR / "household" / (r["receipt_filename"] or "")},
+    "household_budget": {"table": "household_budgets", "label": lambda r: r["category"],
+                        "found_in": lambda db, r: "Budget",
+                        "in_use": lambda db, r: []},
     "household_idea": {"table": "household_ideas", "label": lambda r: r["name"],
                        "found_in": lambda db, r: "Backlog",
                        "in_use": lambda db, r: []},
@@ -3469,6 +3481,216 @@ def delete_household_file(file_id):
     ok, msg = trash_item("household_file", file_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("household_files_page"))
+
+
+# ------------------------------------------------------------- household budget
+# Piece 46: a household-wide (not tied to a project) income/expense ledger
+# and category budgets, alongside the existing untouched per-project
+# Billing tab / project_transactions ledger.
+def _household_month_bounds(month_str=None):
+    """(month_str, human label) for the month to summarize -- defaults to
+    the current calendar month. month_str is 'YYYY-MM'."""
+    month_str = month_str or datetime.now().strftime("%Y-%m")
+    try:
+        label = datetime.strptime(month_str, "%Y-%m").strftime("%B %Y")
+    except ValueError:
+        month_str = datetime.now().strftime("%Y-%m")
+        label = datetime.now().strftime("%B %Y")
+    return month_str, label
+
+
+@app.route("/budget")
+def household_budget_page():
+    db = get_db()
+    month_str, month_label = _household_month_bounds(request.args.get("month"))
+    show = request.args.get("show", "month")
+
+    budgets = db.execute(
+        "SELECT * FROM household_budgets ORDER BY category").fetchall()
+    spent_by_category = {r["category"]: r["spent"] for r in db.execute(
+        "SELECT category, COALESCE(SUM(amount), 0) AS spent"
+        " FROM household_transactions"
+        " WHERE kind = 'Expense' AND substr(txn_date, 1, 7) = ?"
+        " GROUP BY category", (month_str,)).fetchall()}
+    budget_rows = [{"category": b["category"], "budget": b["monthly_amount"],
+                    "spent": spent_by_category.get(b["category"], 0.0),
+                    "id": b["id"]} for b in budgets]
+
+    sql = ("SELECT t.*, h.name AS contact_name FROM household_transactions t"
+           " LEFT JOIN external_helpers h ON h.id = t.external_helper_id"
+           " WHERE 1 = 1")
+    params = []
+    if show != "all":
+        sql += " AND substr(t.txn_date, 1, 7) = ?"
+        params.append(month_str)
+    sql += " ORDER BY (t.txn_date = ''), t.txn_date DESC, t.id DESC"
+    transactions = db.execute(sql, params).fetchall()
+
+    # Totals always reflect the summarized month, independent of whether
+    # the transaction list below is showing just this month or everything.
+    totals = {"Income": 0.0, "Expense": 0.0}
+    for t in db.execute(
+            "SELECT kind, amount FROM household_transactions"
+            " WHERE substr(txn_date, 1, 7) = ?", (month_str,)).fetchall():
+        if t["kind"] in totals:
+            totals[t["kind"]] += t["amount"]
+
+    edit_id = request.args.get("edit", type=int)
+    edit_txn = db.execute(
+        "SELECT * FROM household_transactions WHERE id = ?", (edit_id,)
+    ).fetchone() if edit_id else None
+    edit_budget_id = request.args.get("edit_budget", type=int)
+    edit_budget = db.execute(
+        "SELECT * FROM household_budgets WHERE id = ?", (edit_budget_id,)
+    ).fetchone() if edit_budget_id else None
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    return render_template(
+        "household_budget.html", budget_rows=budget_rows,
+        transactions=transactions, totals=totals, contacts=contacts,
+        month=month_str, month_label=month_label, show=show,
+        edit_txn=edit_txn, edit_budget=edit_budget,
+        payment_methods=PAYMENT_METHODS,
+        today=datetime.now().strftime("%Y-%m-%d"))
+
+
+def _household_txn_form_values():
+    contact = request.form.get("external_helper_id", "")
+    return {
+        "kind": "Income" if request.form.get("kind") == "Income" else "Expense",
+        "category": request.form.get("category", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "amount": _to_float(request.form.get("amount")) or 0.0,
+        "txn_date": request.form.get("txn_date", "").strip()
+                   or datetime.now().strftime("%Y-%m-%d"),
+        "party": request.form.get("party", "").strip(),
+        "external_helper_id": int(contact) if contact.isdigit() else None,
+        "reference": request.form.get("reference", "").strip(),
+        "method": request.form.get("method", "").strip(),
+    }
+
+
+def _save_household_receipt(existing_filename=""):
+    """Optional receipt photo/PDF upload -- unlike Work Bag's add_receipt()
+    (Piece 26.2), a photo isn't required here since not every household
+    expense has a physical receipt worth keeping. Returns the stored
+    filename to save (existing one kept if no new file was chosen)."""
+    upload = request.files.get("receipt")
+    if upload is None or not upload.filename:
+        return existing_filename
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if ext not in (PHOTO_EXTENSIONS | {"pdf"}):
+        flash("Receipts should be a photo (JPG/PNG/HEIC) or a PDF — kept the previous one.", "error")
+        return existing_filename
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(upload.filename)}"
+    upload.save(household_upload_dir() / stored)
+    return stored
+
+
+@app.route("/budget/transactions/new", methods=["POST"])
+def household_txn_new():
+    v = _household_txn_form_values()
+    if not v["amount"]:
+        flash("Enter an amount.", "error")
+        return redirect(url_for("household_budget_page"))
+    db = get_db()
+    receipt = _save_household_receipt()
+    me = current_user()
+    db.execute(
+        "INSERT INTO household_transactions (kind, category, description, amount,"
+        " txn_date, party, external_helper_id, reference, method,"
+        " receipt_filename, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
+         v["party"], v["external_helper_id"], v["reference"], v["method"],
+         receipt, me["name"] if me else ""))
+    db.commit()
+    flash(f"{v['kind']} recorded: ${v['amount']:,.2f}")
+    return redirect(url_for("household_budget_page"))
+
+
+@app.route("/budget/transactions/<int:txn_id>/edit", methods=["POST"])
+def household_txn_edit(txn_id):
+    db = get_db()
+    txn = db.execute("SELECT * FROM household_transactions WHERE id = ?",
+                     (txn_id,)).fetchone()
+    if txn is None:
+        abort(404)
+    v = _household_txn_form_values()
+    if not v["amount"]:
+        flash("Enter an amount.", "error")
+        return redirect(url_for("household_budget_page", edit=txn_id))
+    receipt = _save_household_receipt(txn["receipt_filename"])
+    db.execute(
+        "UPDATE household_transactions SET kind = ?, category = ?, description = ?,"
+        " amount = ?, txn_date = ?, party = ?, external_helper_id = ?,"
+        " reference = ?, method = ?, receipt_filename = ? WHERE id = ?",
+        (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
+         v["party"], v["external_helper_id"], v["reference"], v["method"],
+         receipt, txn_id))
+    db.commit()
+    flash("Transaction updated.")
+    return redirect(url_for("household_budget_page"))
+
+
+@app.route("/budget/transactions/<int:txn_id>/delete", methods=["POST"])
+@delete_required
+def household_txn_delete(txn_id):
+    ok, msg = trash_item("household_transaction", txn_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("household_budget_page"))
+
+
+@app.route("/budget/transactions/<int:txn_id>/receipt")
+def download_household_receipt(txn_id):
+    txn = get_db().execute(
+        "SELECT receipt_filename FROM household_transactions WHERE id = ?",
+        (txn_id,)).fetchone()
+    if txn is None or not txn["receipt_filename"]:
+        abort(404)
+    return send_from_directory(household_upload_dir(), txn["receipt_filename"])
+
+
+@app.route("/budget/categories/new", methods=["POST"])
+def household_budget_new():
+    category = request.form.get("category", "").strip()
+    amount = _to_float(request.form.get("monthly_amount")) or 0.0
+    if not category:
+        flash("A budget category needs a name.", "error")
+        return redirect(url_for("household_budget_page"))
+    db = get_db()
+    db.execute(
+        "INSERT INTO household_budgets (category, monthly_amount) VALUES (?, ?)",
+        (category, amount))
+    db.commit()
+    flash(f"Budget added: {category} — ${amount:,.2f}/month")
+    return redirect(url_for("household_budget_page"))
+
+
+@app.route("/budget/categories/<int:budget_id>/edit", methods=["POST"])
+def household_budget_edit(budget_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM household_budgets WHERE id = ?",
+                  (budget_id,)).fetchone() is None:
+        abort(404)
+    category = request.form.get("category", "").strip()
+    amount = _to_float(request.form.get("monthly_amount")) or 0.0
+    if not category:
+        flash("A budget category needs a name.", "error")
+        return redirect(url_for("household_budget_page", edit_budget=budget_id))
+    db.execute(
+        "UPDATE household_budgets SET category = ?, monthly_amount = ? WHERE id = ?",
+        (category, amount, budget_id))
+    db.commit()
+    flash("Budget updated.")
+    return redirect(url_for("household_budget_page"))
+
+
+@app.route("/budget/categories/<int:budget_id>/delete", methods=["POST"])
+@delete_required
+def household_budget_delete(budget_id):
+    ok, msg = trash_item("household_budget", budget_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("household_budget_page"))
 
 
 @app.route("/projects/new", methods=["GET", "POST"])
