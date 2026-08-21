@@ -563,6 +563,73 @@ pre-fills the title and selects the item), `/help` renders with all four
 new anchor ids present, a 40-route sweep, and a boot against the real
 household database.
 
+**Piece 48 (v0.23): AI-assisted project planning — done.** Right after Piece
+47 shipped, the user asked to pause the nav-bar UI cleanup and instead put
+more structure around a project's Planning stage, specifically by leaning on
+the existing AI chat integration (Piece 32) for a brainstorming session that
+helps think through finishing a project and turns that into real tasks —
+tailored by the Category/Subcategory vocabulary from Piece 44. Scoped via 3
+rounds of AskUserQuestion (all "Recommended" chosen): the feature lives as a
+new "🧠 Plan" tab on each project's own page (not the existing global 💬
+Assistant page); it's **propose, then confirm** — the AI gets no new
+write-tools, it only proposes and a real human click does the actual save,
+preserving the assistant's existing read-only design promise; and the
+conversation itself is **saved per project** so it can be reopened/continued
+later, not just its outputs.
+- New `project_plan_messages` table (id/project_id/role/author/content/
+  created_at) persists the chat. A new `build_project_plan_context(db,
+  project)` (mirrors `build_assistant_snapshot`'s compactness, scoped to one
+  project) feeds the model the project's Category/Subcategory, open tasks,
+  and recent field notes. A new `PROJECT_PLAN_SYSTEM_PROMPT` instructs the
+  model to put any concrete next-step suggestion alone on its own line as
+  `TASK: <title>` — a simple, reliably-parseable convention (there's no
+  JSON-mode/structured-output path in `ai_assistant.py`'s plain-text
+  response), which the tab's JS regex-scans into an inline **➕ Add to
+  project** button. Nothing about `ai_assistant.py` itself changed — its
+  existing `run_agent()` tool-use loop (Piece 32.1) is reused as-is; since it
+  has no multi-turn history parameter, prior turns are folded into the single
+  `user_message` string per call, capped to the last 20 turns in the prompt
+  (full history still persists in the DB and still renders on reload).
+- New route `POST /projects/<id>/plan/ask` mirrors `assistant_ask()` almost
+  line-for-line (same `assistant_settings()`/`_provider_configured()`/
+  `build_assistant_tools()` reuse — the existing read-only, permission-scoped
+  tool registry is reused unchanged for extra grounding, no new AI tools
+  added). No new permission — matches `add_task()`/`add_project_note()`'s
+  existing "any signed-in household member" policy.
+- **A real, latent gap closed along the way**: `add_task()` never set
+  `pipeline_status`, so tasks added through the existing generic Tasks-tab
+  form never counted toward `stage_info()`'s `WHERE pipeline_status = ?`
+  ready-count for advancing a stage — a task could sit on a project forever
+  without ever making that stage look "not ready." Gave `add_task()` one
+  optional, additive `pipeline_status` form field (falls back to `''`, zero
+  behavior change for the existing generic form) so a Plan-tab-suggested
+  task's ➕ Add button can tag it to the project's current stage and have it
+  actually count.
+- **➕ Add to project** and **💾 Save as project note** reuse the existing
+  `add_task`/`add_project_note` routes via `fetch()` rather than a plain form
+  submit — both routes hard-redirect back with a fixed anchor that would
+  otherwise knock the user out of the Plan tab they're actively chatting in.
+  Trade-off, called out deliberately: the Tasks tab / field-notes list won't
+  visually reflect the new row until the page is next reloaded, consistent
+  with this app's general full-reload-on-write pattern everywhere else.
+- New "🧠 Plan" tab on `project_detail.html`, added to the existing
+  `.tab-bar`/`.tab-panel`/`TABS`-array pattern (confirmed the `TABS` JS array
+  gates `activateTab()` — an unrecognized name falls back to `"general"`, so
+  updating it was required, not cosmetic). Gated off with the same
+  "no AI provider configured" flash `assistant.html` already uses, and with a
+  one-line "planning chat is turned off" message for Done/Abandoned projects.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot (confirms
+  `project_plan_messages` exists), a test-client cycle against a stubbed
+  `ai_assistant.run_agent` (no real network call) — a message persists both
+  turns, a *separate* later request confirms the conversation renders on
+  reload, adding a suggested task with `pipeline_status` set lands correctly
+  and is confirmed to count toward that stage's ready-count, adding a task
+  *without* `pipeline_status` (the existing generic form) is confirmed
+  unchanged, no-provider-configured returns the same graceful 400 as the
+  global assistant, and a regression check that `/work-bag/notes` still
+  inserts into `project_notes` unchanged — plus the standard 40-route sweep
+  and a boot against the real household database (0 rows, zero risk).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

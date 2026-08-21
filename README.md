@@ -370,6 +370,16 @@ income/expense ledger above, both visible to everyone.
   already allowed to see (contract totals are visible to every signed-in member,
   same as the dashboard; pay/payroll doesn't exist in this app). **Online-only**
   — nothing is sent until a question is asked, and nothing is sent while offline.
+- **🧠 Plan tab** (on each project's own page): a project-scoped brainstorm chat
+  to think through finishing *that* project — same read-only, permission-scoped,
+  Claude-or-Gemini design as 💬 Assistant, but its conversation is **saved per
+  project** so you can pick it back up later, and it's grounded in that
+  project's Category/Subcategory, open tasks, and recent field notes. It's
+  **propose, then confirm**: the AI never saves anything itself — a suggested
+  next step needs an explicit **➕ Add to project** click (which tags the new
+  task to the project's current stage, so it counts toward advancing it), and
+  any reply can be kept with **💾 Save as project note**. Turned off for
+  Done/Abandoned projects.
 - Setup is below under **[Setting up the AI Assistant](#setting-up-the-ai-assistant)**.
 
 ### Help & records
@@ -422,6 +432,24 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.23** — new feature: **AI-assisted project planning** — a "🧠 Plan" tab
+  on each project's own page, a brainstorming chat scoped to that one
+  project rather than the whole household. Reuses the existing AI provider
+  config, `run_agent()` tool loop, and read-only tool registry unchanged
+  (Piece 32) — no new AI write-tools, preserving the assistant's read-only
+  design promise. New `project_plan_messages` table persists the
+  conversation per project so it can be reopened later; a new project-scoped
+  context builder feeds the model the project's Category/Subcategory, open
+  tasks, and recent field notes for tailored suggestions. Suggested next
+  steps use a simple `TASK: ` line convention the tab's JS turns into an
+  **➕ Add to project** button — a real, human-clicked POST to the existing
+  `add_task` route (which gained one optional `pipeline_status` field so a
+  Plan-tab-added task counts toward that stage's ready-count, closing a
+  latent gap where manually-added tasks never did); replies can also be kept
+  with **💾 Save as project note** via the existing Work Bag note route. No
+  new permission — matches the existing "any signed-in household member"
+  policy on project tasks/notes.
 
 - **v0.22** — UI cleanup + docs sweep: Wishlist moved off the top-level nav
   bar (which had grown a link per new feature) and now lives primarily
