@@ -122,40 +122,12 @@
 
 <div class="tab-panel" id="tab-general">
 <div class="card">
-  <div style="margin-bottom: 0.9rem;">
-    {% for p in project["products"].split(", ") if p %}
-      <span class="badge">{{ p }}</span>
-    {% endfor %}
-  </div>
   <dl class="profile">
     {% if project["project_category"] or project["project_type"] %}
     <dt>Project category</dt>
     <dd>{{ project["project_category"] or "—" }}{% if project["project_type"] %} · {{ project["project_type"] }}{% endif %}</dd>
     {% endif %}
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
-    <dt>County</dt><dd>{{ project["county"] or "—" }}</dd>
-    <dt>Electric loads</dt>
-    <dd>{{ project["electric_loads"] or "—" }}</dd>
-    <dt>Utility provider</dt><dd>{{ project["utility_provider"] or "—" }}</dd>
-    <dt>Warranty type</dt><dd>{{ project["warranty_type"] or "—" }}</dd>
-    <dt>Payment</dt><dd>{{ project["cost_method"] or "—" }}</dd>
-    <dt>Tax credit</dt><dd>{{ project["tax_credit"] }}</dd>
-    <dt>Expand option</dt><dd>{{ project["expand_option"] }}</dd>
-    <dt>Property type</dt><dd>{{ project["property_type"] or "—" }}</dd>
-    {% if project["pv_utility_connection"] or project["pv_mounting_type"] %}
-    <dt>PV — utility connection</dt><dd>{{ project["pv_utility_connection"] or "—" }}</dd>
-    <dt>PV — mounting type</dt>
-    <dd>{{ project["pv_mounting_type"] or "—" }}{% if project["pv_manufactured_house"] == "Yes" %} · manufactured house{% endif %}</dd>
-    {% endif %}
-    {% if project["generator_utility_connection"] %}
-    <dt>Generator — utility connection</dt><dd>{{ project["generator_utility_connection"] }}</dd>
-    {% endif %}
-    {% if project["battery_utility_connection"] %}
-    <dt>Battery bank — utility connection</dt><dd>{{ project["battery_utility_connection"] }}</dd>
-    {% endif %}
-    {% if project["service_type"] %}
-    <dt>Service type</dt><dd>{{ project["service_type"] }}</dd>
-    {% endif %}
     <dt>Created</dt><dd>{{ project["created_at"][:10] }}</dd>
   </dl>
 </div>

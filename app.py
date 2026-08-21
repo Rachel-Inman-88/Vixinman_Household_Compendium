@@ -154,20 +154,16 @@ def ensure_requirement_reminders(db):
         db.commit()
 
 
-# Project profile columns (products is stored as a comma-separated list).
-# Piece 38: project_category/project_type are the household-appropriate fields
-# a Requirements Engine rule matches against (Home Improvement / Personal
-# Improvement projects). The solar-specific fields below them are kept as-is
-# — inert for a household project, not worth ripping out in this piece — so
-# any rule someone already wrote against them still works.
-PROJECT_FIELDS = [
-    "job_name", "project_category", "project_type", "site_location", "county",
-    "electric_loads", "utility_provider",
-    "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
-    "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
-    "generator_utility_connection", "battery_utility_connection", "service_type",
-    "property_type",
-]
+# Project profile columns. Piece 38: project_category/project_type are the
+# household-appropriate fields a Requirements Engine rule matches against
+# (Home Improvement / Personal Improvement projects). Piece 41: the solar-sale
+# fields that used to live here (county/electric_loads/utility_provider/
+# warranty_type/cost_method/tax_credit/expand_option/products + PV-Generator-
+# Battery variants/service_type/property_type) are gone — nothing left to
+# serve them once the install-job pipeline gating and the 145 solar-permit
+# resource_rules that matched on them were both cut. A generic household
+# project just needs a name, category, type, and (optional) location.
+PROJECT_FIELDS = ["job_name", "project_category", "project_type", "site_location"]
 
 # Piece 38: the two household project kinds the user actually undertakes —
 # home-improvement work and personal-improvement pursuits (a skill, a
@@ -181,17 +177,6 @@ PROJECT_FIELD_LABELS = {
     "project_category": "Project category",
     "project_type": "Project type",
     "site_location": "Site location",
-    "county": "County", "electric_loads": "Electric loads",
-    "utility_provider": "Utility provider", "warranty_type": "Warranty type",
-    "cost_method": "Payment", "tax_credit": "Tax credit",
-    "expand_option": "Expand option", "products": "Products / services",
-    "pv_utility_connection": "PV — utility connection",
-    "pv_mounting_type": "PV — mounting type",
-    "pv_manufactured_house": "PV — manufactured house",
-    "generator_utility_connection": "Generator — utility connection",
-    "battery_utility_connection": "Battery bank — utility connection",
-    "service_type": "Service type",
-    "property_type": "Property type",
 }
 
 # Employee directory (Piece 8). The core fields on a person's record:
@@ -378,9 +363,6 @@ EXPENSE_CATEGORIES = [
 # Piece 26.2: expense categories offered on the Work Bag receipt capture.
 RECEIPT_CATEGORIES = ["Materials", "Meals", "Tools and Supplies", "Overhead"]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
-# Piece 31.8: how the customer pays for the project (the project form's "Payment" field,
-# stored in cost_method). Two choices — pay the full amount up front, or finance.
-PAYMENT_TERMS = ["Pay in full", "Financing"]
 
 # Piece 21.5: source-document type for a ledger entry, so scanned/received
 # paperwork feeds the QuickBooks reports under the right account flow:
@@ -420,29 +402,12 @@ SEED_RULES = []
 SEED_BATCHES = {}
 SEED_BATCH_SQL = {}
 
-# Piece 39: county suggestions for the project form's free-text county field
-# — the last thing kept from the now-deleted nm_directory.py. The statewide
-# utility list and the county->utility auto-match feature that used to live
-# there were solar-business logic for picking a utility per job site across
-# NM — cut, since the household has one property and one utility;
-# utility_provider is now a plain text field. The NM AHJ/utility rule-batch
-# data (dead since Piece 38 dropped its import) went with it.
-COUNTIES = [f"{c} County" for c in (
-    "Bernalillo", "Catron", "Chaves", "Cibola", "Colfax", "Curry", "De Baca",
-    "Doña Ana", "Eddy", "Grant", "Guadalupe", "Harding", "Hidalgo", "Lea",
-    "Lincoln", "Los Alamos", "Luna", "McKinley", "Mora", "Otero", "Quay",
-    "Rio Arriba", "Roosevelt", "San Juan", "San Miguel", "Sandoval",
-    "Santa Fe", "Sierra", "Socorro", "Taos", "Torrance", "Union", "Valencia",
-)]
-
-# These products share one utility-connection choice on the project form.
-GRID_CONNECTION_FIELDS = {
-    "PV Systems": "pv_utility_connection",
-    "Generators": "generator_utility_connection",
-    "Battery Banks": "battery_utility_connection",
-}
-
-# Vixinman's main products/services — the multi-select on the project form.
+# Piece 41: county/utility_provider/GRID_CONNECTION_FIELDS (the project form's
+# county field + its NM datalist, and the shared PV/Generator/Battery utility-
+# connection picker) are gone along with the fields they fed — the project
+# form no longer has a county or utility-connection concept. PRODUCTS is kept
+# for now; the Requirements Library (`rule_directory()`) still filters on it
+# until Part C rebuilds that filter bar around the new minimal field set.
 PRODUCTS = [
     "PV Systems",
     "Generators",
@@ -1996,6 +1961,27 @@ def init_db():
                    " ('loads_and_cost_model_removed_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+    # Piece 41 Part B: the Project form's remaining solar-sale fields (county/
+    # electric_loads/utility_provider/warranty_type/cost_method/tax_credit/
+    # expand_option/products + PV-Generator-Battery variants/service_type/
+    # property_type) had nothing left to serve once Part A dropped the
+    # install-job pipeline gating and the 145 solar-permit resource_rules
+    # keyed to them were slated for a Part C purge — drop the columns from
+    # any existing database; a no-op on a fresh one.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'project_solar_fields_removed_v1'").fetchone():
+        for col in ("county", "electric_loads", "utility_provider",
+                    "warranty_type", "cost_method", "tax_credit", "expand_option",
+                    "products", "pv_utility_connection", "pv_mounting_type",
+                    "pv_manufactured_house", "generator_utility_connection",
+                    "battery_utility_connection", "service_type", "property_type"):
+            try:
+                db.execute(f"ALTER TABLE projects DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('project_solar_fields_removed_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
     tag_tasks_by_stage(db)
     db.close()
 
@@ -2888,7 +2874,7 @@ def project_calendar_ics(project_id):
 
 @app.route("/search")
 def search():
-    """Quick lookup across projects (site/county/products) and the household idea
+    """Quick lookup across projects (name/site location) and the household idea
     backlog (name/notes)."""
     q = (request.args.get("q") or "").strip()
     projects, ideas = [], []
@@ -2897,9 +2883,9 @@ def search():
         db = get_db()
         projects = db.execute(
             "SELECT * FROM projects"
-            " WHERE job_name LIKE ? OR site_location LIKE ? OR county LIKE ?"
-            " OR products LIKE ? ORDER BY created_at DESC",
-            (like, like, like, like)).fetchall()
+            " WHERE job_name LIKE ? OR site_location LIKE ?"
+            " ORDER BY created_at DESC",
+            (like, like)).fetchall()
         ideas = db.execute(
             "SELECT * FROM household_ideas"
             " WHERE name LIKE ? OR notes LIKE ? ORDER BY created_at DESC",
@@ -3197,91 +3183,39 @@ def delete_household_file(file_id):
 def new_project():
     db = get_db()
     if request.method == "POST":
-        values, selected, errors = read_project_form()
+        values, errors = read_project_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_project_form(values, selected, existing_jobs=True), 400
+            return render_project_form(values), 400
         cur = db.execute(
             f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)})"
             f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))})",
             [values[f] for f in PROJECT_FIELDS],
         )
-        # Piece 29.4: a new project turns over to Proposal — alert Sales & Design.
         new_job_row = {"id": cur.lastrowid, "job_name": values["job_name"]}
         actor = current_user()
-        notify_stage_turnover(db, new_job_row,
-                              values.get("status") or DEFAULT_PROJECT_STATUS,
+        notify_stage_turnover(db, new_job_row, DEFAULT_PROJECT_STATUS,
                               exclude_id=actor["id"] if actor else None)
         db.commit()
         flash(f"Project created: {values['job_name']}")
         return redirect(url_for("project_detail", project_id=cur.lastrowid))
-    # For service tickets: optionally pre-fill from a project already on the books.
-    values = {"site_location": ""}
-    selected = []
-    prefill_id = request.args.get("prefill", type=int)
-    if prefill_id:
-        source = db.execute(
-            "SELECT * FROM projects WHERE id = ?", (prefill_id,),
-        ).fetchone()
-        if source:
-            values = {f: source[f] for f in PROJECT_FIELDS}
-            values["utility_connection"] = next(
-                (source[f] for f in GRID_CONNECTION_FIELDS.values() if source[f]), "")
-            values["job_name"] = f"Service — {source['job_name'] or 'Project #' + str(source['id'])}"
-            selected = [p.strip() for p in source["products"].split(",") if p.strip()]
-            if "Technician Service" not in selected:
-                selected.append("Technician Service")
-    return render_project_form(values, selected, existing_jobs=True)
+    return render_project_form({})
 
 
 def read_project_form():
     """Validate and normalize a submitted project form (create or edit)."""
     values = {f: request.form.get(f, "").strip() for f in PROJECT_FIELDS}
-    selected = request.form.getlist("products")
-    values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
-    # One shared utility-connection choice covers PV, Battery, and
-    # Generators; it lands in each selected system's own column (which
-    # the rules engine matches on), blank for unselected systems.
-    shared = request.form.get("utility_connection", "").strip()
-    for product, field in GRID_CONNECTION_FIELDS.items():
-        values[field] = shared if product in selected else ""
-    values["utility_connection"] = shared  # for form re-render only
-    # Product-specific options only apply when their product is selected
-    # (the browser hides the sections, but never trust hidden inputs).
-    if "PV Systems" not in selected:
-        values["pv_mounting_type"] = ""
-    if values["pv_mounting_type"] != "Roof mounted":
-        values["pv_manufactured_house"] = ""
-    if "Technician Service" not in selected:
-        values["service_type"] = ""
     errors = []
     if not values["job_name"]:
         errors.append("Project name is required.")
-    if not values["site_location"]:
-        errors.append("Site location is required.")
-    if not values["cost_method"]:
-        errors.append("Payment is required.")
-    if not values["products"]:
-        errors.append("Select at least one product/service.")
-    if "Technician Service" in selected and not values["service_type"]:
-        errors.append("Specify general or warranty service.")
-    return values, selected, errors
+    return values, errors
 
 
-def render_project_form(values, selected, existing_jobs=False,
-                    editing_job_id=None):
-    jobs_on_books = []
-    if existing_jobs and not editing_job_id:
-        jobs_on_books = get_db().execute(
-            "SELECT id, job_name FROM projects ORDER BY created_at DESC").fetchall()
+def render_project_form(values, editing_job_id=None):
     return render_template(
-        "project_form.html", values=values, selected=selected,
-        products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
+        "project_form.html", values=values,
         project_categories=PROJECT_CATEGORIES,
-        mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
-        payment_terms=PAYMENT_TERMS,                       # Piece 31.8
-        counties=COUNTIES,
-        existing_jobs=jobs_on_books, editing_job_id=editing_job_id,
+        editing_job_id=editing_job_id,
     )
 
 
@@ -3290,11 +3224,10 @@ def edit_project(project_id):
     db = get_db()
     project = fetch_project(project_id)
     if request.method == "POST":
-        values, selected, errors = read_project_form()
+        values, errors = read_project_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_project_form(values, selected,
-                                   editing_job_id=project_id), 400
+            return render_project_form(values, editing_job_id=project_id), 400
         # Keep the outgoing state for recordkeeping before overwriting.
         snapshot = {f: project[f] for f in PROJECT_FIELDS}
         version = db.execute(
@@ -3313,10 +3246,7 @@ def edit_project(project_id):
         flash(f"Project updated — the previous state was kept as version {version}.")
         return redirect(url_for("project_detail", project_id=project_id))
     values = {f: project[f] for f in PROJECT_FIELDS}
-    values["utility_connection"] = next(
-        (project[f] for f in GRID_CONNECTION_FIELDS.values() if project[f]), "")
-    selected = [p.strip() for p in project["products"].split(",") if p.strip()]
-    return render_project_form(values, selected, editing_job_id=project_id)
+    return render_project_form(values, editing_job_id=project_id)
 
 
 @app.route("/projects/<int:project_id>/versions/<int:version>")
@@ -6183,7 +6113,6 @@ def build_assistant_tools(db, user):
     def find_projects(args):
         text = (args.get("text") or "").strip()
         stage = (args.get("stage") or "").strip()
-        county = (args.get("county") or "").strip()
         overdue_only = bool(args.get("overdue_only"))
         try:
             limit = min(int(args.get("limit") or 25), 50)
@@ -6194,8 +6123,6 @@ def build_assistant_tools(db, user):
             where.append("j.job_name LIKE ?"); params.append(f"%{text}%")
         if stage:
             where.append("j.status = ?"); params.append(stage)
-        if county:
-            where.append("j.county LIKE ?"); params.append(f"%{county}%")
         if args.get("min_contract") not in (None, ""):
             try:
                 where.append("COALESCE(j.contract_amount,0) >= ?")
@@ -6210,7 +6137,7 @@ def build_assistant_tools(db, user):
                 " AND t.due_date < ?)")
             params.append(today)
         rows = db.execute(
-            "SELECT id, job_name, status, install_date, county,"
+            "SELECT id, job_name, status, install_date,"
             "  COALESCE(contract_amount,0) AS amt"
             " FROM projects j"
             f" WHERE {' AND '.join(where)}"
@@ -6221,8 +6148,7 @@ def build_assistant_tools(db, user):
         out = [f"{len(rows)} project(s):"]
         for r in rows:
             line = (f"#{r['id']} {r['job_name'] or 'Project'} — "
-                    f"{r['status']} — install {r['install_date'] or 'TBD'}"
-                    f"{' — ' + r['county'] if r['county'] else ''}")
+                    f"{r['status']} — target date {r['install_date'] or 'none set'}")
             if r["amt"]:
                 line += f" — contract {_assist_money(r['amt'])}"
             out.append("• " + line)
@@ -6245,9 +6171,7 @@ def build_assistant_tools(db, user):
             return f"No project found matching '{ident}'."
         out = [f"Project #{row['id']}: {row['job_name'] or 'Project'}",
                f"Stage: {row['status']}",
-               f"Install date: {row['install_date'] or 'TBD'}",
-               f"County: {row['county'] or '—'}",
-               f"Payment: {row['cost_method'] or '—'}"]
+               f"Target date: {row['install_date'] or 'none set'}"]
         if row["contract_amount"] or 0:
             out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
         if (row["status"] or "") == "Abandoned" and (row["cancel_reason"] or ""):
@@ -6331,20 +6255,17 @@ def build_assistant_tools(db, user):
     return [
         {"name": "find_projects",
          "description": ("Search projects with optional filters. Use for questions like "
-                         "'projects in Prep', 'projects in Bernalillo county', 'overdue "
-                         "projects', or a project name search."),
+                         "'projects in Prep', 'overdue projects', or a project name search."),
          "parameters": {"type": "object", "properties": {
              "text": {"type": "string", "description": "match project name"},
              "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
-             "county": {"type": "string", "description": "NM county name"},
              "overdue_only": {"type": "boolean", "description": "only projects with an overdue task"},
-             "min_contract": {"type": "number", "description": "minimum contract total (only honored for pricing-cleared users)"},
+             "min_contract": {"type": "number", "description": "minimum contract total"},
              "limit": {"type": "integer", "description": "max rows (default 25)"}}},
          "run": find_projects},
         {"name": "project_details",
-         "description": ("Full detail for one project by name or #id: stage, install "
-                         "date, payment, open tasks, materials, recent notes "
-                         "(and contract total if you may see pricing)."),
+         "description": ("Full detail for one project by name or #id: stage, target "
+                         "date, open tasks, materials, recent notes, and contract total."),
          "parameters": {"type": "object", "properties": {
              "project": {"type": "string", "description": "project name or #id"}},
              "required": ["project"]},

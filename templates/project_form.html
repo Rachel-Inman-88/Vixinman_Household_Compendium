@@ -11,9 +11,9 @@ recordkeeping.</p>
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
-      <label for="job_name">Project name * <span class="muted">(used in bookkeeping records)</span></label>
+      <label for="job_name">Project name *</label>
       <input id="job_name" name="job_name"
-             placeholder="e.g. 8kW PV + battery"
+             placeholder="e.g. Repaint the fence, EMT certification"
              value="{{ values.get('job_name', '') }}" required>
     </div>
     <div class="field">
@@ -29,165 +29,12 @@ recordkeeping.</p>
       <label for="project_type">Project type <span class="muted">(optional — e.g. "Chicken coop", "EMT certification")</span></label>
       <input id="project_type" name="project_type" value="{{ values.get('project_type', '') }}">
     </div>
-    <div class="field" style="grid-column: 1 / -2;">
-      <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
+    <div class="field wide">
+      <label for="site_location">Site location <span class="muted">(optional — where is this happening?)</span></label>
       <input id="site_location" name="site_location"
-             placeholder="123 County Rd 45, Estancia, NM — or 35.0844, -106.6504"
-             value="{{ values.get('site_location', '') }}" required>
+             placeholder="e.g. the garage, or 123 County Rd 45"
+             value="{{ values.get('site_location', '') }}">
     </div>
-    <div class="field">
-      <label for="property_type">Property type</label>
-      <select id="property_type" name="property_type">
-        <option value="Residential" {% if values.get('property_type', 'Residential') != 'Commercial' %}selected{% endif %}>Residential</option>
-        <option value="Commercial" {% if values.get('property_type') == 'Commercial' %}selected{% endif %}>Commercial</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="county">County</label>
-      <input id="county" name="county" value="{{ values.get('county', '') }}"
-             list="county_list" placeholder="Mora County">
-      <datalist id="county_list">
-        {% for c in counties %}<option value="{{ c }}">{% endfor %}
-      </datalist>
-    </div>
-    <div class="field">
-      <label for="utility_provider">Utility provider</label>
-      <input id="utility_provider" name="utility_provider"
-             value="{{ values.get('utility_provider', '') }}">
-    </div>
-    {% if editing_job_id %}
-    <div class="field wide">
-      <label for="electric_loads">Electric loads <span class="muted">(optional — e.g. "3-ton AC, well pump, shop sub-panel")</span></label>
-      <textarea id="electric_loads" name="electric_loads" rows="2"
-                placeholder="3-ton AC, well pump, shop sub-panel…">{{ values.get('electric_loads', '') }}</textarea>
-    </div>
-    {% else %}
-    <div class="field wide">
-      <p class="muted" style="margin:0.2rem 0 0; font-size:0.85rem;">⚡ <strong>Electric loads</strong> can be
-      recorded once the project exists — edit the project after creating it; the
-      Planning stage can't advance until they're recorded.</p>
-    </div>
-    {% endif %}
-    <div class="field">
-      <label for="warranty_type">Warranty type</label>
-      <input id="warranty_type" name="warranty_type"
-             value="{{ values.get('warranty_type', '') }}">
-    </div>
-    <div class="field">
-      <label for="cost_method">Payment *</label>
-      {% set cm = values.get('cost_method', '') %}
-      <select id="cost_method" name="cost_method" required>
-        <option value="" {% if not cm %}selected{% endif %} disabled>— how are they paying? —</option>
-        {% for term in payment_terms %}
-        <option value="{{ term }}" {% if cm == term %}selected{% endif %}>{{ term }}</option>
-        {% endfor %}
-        {# Preserve any legacy free-text value (e.g. "Cash") so edits don't lose it. #}
-        {% if cm and cm not in payment_terms %}
-        <option value="{{ cm }}" selected>{{ cm }}</option>
-        {% endif %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="tax_credit">Tax credit</label>
-      <select id="tax_credit" name="tax_credit">
-        <option value="No" {% if values.get('tax_credit', 'No') == 'No' %}selected{% endif %}>No</option>
-        <option value="Yes" {% if values.get('tax_credit') == 'Yes' %}selected{% endif %}>Yes</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="expand_option">Expand option</label>
-      <select id="expand_option" name="expand_option">
-        <option value="No" {% if values.get('expand_option', 'No') == 'No' %}selected{% endif %}>No</option>
-        <option value="Yes" {% if values.get('expand_option') == 'Yes' %}selected{% endif %}>Yes</option>
-      </select>
-    </div>
-    <div class="field wide">
-      <label>Products / services * <span class="muted">(select all that apply)</span></label>
-      <fieldset class="section" style="margin-bottom: 0.5rem;">
-        <legend>⚡ Energy systems <span class="muted">(share one utility connection)</span></legend>
-        <div class="check-grid">
-          {% for p in ["PV Systems", "Battery Banks", "Generators"] %}
-          <label class="check">
-            <input type="checkbox" name="products" value="{{ p }}"
-                   {% if p in selected %}checked{% endif %}>
-            {{ p }}
-          </label>
-          {% endfor %}
-        </div>
-        <div id="grid_options" style="display: none; margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.6rem;">
-          <label style="font-size:0.8rem; color:var(--muted); font-weight:600;">Utility connection — applies to all selected energy systems</label>
-          <div class="check-grid">
-            {% for opt in utility_connections %}
-            <label class="check">
-              <input type="radio" name="utility_connection" value="{{ opt }}"
-                     {% if values.get('utility_connection') == opt %}checked{% endif %}>
-              {{ opt }}
-            </label>
-            {% endfor %}
-          </div>
-        </div>
-      </fieldset>
-      <div class="check-grid">
-        {% for p in products if p not in ["PV Systems", "Battery Banks", "Generators"] %}
-        <label class="check">
-          <input type="checkbox" name="products" value="{{ p }}"
-                 {% if p in selected %}checked{% endif %}>
-          {{ p }}
-        </label>
-        {% endfor %}
-      </div>
-    </div>
-
-    <fieldset class="section" id="pv_options" style="grid-column: 1 / -1; display: none;">
-      <legend>☀️ PV Systems options</legend>
-      <div class="field">
-        <label>Mounting type</label>
-        <div class="check-grid">
-          {% for opt in mounting_types %}
-          <label class="check">
-            <input type="radio" name="pv_mounting_type" value="{{ opt }}"
-                   {% if values.get('pv_mounting_type') == opt %}checked{% endif %}>
-            {{ opt }}
-          </label>
-          {% endfor %}
-          <label class="check" id="manufactured_row" style="display: none;">
-            <input type="checkbox" name="pv_manufactured_house" value="Yes"
-                   {% if values.get('pv_manufactured_house') == 'Yes' %}checked{% endif %}>
-            Manufactured house?
-          </label>
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset class="section" id="service_options" style="grid-column: 1 / -1; display: none;">
-      <legend>🛠️ Technician Service options</legend>
-      {% if existing_jobs %}
-      <div class="field" style="margin-bottom: 0.7rem;">
-        <label for="prefill_select">Pre-fill from a project already on the books? (optional)</label>
-        <select id="prefill_select">
-          <option value="">— no, start a blank service ticket —</option>
-          {% for ej in existing_jobs %}
-          <option value="{{ ej['id'] }}">{{ ej["job_name"] or "Project #" ~ ej["id"] }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
-      <div class="field">
-        <label>Service type *</label>
-        <div class="check-grid">
-          {% for opt in service_types %}
-          <label class="check">
-            <input type="radio" name="service_type" value="{{ opt }}"
-                   {% if values.get('service_type') == opt %}checked{% endif %}>
-            {{ opt }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-      <p class="muted" style="margin: 0.6rem 0 0;">Then check the products above
-      that describe the part of the system needing service — their options and
-      requirements apply to the ticket.</p>
-    </fieldset>
   </div>
   <div class="actions">
     <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create project{% endif %}</button>
@@ -198,43 +45,4 @@ recordkeeping.</p>
     {% endif %}
   </div>
 </form>
-<script>
-  // Show each product's options section only while that product is checked,
-  // and the manufactured-house question only for roof-mounted PV.
-  const sectionFor = {
-    "PV Systems": "pv_options",
-    "Technician Service": "service_options",
-  };
-  const gridProducts = ["PV Systems", "Battery Banks", "Generators"];
-  const productBoxes = document.querySelectorAll('input[name="products"]');
-  function updateSections() {
-    const checked = new Set(
-      [...productBoxes].filter(b => b.checked).map(b => b.value)
-    );
-    for (const [product, id] of Object.entries(sectionFor)) {
-      document.getElementById(id).style.display = checked.has(product) ? "" : "none";
-    }
-    // One shared utility-connection choice when any energy system is on.
-    document.getElementById("grid_options").style.display =
-      gridProducts.some(p => checked.has(p)) ? "" : "none";
-    const mounting = document.querySelector('input[name="pv_mounting_type"]:checked');
-    document.getElementById("manufactured_row").style.display =
-      (mounting && mounting.value === "Roof mounted") ? "" : "none";
-  }
-  productBoxes.forEach(b => b.addEventListener("change", updateSections));
-  document.querySelectorAll('input[name="pv_mounting_type"]')
-    .forEach(r => r.addEventListener("change", updateSections));
-  updateSections();
-
-  // Service pre-fill: reload the form seeded from the chosen existing project.
-  const prefill = document.getElementById("prefill_select");
-  if (prefill) {
-    prefill.addEventListener("change", () => {
-      if (prefill.value) {
-        window.location = "{{ url_for('new_project') }}?prefill=" + prefill.value;
-      }
-    });
-  }
-
-</script>
 {% endblock %}

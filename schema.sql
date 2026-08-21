@@ -54,28 +54,18 @@ CREATE TABLE IF NOT EXISTS permission_grants (
     granted_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 41: the solar-sale fields that used to live here (county/
+-- electric_loads/utility_provider/warranty_type/cost_method/tax_credit/
+-- expand_option/products + PV/Generator/Battery variants/service_type/
+-- property_type) are gone -- see the meta-guarded drop in init_db().
+-- project_category/project_type (Piece 38) are added dynamically via
+-- ensure_columns() rather than declared here.
 CREATE TABLE IF NOT EXISTS projects (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     job_name         TEXT DEFAULT '',   -- the name used in bookkeeping records
-    site_location    TEXT DEFAULT '',   -- address or GPS coordinates; .kmz link planned
-    county           TEXT DEFAULT '',
-    electric_loads   TEXT DEFAULT '',
-    utility_provider TEXT DEFAULT '',
-    warranty_type    TEXT DEFAULT '',
-    cost_method      TEXT DEFAULT '',
-    tax_credit       TEXT DEFAULT 'No',
-    expand_option    TEXT DEFAULT 'No',
-    products         TEXT DEFAULT '',   -- comma-separated selections
-    -- Product-specific options; blank unless the product is selected.
-    pv_utility_connection        TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
-    pv_mounting_type             TEXT DEFAULT '',  -- Roof mounted / Ground mount
-    pv_manufactured_house        TEXT DEFAULT '',  -- Yes when roof mounted on a manufactured house
-    generator_utility_connection TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
-    battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
-    service_type     TEXT DEFAULT '',   -- General service / Warranty service
-    property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
+    site_location    TEXT DEFAULT '',   -- optional -- where the project is happening
     status           TEXT NOT NULL DEFAULT 'Planning',  -- Piece 16 pipeline stage (renamed Piece 34)
-    install_date     TEXT DEFAULT '',   -- Piece 18: set in Prep; gates In Progress
+    install_date     TEXT DEFAULT '',   -- Piece 18: optional target/completion date (de-gated Piece 41)
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
