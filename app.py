@@ -230,7 +230,7 @@ PERMISSIONS = {
     "rules.manage": "Manage rules",
     "inventory.manage": "Manage inventory (add/edit items, tools, stock)",
     "household.manage": "Manage household members & accounts",
-    "approvals": "Approve field work",
+    "approvals": "Approve field work & wishlist requests",
     "audit.view": "View the audit log",
     "delete": "Delete data (sends it to the trash)",
 }
@@ -811,6 +811,8 @@ VIEW_PERMISSION = {
     "submissions_page": "approvals",
     "approve_submission": "approvals",
     "reject_submission": "approvals",
+    "wishlist_approve": "approvals",
+    "wishlist_reject": "approvals",
     "add_rule": "rules.manage",
     "delete_rule": "rules.manage",
     "accounts_page": "household.manage",
@@ -866,8 +868,14 @@ def inject_auth():
     pending = 0
     if has_permission("approvals"):
         try:
-            pending = get_db().execute(
+            db = get_db()
+            pending = db.execute(
                 "SELECT COUNT(*) FROM field_submissions WHERE status = 'Pending'"
+            ).fetchone()[0]
+            # Piece 45: the same "approvals" permission now also covers
+            # wishlist requests, so the nav badge reflects both.
+            pending += db.execute(
+                "SELECT COUNT(*) FROM wishlist_items WHERE status = 'Pending'"
             ).fetchone()[0]
         except Exception:
             pending = 0
@@ -955,6 +963,30 @@ def _employee_uses(db, eid):
     return uses
 
 
+def _contact_uses(db, hid):
+    """Piece 43/45: every real FK pointing at a Contact -- this app runs
+    with PRAGMA foreign_keys=ON, so deleting a Contact still referenced
+    anywhere would raise a raw IntegrityError instead of a friendly
+    message. Keep this in sync with every table that gets an
+    external_helper_id column (Piece 46's household_transactions will add
+    a third check here)."""
+    uses = []
+    n = _count(db, "SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?", (hid,))
+    if n:
+        uses.append(f"{n} appointment(s)")
+    n = _count(db, "SELECT COUNT(*) FROM wishlist_items WHERE external_helper_id = ?", (hid,))
+    if n:
+        uses.append(f"{n} wishlist item(s)")
+    return uses
+
+
+def _inventory_item_uses(db, item_id):
+    """Piece 45: wishlist_items.inventory_item_id is a real FK -- same
+    FK-safety reasoning as _contact_uses()."""
+    n = _count(db, "SELECT COUNT(*) FROM wishlist_items WHERE inventory_item_id = ?", (item_id,))
+    return [f"{n} wishlist item(s)"] if n else []
+
+
 # entity_type -> how to label it, where it lived, what would block its delete,
 # and (for file rows) where its file sits on disk.
 TRASH_REGISTRY = {
@@ -988,16 +1020,12 @@ TRASH_REGISTRY = {
     "appointment": {"table": "appointments", "label": lambda r: r["title"],
                     "found_in": lambda db, r: "Appointments",
                     "in_use": lambda db, r: []},
+    "wishlist_item": {"table": "wishlist_items", "label": lambda r: r["title"],
+                      "found_in": lambda db, r: "Wishlist",
+                      "in_use": lambda db, r: []},
     "external_helper": {"table": "external_helpers", "label": lambda r: r["name"],
                         "found_in": lambda db, r: "Contacts",
-                        # Piece 43: appointments.external_helper_id is a real FK
-                        # with PRAGMA foreign_keys=ON -- deleting a contact still
-                        # linked from an appointment would otherwise raise an
-                        # IntegrityError. Block it here instead, same pattern as
-                        # every other in-use check.
-                        "in_use": lambda db, r: (
-                            [f"{_count(db, 'SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?', (r['id'],))} appointment(s)"]
-                            if _count(db, "SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?", (r["id"],)) else [])},
+                        "in_use": lambda db, r: _contact_uses(db, r["id"])},
     "credential": {"table": "household_member_credentials", "label": lambda r: r["name"],
                    "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Credentials",
                    "in_use": lambda db, r: []},
@@ -1011,7 +1039,7 @@ TRASH_REGISTRY = {
     "inventory_item": {"table": "inventory_items",
                        "label": lambda r: f"{r['make']} {r['model']}".strip() or r["category"],
                        "found_in": lambda db, r: f"Inventory — {r['category']}",
-                       "in_use": lambda db, r: []},
+                       "in_use": lambda db, r: _inventory_item_uses(db, r["id"])},
     "inventory_tool": {"table": "inventory_tools",
                        "label": lambda r: r["name"] or "Tool",
                        "found_in": lambda db, r: "Inventory — Tools",
@@ -2617,6 +2645,161 @@ def appointment_delete(appt_id):
     ok, msg = trash_item("appointment", appt_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("appointments_page"))
+
+
+# ------------------------------------------------------------------ wishlist
+# Piece 45: a per-household-member wishlist. Submitted by anyone, sitting as
+# Pending until a Parent/Admin (the "approvals" permission -- the same one
+# that already gates Work Bag field-submission approvals) approves or
+# rejects it. Approval does nothing automatic; it's purely a household
+# "yes, go ahead and buy this" signal.
+@app.route("/wishlist")
+def wishlist_page():
+    """The Wishlist — filter by whose list (mine/all/unassigned/a person)
+    and by pending-vs-all (approved/rejected items drop off the default
+    pending view)."""
+    db = get_db()
+    me = current_user()
+    who = request.args.get("who", "mine" if me else "all")
+    show = request.args.get("show", "pending")
+    sql = ("SELECT w.*, e.name AS assignee_name, i.category AS inv_category,"
+           " i.make AS inv_make, i.model AS inv_model,"
+           " p.job_name AS project_name, h.name AS contact_name"
+           " FROM wishlist_items w"
+           " LEFT JOIN household_members e ON e.id = w.household_member_id"
+           " LEFT JOIN inventory_items i ON i.id = w.inventory_item_id"
+           " LEFT JOIN projects p ON p.id = w.project_id"
+           " LEFT JOIN external_helpers h ON h.id = w.external_helper_id"
+           " WHERE 1 = 1")
+    params = []
+    if who == "mine" and me:
+        sql += " AND w.household_member_id = ?"
+        params.append(me["id"])
+    elif who.isdigit():
+        sql += " AND w.household_member_id = ?"
+        params.append(int(who))
+    if show != "all":
+        sql += " AND w.status = 'Pending'"
+    sql += " ORDER BY (w.status = 'Pending') DESC, w.created_at DESC"
+    items = db.execute(sql, params).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    inventory_items = db.execute(
+        "SELECT id, category, make, model FROM inventory_items"
+        " WHERE active = 1 ORDER BY category, make, model").fetchall()
+    projects = db.execute(
+        "SELECT id, job_name FROM projects WHERE status != 'Abandoned'"
+        " ORDER BY id DESC").fetchall()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    edit_id = request.args.get("edit", type=int)
+    edit_item = db.execute(
+        "SELECT * FROM wishlist_items WHERE id = ?", (edit_id,)
+    ).fetchone() if edit_id else None
+    return render_template(
+        "wishlist.html", items=items, employees=employees,
+        inventory_items=inventory_items, projects=projects, contacts=contacts,
+        who=who, show=show, edit_item=edit_item)
+
+
+def _wishlist_form_values():
+    assignee = request.form.get("household_member_id", "")
+    inv = request.form.get("inventory_item_id", "")
+    proj = request.form.get("project_id", "")
+    contact = request.form.get("external_helper_id", "")
+    me = current_user()
+    return {
+        "title": request.form.get("title", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "estimated_cost": _to_float(request.form.get("estimated_cost")),
+        "purchase_url": request.form.get("purchase_url", "").strip(),
+        "household_member_id": int(assignee) if assignee.isdigit()
+                              else (me["id"] if me else None),
+        "inventory_item_id": int(inv) if inv.isdigit() else None,
+        "project_id": int(proj) if proj.isdigit() else None,
+        "external_helper_id": int(contact) if contact.isdigit() else None,
+    }
+
+
+@app.route("/wishlist/new", methods=["POST"])
+def wishlist_new():
+    v = _wishlist_form_values()
+    if not v["title"]:
+        flash("A wishlist item needs a title.", "error")
+        return redirect(url_for("wishlist_page"))
+    if not v["household_member_id"]:
+        flash("Sign in to add to a wishlist.", "error")
+        return redirect(url_for("wishlist_page"))
+    db = get_db()
+    db.execute(
+        "INSERT INTO wishlist_items (household_member_id, title, description,"
+        " estimated_cost, purchase_url, inventory_item_id, project_id,"
+        " external_helper_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (v["household_member_id"], v["title"], v["description"],
+         v["estimated_cost"], v["purchase_url"], v["inventory_item_id"],
+         v["project_id"], v["external_helper_id"]))
+    db.commit()
+    flash(f"Added to the wishlist: {v['title']}")
+    return redirect(url_for("wishlist_page"))
+
+
+@app.route("/wishlist/<int:item_id>/edit", methods=["POST"])
+def wishlist_edit(item_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM wishlist_items WHERE id = ?",
+                  (item_id,)).fetchone() is None:
+        abort(404)
+    v = _wishlist_form_values()
+    if not v["title"]:
+        flash("A wishlist item needs a title.", "error")
+        return redirect(url_for("wishlist_page", edit=item_id))
+    db.execute(
+        "UPDATE wishlist_items SET household_member_id = ?, title = ?,"
+        " description = ?, estimated_cost = ?, purchase_url = ?,"
+        " inventory_item_id = ?, project_id = ?, external_helper_id = ?"
+        " WHERE id = ?",
+        (v["household_member_id"], v["title"], v["description"],
+         v["estimated_cost"], v["purchase_url"], v["inventory_item_id"],
+         v["project_id"], v["external_helper_id"], item_id))
+    db.commit()
+    flash(f"Updated: {v['title']}")
+    return redirect(url_for("wishlist_page"))
+
+
+@app.route("/wishlist/<int:item_id>/approve", methods=["POST"])
+@admin_required
+def wishlist_approve(item_id):
+    db = get_db()
+    who = current_user()
+    db.execute(
+        "UPDATE wishlist_items SET status = 'Approved', reviewed_by = ?,"
+        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
+        (who["name"] if who else "", item_id))
+    db.commit()
+    flash("Wishlist item approved.")
+    return redirect(url_for("wishlist_page"))
+
+
+@app.route("/wishlist/<int:item_id>/reject", methods=["POST"])
+@admin_required
+def wishlist_reject(item_id):
+    db = get_db()
+    who = current_user()
+    db.execute(
+        "UPDATE wishlist_items SET status = 'Rejected', reviewed_by = ?,"
+        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
+        (who["name"] if who else "", item_id))
+    db.commit()
+    flash("Wishlist item rejected.")
+    return redirect(url_for("wishlist_page"))
+
+
+@app.route("/wishlist/<int:item_id>/delete", methods=["POST"])
+@delete_required
+def wishlist_delete(item_id):
+    ok, msg = trash_item("wishlist_item", item_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("wishlist_page"))
 
 
 def _closing_worklist(db):

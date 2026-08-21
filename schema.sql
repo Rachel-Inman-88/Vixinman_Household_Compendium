@@ -322,6 +322,27 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_by           TEXT DEFAULT '',
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 45: a per-household-member wishlist. Submitted by anyone, sitting
+-- as Pending until a Parent/Admin approves or rejects it (the same
+-- oversight gate as the Work Bag's field_submissions) -- approval does
+-- nothing automatic, it just flips status; someone still adds it to
+-- Inventory manually once actually bought, same as everything else there.
+-- All three link columns are optional and independent of each other.
+CREATE TABLE IF NOT EXISTS wishlist_items (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_member_id  INTEGER NOT NULL REFERENCES household_members(id),
+    title                TEXT NOT NULL,
+    description          TEXT DEFAULT '',
+    estimated_cost       REAL,
+    purchase_url         TEXT DEFAULT '',
+    inventory_item_id    INTEGER REFERENCES inventory_items(id),   -- NULL = not "more of this"
+    project_id           INTEGER REFERENCES projects(id),          -- NULL = not for a project
+    external_helper_id   INTEGER REFERENCES external_helpers(id),  -- NULL = no contact
+    status               TEXT NOT NULL DEFAULT 'Pending',  -- Pending / Approved / Rejected
+    reviewed_by          TEXT DEFAULT '',
+    reviewed_at          TEXT DEFAULT '',
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id INTEGER NOT NULL REFERENCES household_members(id),
