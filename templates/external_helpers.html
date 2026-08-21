@@ -1,24 +1,42 @@
 {% extends "base.html" %}
-{% block title %}External Helpers{% endblock %}
+{% block title %}Contacts{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>🧰 External Helpers <span class="muted" style="font-size:0.95rem; font-weight:400;">— contractors, tutors, coaches, and others who help but aren't household members</span></h1>
+  <h1>🧰 Contacts <span class="muted" style="font-size:0.95rem; font-weight:400;">— people and organizations who help but aren't household members</span></h1>
 </div>
+<p class="muted" style="margin-top:0;">Contractors, tutors, coaches — or organizations like a
+subscription service, a co-op, or a utility. Each can have appointments linked to it; use
+<strong>＋ Add appointment</strong> on a row to schedule one.</p>
 
 <div class="card">
   {% if helpers %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Name</th><th>Specialty</th><th>Phone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Specialty / service</th><th>Phone</th><th>Email</th><th>Appointments</th><th></th></tr></thead>
     <tbody>
       {% for h in helpers %}
       <tr>
-        <td>{{ h["name"] }}</td>
+        <td>{{ h["name"] }}
+          {% if h["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ h["notes"] }}</span>{% endif %}
+          {% if h["kind"] == "Organization" %}
+          <br><span class="muted" style="font-size:0.78rem;">
+            {% if h["website"] %}🌐 <a href="{{ h['website'] }}" target="_blank" rel="noopener">{{ h["website"] }}</a>{% endif %}
+            {% if h["account_number"] %}{% if h["website"] %} · {% endif %}Acct #{{ h["account_number"] }}{% endif %}
+            {% if h["contact_person"] %}{% if h["website"] or h["account_number"] %} · {% endif %}Contact: {{ h["contact_person"] }}{% if h["contact_phone"] %} ({{ h["contact_phone"] }}){% endif %}{% endif %}
+            {% if h["renewal_date"] %}{% if h["website"] or h["account_number"] or h["contact_person"] %} · {% endif %}Renews {{ h["renewal_date"] }}{% endif %}
+          </span>
+          {% endif %}
+        </td>
+        <td class="muted">{{ h["kind"] or "Person" }}</td>
         <td class="muted">{{ h["specialty"] or "—" }}</td>
         <td>{{ h["phone"] or "—" }}</td>
         <td>{{ h["email"] or "—" }}</td>
-        <td class="muted" style="font-size:0.85rem;">{{ h["notes"] or "—" }}</td>
+        <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
+          {% if h["upcoming_count"] %}📅 {{ h["upcoming_count"] }} upcoming{% if h["upcoming_next"] %} · next {{ h["upcoming_next"] }}{% endif %}{% else %}—{% endif %}
+        </td>
         <td style="white-space:nowrap;">
+          <a href="{{ url_for('appointments_page', prefill_contact=h['id']) }}#appt-form"
+             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Add appointment">＋📅</a>
           <a href="{{ url_for('external_helpers_page', edit=h['id']) }}#helper-form"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% if can('delete') %}
@@ -34,7 +52,7 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No external helpers on file yet — add one below.</p>
+  <p class="empty">No contacts on file yet — add one below.</p>
   {% endif %}
 </div>
 
@@ -43,10 +61,15 @@
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit contact" if eh else "＋ New contact" }}</h2>
   <form method="post" action="{{ url_for('edit_external_helper', helper_id=eh['id']) if eh else url_for('new_external_helper') }}">
     <div class="form-grid">
+      <div class="field"><label for="kind">Type</label>
+        <select id="kind" name="kind">
+          <option value="Person" {% if not eh or eh['kind'] != 'Organization' %}selected{% endif %}>Person</option>
+          <option value="Organization" {% if eh and eh['kind'] == 'Organization' %}selected{% endif %}>Organization</option>
+        </select></div>
       <div class="field wide"><label for="name">Name *</label>
-        <input id="name" name="name" required value="{{ eh['name'] if eh else '' }}" placeholder="e.g. Sandia Electric — Mike"></div>
-      <div class="field"><label for="specialty">Specialty</label>
-        <input id="specialty" name="specialty" value="{{ eh['specialty'] if eh else '' }}" placeholder="e.g. Electrician, Piano tutor"></div>
+        <input id="name" name="name" required value="{{ eh['name'] if eh else '' }}" placeholder="e.g. Sandia Electric — Mike, or Sunflower Grocery Co-op"></div>
+      <div class="field"><label for="specialty">Specialty / service type</label>
+        <input id="specialty" name="specialty" value="{{ eh['specialty'] if eh else '' }}" placeholder="e.g. Electrician, or Grocery co-op"></div>
       <div class="field"><label for="phone">Phone</label>
         <input id="phone" name="phone" value="{{ eh['phone'] if eh else '' }}"></div>
       <div class="field"><label for="email">Email</label>
@@ -54,10 +77,35 @@
       <div class="field wide"><label for="notes">Notes</label>
         <input id="notes" name="notes" value="{{ eh['notes'] if eh else '' }}" placeholder="anything else worth remembering"></div>
     </div>
+
+    <div id="org-fields" class="form-grid" style="margin-top:0.6rem;">
+      <div class="field"><label for="website">Website</label>
+        <input id="website" name="website" value="{{ eh['website'] if eh else '' }}" placeholder="https://…"></div>
+      <div class="field"><label for="account_number">Account / member number</label>
+        <input id="account_number" name="account_number" value="{{ eh['account_number'] if eh else '' }}"></div>
+      <div class="field"><label for="renewal_date">Renewal date</label>
+        <input id="renewal_date" name="renewal_date" type="date" value="{{ eh['renewal_date'] if eh else '' }}"></div>
+      <div class="field"><label for="contact_person">Main contact person</label>
+        <input id="contact_person" name="contact_person" value="{{ eh['contact_person'] if eh else '' }}" placeholder="who you deal with there"></div>
+      <div class="field"><label for="contact_phone">Their phone</label>
+        <input id="contact_phone" name="contact_phone" value="{{ eh['contact_phone'] if eh else '' }}"></div>
+      <div class="field"><label for="contact_email">Their email</label>
+        <input id="contact_email" name="contact_email" type="email" value="{{ eh['contact_email'] if eh else '' }}"></div>
+    </div>
+
     <div class="actions">
       <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add contact" }}</button>
       {% if eh %}<a href="{{ url_for('external_helpers_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
     </div>
   </form>
 </div>
+<script>
+  (function () {
+    var kind = document.getElementById("kind");
+    var orgFields = document.getElementById("org-fields");
+    function sync() { orgFields.style.display = (kind.value === "Organization") ? "" : "none"; }
+    kind.addEventListener("change", sync);
+    sync();
+  })();
+</script>
 {% endblock %}

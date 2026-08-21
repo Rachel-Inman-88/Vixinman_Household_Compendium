@@ -980,8 +980,15 @@ TRASH_REGISTRY = {
                     "found_in": lambda db, r: "Appointments",
                     "in_use": lambda db, r: []},
     "external_helper": {"table": "external_helpers", "label": lambda r: r["name"],
-                        "found_in": lambda db, r: "External Helpers",
-                        "in_use": lambda db, r: []},
+                        "found_in": lambda db, r: "Contacts",
+                        # Piece 43: appointments.external_helper_id is a real FK
+                        # with PRAGMA foreign_keys=ON -- deleting a contact still
+                        # linked from an appointment would otherwise raise an
+                        # IntegrityError. Block it here instead, same pattern as
+                        # every other in-use check.
+                        "in_use": lambda db, r: (
+                            [f"{_count(db, 'SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?', (r['id'],))} appointment(s)"]
+                            if _count(db, "SELECT COUNT(*) FROM appointments WHERE external_helper_id = ?", (r["id"],)) else [])},
     "credential": {"table": "household_member_credentials", "label": lambda r: r["name"],
                    "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Credentials",
                    "in_use": lambda db, r: []},
@@ -1819,6 +1826,20 @@ def init_db():
                    " ('inventory_rehaul_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+    # Piece 43: broaden external_helpers ("Contacts") to also cover
+    # organizations, and let an appointment link to a contact. Purely
+    # additive -- no meta guard needed, ensure_columns() is already
+    # idempotent and the FK column below just needs its own try/except.
+    ensure_columns(db, "external_helpers",
+                   ["kind", "website", "account_number", "contact_person",
+                    "contact_phone", "contact_email", "renewal_date"])
+    db.execute("UPDATE external_helpers SET kind = 'Person'"
+               " WHERE COALESCE(kind, '') = ''")
+    try:
+        db.execute("ALTER TABLE appointments ADD COLUMN external_helper_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    db.commit()
     tag_tasks_by_stage(db)
     db.close()
 
@@ -2443,13 +2464,17 @@ def appointments_page():
     """The Appointments list — scheduled dates/times, not tied to a project.
     Filter by assignee (mine / unassigned / a person / all) and by
     upcoming-vs-all (one-time appointments drop off the upcoming view once
-    marked done)."""
+    marked done). ?prefill_contact=<id> pre-fills the add form from a
+    Contact's "＋ Add appointment" quick-link."""
     db = get_db()
     me = current_user()
     who = request.args.get("who", "mine" if me else "all")
     show = request.args.get("show", "upcoming")
-    sql = ("SELECT a.*, e.name AS assignee_name FROM appointments a"
-           " LEFT JOIN household_members e ON e.id = a.household_member_id WHERE 1 = 1")
+    sql = ("SELECT a.*, e.name AS assignee_name, h.name AS contact_name"
+           " FROM appointments a"
+           " LEFT JOIN household_members e ON e.id = a.household_member_id"
+           " LEFT JOIN external_helpers h ON h.id = a.external_helper_id"
+           " WHERE 1 = 1")
     params = []
     if who == "mine" and me:
         sql += " AND a.household_member_id = ?"
@@ -2465,25 +2490,37 @@ def appointments_page():
     appointments = db.execute(sql, params).fetchall()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
     edit_id = request.args.get("edit", type=int)
     edit_appt = db.execute(
         "SELECT * FROM appointments WHERE id = ?", (edit_id,)
     ).fetchone() if edit_id else None
+    prefill = None
+    prefill_contact_id = request.args.get("prefill_contact", type=int)
+    if prefill_contact_id and not edit_appt:
+        contact = db.execute("SELECT * FROM external_helpers WHERE id = ?",
+                             (prefill_contact_id,)).fetchone()
+        if contact:
+            prefill = {"title": f"Appointment — {contact['name']}",
+                      "external_helper_id": contact["id"]}
     return render_template(
         "appointments.html", appointments=appointments, employees=employees,
-        who=who, show=show, edit_appt=edit_appt,
-        recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
+        contacts=contacts, who=who, show=show, edit_appt=edit_appt,
+        prefill=prefill, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
         today=datetime.now().strftime("%Y-%m-%d"))
 
 
 def _appointment_form_values():
     assignee = request.form.get("household_member_id", "")
+    contact = request.form.get("external_helper_id", "")
     days = int(_to_float(request.form.get("recurrence_days")) or 0)
     return {
         "title": request.form.get("title", "").strip(),
         "location": request.form.get("location", "").strip(),
         "notes": request.form.get("notes", "").strip(),
         "household_member_id": int(assignee) if assignee.isdigit() else None,
+        "external_helper_id": int(contact) if contact.isdigit() else None,
         "recurrence_days": max(0, days),
         "when_date": request.form.get("when_date", "").strip()
                     or datetime.now().strftime("%Y-%m-%d"),
@@ -2501,11 +2538,12 @@ def appointment_new():
     me = current_user()
     db.execute(
         "INSERT INTO appointments (title, location, notes, household_member_id,"
-        " recurrence_days, when_date, when_time, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        " external_helper_id, recurrence_days, when_date, when_time, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (values["title"], values["location"], values["notes"],
-         values["household_member_id"], values["recurrence_days"],
-         values["when_date"], values["when_time"], me["name"] if me else ""))
+         values["household_member_id"], values["external_helper_id"],
+         values["recurrence_days"], values["when_date"], values["when_time"],
+         me["name"] if me else ""))
     _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
     flash(f"Appointment added: {values['title']}")
@@ -2526,11 +2564,12 @@ def appointment_edit(appt_id):
     me = current_user()
     db.execute(
         "UPDATE appointments SET title = ?, location = ?, notes = ?,"
-        " household_member_id = ?, recurrence_days = ?, when_date = ?,"
-        " when_time = ? WHERE id = ?",
+        " household_member_id = ?, external_helper_id = ?, recurrence_days = ?,"
+        " when_date = ?, when_time = ? WHERE id = ?",
         (values["title"], values["location"], values["notes"],
-         values["household_member_id"], values["recurrence_days"],
-         values["when_date"], values["when_time"], appt_id))
+         values["household_member_id"], values["external_helper_id"],
+         values["recurrence_days"], values["when_date"], values["when_time"],
+         appt_id))
     if values["household_member_id"] != appt["household_member_id"]:
         _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
@@ -3078,13 +3117,47 @@ def backlog_delete(idea_id):
     return redirect(url_for("backlog_page"))
 
 
-# --------------------------------------------------------------- Piece 35: external helpers
+# --------------------------------------------------------------- Piece 35: Contacts
+# (broadened Piece 43 to also cover organizations, and linked to Appointments)
+def _helper_form_values():
+    """Pull a contact's fields out of the POSTed form. kind is 'Person' or
+    'Organization'; the org-only fields are simply blank for a Person."""
+    return {
+        "name": request.form.get("name", "").strip(),
+        "kind": "Organization" if request.form.get("kind") == "Organization" else "Person",
+        "phone": request.form.get("phone", "").strip(),
+        "email": request.form.get("email", "").strip(),
+        "specialty": request.form.get("specialty", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "website": request.form.get("website", "").strip(),
+        "account_number": request.form.get("account_number", "").strip(),
+        "contact_person": request.form.get("contact_person", "").strip(),
+        "contact_phone": request.form.get("contact_phone", "").strip(),
+        "contact_email": request.form.get("contact_email", "").strip(),
+        "renewal_date": request.form.get("renewal_date", "").strip(),
+    }
+
+
 @app.route("/external-helpers")
 def external_helpers_page():
-    """A reusable contact roster for people who help the household but aren't
-    a household member — a contractor, tutor, coach, etc."""
+    """Contacts: a reusable roster for people (a contractor, tutor, coach) and
+    organizations (a subscription service, co-op, utility) that touch the
+    household but aren't a household member."""
     db = get_db()
-    helpers = db.execute("SELECT * FROM external_helpers ORDER BY name").fetchall()
+    helpers = [dict(h) for h in
+               db.execute("SELECT * FROM external_helpers ORDER BY name").fetchall()]
+    # Upcoming-appointment count + soonest date per contact, folded in here
+    # rather than templated as a live query per row.
+    upcoming = {}
+    for row in db.execute(
+            "SELECT external_helper_id, COUNT(*) AS n, MIN(when_date) AS next_date"
+            " FROM appointments WHERE external_helper_id IS NOT NULL"
+            " AND COALESCE(completed_at, '') = '' GROUP BY external_helper_id"):
+        upcoming[row["external_helper_id"]] = {"n": row["n"], "next_date": row["next_date"]}
+    for h in helpers:
+        u = upcoming.get(h["id"])
+        h["upcoming_count"] = u["n"] if u else 0
+        h["upcoming_next"] = u["next_date"] if u else ""
     edit_id = request.args.get("edit", type=int)
     edit_helper = db.execute(
         "SELECT * FROM external_helpers WHERE id = ?", (edit_id,)
@@ -3095,20 +3168,20 @@ def external_helpers_page():
 
 @app.route("/external-helpers/new", methods=["POST"])
 def new_external_helper():
-    name = request.form.get("name", "").strip()
-    if not name:
+    v = _helper_form_values()
+    if not v["name"]:
         flash("A name is required.", "error")
         return redirect(url_for("external_helpers_page"))
     db = get_db()
     db.execute(
-        "INSERT INTO external_helpers (name, phone, email, specialty, notes)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (name, request.form.get("phone", "").strip(),
-         request.form.get("email", "").strip(),
-         request.form.get("specialty", "").strip(),
-         request.form.get("notes", "").strip()))
+        "INSERT INTO external_helpers (name, kind, phone, email, specialty, notes,"
+        " website, account_number, contact_person, contact_phone, contact_email,"
+        " renewal_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (v["name"], v["kind"], v["phone"], v["email"], v["specialty"], v["notes"],
+         v["website"], v["account_number"], v["contact_person"], v["contact_phone"],
+         v["contact_email"], v["renewal_date"]))
     db.commit()
-    flash(f"Added: {name}")
+    flash(f"Added: {v['name']}")
     return redirect(url_for("external_helpers_page"))
 
 
@@ -3118,19 +3191,20 @@ def edit_external_helper(helper_id):
     if db.execute("SELECT 1 FROM external_helpers WHERE id = ?",
                   (helper_id,)).fetchone() is None:
         abort(404)
-    name = request.form.get("name", "").strip()
-    if not name:
+    v = _helper_form_values()
+    if not v["name"]:
         flash("A name is required.", "error")
         return redirect(url_for("external_helpers_page", edit=helper_id))
     db.execute(
-        "UPDATE external_helpers SET name = ?, phone = ?, email = ?,"
-        " specialty = ?, notes = ? WHERE id = ?",
-        (name, request.form.get("phone", "").strip(),
-         request.form.get("email", "").strip(),
-         request.form.get("specialty", "").strip(),
-         request.form.get("notes", "").strip(), helper_id))
+        "UPDATE external_helpers SET name = ?, kind = ?, phone = ?, email = ?,"
+        " specialty = ?, notes = ?, website = ?, account_number = ?,"
+        " contact_person = ?, contact_phone = ?, contact_email = ?,"
+        " renewal_date = ? WHERE id = ?",
+        (v["name"], v["kind"], v["phone"], v["email"], v["specialty"], v["notes"],
+         v["website"], v["account_number"], v["contact_person"], v["contact_phone"],
+         v["contact_email"], v["renewal_date"], helper_id))
     db.commit()
-    flash(f"Updated: {name}")
+    flash(f"Updated: {v['name']}")
     return redirect(url_for("external_helpers_page"))
 
 

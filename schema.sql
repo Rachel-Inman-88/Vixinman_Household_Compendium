@@ -312,6 +312,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     location             TEXT DEFAULT '',
     notes                TEXT DEFAULT '',
     household_member_id  INTEGER REFERENCES household_members(id),  -- NULL = whole-household
+    external_helper_id   INTEGER REFERENCES external_helpers(id),  -- Piece 43: NULL = not linked to a contact
     when_date            TEXT NOT NULL DEFAULT '',   -- YYYY-MM-DD
     when_time            TEXT DEFAULT '',            -- HH:MM 24h, optional
     recurrence_days      INTEGER,                    -- NULL/0 = one-time
@@ -344,17 +345,28 @@ CREATE TABLE IF NOT EXISTS household_files (
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Piece 35: external helpers — a contractor, tutor, or coach who touches a
--- project but isn't a household member (no login, not in household_members).
--- A reusable contact roster, not tied to any specific project.
+-- Piece 35 (broadened Piece 43): "Contacts" -- a contractor, tutor, or coach
+-- (kind='Person') or an organization like a subscription service, co-op, or
+-- utility (kind='Organization') who touches the household but isn't a
+-- household member (no login, not in household_members). A reusable
+-- roster, not tied to any specific project. The org-only fields
+-- (website/account_number/contact_person/contact_phone/contact_email/
+-- renewal_date) are blank and unused for a Person entry.
 CREATE TABLE IF NOT EXISTS external_helpers (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL,
-    phone      TEXT DEFAULT '',
-    email      TEXT DEFAULT '',
-    specialty  TEXT DEFAULT '',   -- trade/role, e.g. "Electrician", "Piano tutor"
-    notes      TEXT DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    kind           TEXT NOT NULL DEFAULT 'Person',  -- 'Person' | 'Organization'
+    phone          TEXT DEFAULT '',
+    email          TEXT DEFAULT '',
+    specialty      TEXT DEFAULT '',   -- trade/role or service type, e.g. "Electrician", "Grocery co-op"
+    notes          TEXT DEFAULT '',
+    website        TEXT DEFAULT '',
+    account_number TEXT DEFAULT '',   -- membership/account/customer number
+    contact_person TEXT DEFAULT '',   -- the org's main point of contact
+    contact_phone  TEXT DEFAULT '',
+    contact_email  TEXT DEFAULT '',
+    renewal_date   TEXT DEFAULT '',   -- YYYY-MM-DD, e.g. membership/subscription renewal
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Piece 14.1: field work submissions. When a worker syncs completed work
