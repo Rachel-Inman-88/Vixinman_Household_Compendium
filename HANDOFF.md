@@ -512,13 +512,31 @@ Contact or Inventory item is correctly blocked then deletes cleanly once
 unlinked), a 40-route sweep, and a migration run against the real
 household database.
 
+**Piece 46 (v0.21): household expense/budget/receipt tracking — done.**
+Second of the two features requested together (Wishlist, Piece 45, was the
+first). New "💵 Budget" page: a household-wide (not project-tied) income/
+expense ledger — `household_transactions` — alongside the existing,
+completely untouched per-project `project_transactions` ledger (kept as a
+separate table rather than making `project_transactions.project_id`
+nullable, since SQLite can't relax a `NOT NULL` column without a full
+table rebuild). Each transaction can carry an optional receipt photo/PDF
+(reuses `household_files`' exact `household_upload_dir()` pattern, but
+optional rather than mandatory like Work Bag's `add_receipt()` — confirmed
+not every household expense has a receipt worth keeping) and an optional
+Contact link. `household_budgets` holds a monthly target per category,
+compared against actual spend for the selected month with a simple
+over/under progress bar. Extended `_contact_uses()` (Piece 45's FK-safety
+helper) to also count `household_transactions` referencing a Contact.
+Verified via compile, Jinja parse sweep, a fresh-DB boot, a test-client
+cycle (a budget category and a receipt-bearing, Contact-linked expense
+both save correctly, the receipt file is actually written to disk and
+downloadable, the month summary reflects real spending, deleting a
+still-referenced Contact is correctly blocked then deletes cleanly once
+unlinked), a 40-route sweep, and a migration run against the real
+household database. **This closes out both features requested together
+this session.**
+
 **NOT done yet:**
-- **Piece 46: household expense/budget/receipt tracking** — planned (see
-  the reusable plan file) but not yet built. A new `household_transactions`
-  ledger + `household_budgets` (category + monthly target amount,
-  compared against actual spend) alongside the existing untouched
-  per-project `project_transactions` ledger; receipts/expenses can
-  optionally link to a Contact.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate

@@ -339,6 +339,18 @@ cost-vs-margin breakdown — with no household equivalent. What's left is
 exactly what a household budget needs: a plain contract-total field plus the
 income/expense ledger above, both visible to everyone.
 
+### Household Budget
+- **💵 Budget**: a household-wide income/expense ledger for spending that
+  isn't tied to any project (groceries, utilities, subscriptions) —
+  completely separate from each project's own Billing tab. Each transaction
+  can carry an **optional receipt photo or PDF** (unlike the Work Bag's
+  field receipt capture, a receipt here isn't required — not every household
+  expense has one worth keeping) and an **optional link to a Contact**.
+  **Budget categories** are a monthly target amount per category, shown
+  against actual spending for the selected month with a simple over/under
+  progress bar. Filter transactions by This month / All; pick any month to
+  review with the month selector.
+
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
   data. Ask about projects, tasks and the schedule and get a grounded answer;
@@ -405,6 +417,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.21** — new feature: **household expense/budget/receipt tracking**,
+  second of two features requested together (Wishlist, v0.20, was the
+  first). A new "💵 Budget" page: a household-wide income/expense ledger
+  (separate from each project's own Billing tab/`project_transactions`,
+  which is completely untouched), with an optional receipt photo/PDF per
+  transaction and an optional Contact link, plus per-category monthly
+  budget targets compared against actual spend for the selected month.
+  New `household_transactions`/`household_budgets` tables (purely
+  additive, no migration). Extended `_contact_uses()` (the FK-safety
+  helper from Piece 45) to also count household transactions referencing
+  a Contact, so deleting one still in use is correctly blocked.
 
 - **v0.20** — new feature: **Wishlist**. Anyone can add something they
   want, optionally linked to an existing Inventory item ("more of this"),
