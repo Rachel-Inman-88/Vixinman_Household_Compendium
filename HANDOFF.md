@@ -536,6 +536,33 @@ unlinked), a 40-route sweep, and a migration run against the real
 household database. **This closes out both features requested together
 this session.**
 
+**Piece 47 (v0.22): Wishlist relocated under Inventory + help.html sweep —
+done.** User feedback after Piece 46: "Wishlists belong primarily in
+Inventory" — the top-level "🎁 Wishlist" nav link (added in Piece 45) was
+removed from the main nav bar. Wishlist is now reached from the 📦
+Inventory page: a "🎁 Wishlist" button in its toolbar, and a per-row "🎁"
+quick-add link on every inventory item that pre-fills the wishlist form
+with "More `<make> <model>`" and the item pre-selected (new
+`wishlist_page()` `?prefill_item=` param, mirroring Appointments'
+`?prefill_contact=` pattern from Piece 43). Wishlist still has a plain
+entry in the 🗄 Databases dropdown alongside Inventory. No schema change,
+no route removed — `/wishlist` still works exactly as before, only its
+discovery path changed. Also swept `templates/help.html`, which hadn't
+been touched since the Piece 41 Part E reorg cleanup and had zero
+coverage of Chores, Appointments, the Contacts rework, Project
+subcategories, Household Budget, or Wishlist: added "5c. Chores", "5d.
+Appointments", "6b. Household Budget", and "6c. Contacts" sections, a
+Wishlist tutorial folded into the existing "7. Inventory" section (now
+"7. Inventory & Wishlist"), and a Category/Subcategory FAQ under "3.
+Projects & the pipeline" — all in the existing tutorial+FAQ `<details>`
+style, ToC updated to match. Verified via compile, a full Jinja parse
+sweep over every template, a fresh-DB boot, a test-client cycle (the
+Inventory page renders the Wishlist button and a real per-item
+`prefill_item=<id>` link, hitting `/wishlist?prefill_item=<id>` correctly
+pre-fills the title and selects the item), `/help` renders with all four
+new anchor ids present, a 40-route sweep, and a boot against the real
+household database.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

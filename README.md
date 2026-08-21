@@ -261,8 +261,8 @@ can confirm a pull/update took effect.
   built for a multi-person crew truck-loading parts — were cut; they didn't
   fit household scale.)
 - **Nav grouping**: the reference/data pages — **Projects, Backlog, Household
-  Files, External Helpers, Requirements Editor, Requirements Library,
-  Inventory**, plus (admin-only) **Closed projects** — are consolidated under a
+  Files, Contacts, Requirements Editor, Requirements Library, Inventory,
+  Wishlist**, plus (admin-only) **Closed projects** — are consolidated under a
   single **🗄 Databases** dropdown; **Log / Trash / Access** sit under a
   **🔧 Admin** dropdown. Each grouped dropdown shows only the items the user
   may reach and collapses to a plain link when only one applies.
@@ -306,6 +306,11 @@ can confirm a pull/update took effect.
   approves or rejects it. **Approving doesn't do anything automatic** — no
   Inventory row gets created for you — it just flips status so the
   household knows it's OK to buy. Filter by Mine/All and Pending/All.
+- **Lives primarily in Inventory**: Wishlist has no standalone top-level nav
+  link. It's reached from the **📦 Inventory** page's toolbar (**🎁 Wishlist**
+  button) or per-row (**🎁** next to any item pre-fills "more of this"), plus
+  a plain entry in the **🗄 Databases** dropdown — keeping the top nav bar
+  from growing a link per feature.
 
 ### Finance & billing
 - **Per-project billing ledger** (💵 Billing tab): set the contract total and record
@@ -417,6 +422,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 ---
 
 ## Build history (high level)
+
+- **v0.22** — UI cleanup + docs sweep: Wishlist moved off the top-level nav
+  bar (which had grown a link per new feature) and now lives primarily
+  under **Inventory** — a "🎁 Wishlist" button in the Inventory toolbar,
+  a per-row "🎁" quick-add that pre-fills "more of this item" (new
+  `?prefill_item=` param on `/wishlist`, mirroring Appointments'
+  `?prefill_contact=`), and a plain entry in the 🗄 Databases dropdown.
+  Also swept `templates/help.html`, which hadn't been touched since the
+  Piece 41 reorg cleanup: added Chores, Appointments, Household Budget,
+  and Contacts sections, a Wishlist tutorial under Inventory, and a
+  Category/Subcategory FAQ under Projects — closing a five-feature
+  documentation gap.
 
 - **v0.21** — new feature: **household expense/budget/receipt tracking**,
   second of two features requested together (Wishlist, v0.20, was the
