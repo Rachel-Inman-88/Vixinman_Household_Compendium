@@ -313,7 +313,7 @@ in the nested folder before assuming the household's live app reflects the
 latest pushed work.
 
 **Piece 41: de-solarize Projects, the Requirements Editor, and Inventory —
-in progress.** The household logged into the live app for the first time
+done.** The household logged into the live app for the first time
 since the structural reorg and found the surviving subsystems still shaped
 for the original solar-installation business: the dashboard centered on
 "this week's installs," the Project form was a solar-sale intake form, the
@@ -399,10 +399,20 @@ parts:
   so this needed an explicit typed `ALTER TABLE`), a test-client cycle, a
   39-route sweep, and the actual purge run against the real household
   database.
-- **Part E — Help/FAQ tutorial sweep — not started.** Last, once the other
-  four parts settle the real feature set.
+- **Part E (v0.16) — Help/FAQ tutorial sweep — done.** Fixed three stale
+  sections in `templates/help.html`: the pipeline tutorial's claim that
+  "Prep auto-advances to In Progress once permits are filed and you set an
+  install date" (removed in Part A); the Inventory section's entire "mark
+  an item stale" tutorial (feature gone — replaced with an "add an item"
+  tutorial covering free-text categories and the quantity field); and the
+  admin section's "this week's installs" dashboard mention (removed in
+  Part A). Docs-only — no `app.py` logic changes. Verified via a Jinja
+  parse check and a test-client render of `/help` confirming the stale
+  phrases are gone.
 
-**NOT done yet:**
+**This closes out Piece 41** — five parts (dashboard/pipeline, Project
+form, Requirements Editor, Inventory, Help sweep), all committed, verified,
+and pushed. **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
@@ -411,10 +421,10 @@ parts:
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   **after every feature/file/database reorg piece is done**, not incrementally per
   piece.
-- **A manual browser click-through of Pieces 35–40** — verification so
-  far is automated (Flask test-client route sweeps + POST flows); no one has
-  clicked through the new household-member/dashboard/access/inventory/
-  requirements UI in a real browser yet.
+- **A manual browser click-through** — verification so far is automated
+  (Flask test-client route sweeps + POST flows); no one has clicked through
+  the new household-member/dashboard/access/inventory/requirements/
+  Project-form UI in a real browser yet.
 
 ---
 

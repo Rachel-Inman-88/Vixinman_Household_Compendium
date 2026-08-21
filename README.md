@@ -371,6 +371,19 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.16** — last of the Piece 41 cleanup: a Help/FAQ sweep against
+  everything Parts A-D changed. Fixed: the pipeline tutorial's claim that
+  "Prep auto-advances to In Progress once permits are filed and you set an
+  install date" (that auto-advance was removed in Part A — a stage now
+  advances once its own tasks are done, full stop); the Inventory
+  section's entire "mark an item stale" tutorial (the feature is gone —
+  replaced with a plain "add an item" tutorial covering free-text
+  categories and the quantity field); and the admin section's mention of
+  "this week's installs" on the dashboard (that tile was removed in Part
+  A). This closes out Piece 41 — the only items left on `HANDOFF.md`'s
+  open list are the deferred visual theme pass and a manual browser
+  click-through.
+
 - **v0.15** — fourth of the Piece 41 cleanup: Inventory. It was still a
   solar-parts catalog — a hardcoded 15-category taxonomy (PV Module/
   Inverter/Battery/Charge Controller/...) with per-category electrical spec

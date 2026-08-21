@@ -89,7 +89,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
   <h3>Tutorial — advance a project</h3>
   <ol class="steps">
     <li>Open the project. The <strong>Pipeline stage</strong> panel shows what's needed to advance.</li>
-    <li>Use <strong>Advance to …</strong> when ready. Prep auto-advances to In Progress once permits are filed and you set an install date.</li>
+    <li>Use <strong>Advance to …</strong> when ready — a stage advances once its own tasks are done; nothing auto-advances on its own.</li>
     <li>To change the stage directly, click the ✎ next to the stage name.</li>
   </ol>
   <h3>Tutorial — cancel (and reopen) a project</h3>
@@ -181,15 +181,16 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="inventory">
   <h2>7. Inventory</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
-  <h3>Tutorial — mark an item stale</h3>
+  <h3>Tutorial — add an item</h3>
   <ol class="steps">
-    <li>Open <strong>🗄 Databases → Inventory</strong> and find the item.</li>
-    <li>Click the <strong>🕰</strong> toggle in its row to flag it stale (click again to clear). It shows a Stale badge and joins the review queue.</li>
+    <li>Open <strong>🗄 Databases → Inventory</strong> and click <strong>＋ New item</strong> (or <strong>＋ New tool</strong> / <strong>＋ New vehicle</strong>).</li>
+    <li>Category is free text — type whatever makes sense (Pantry, Tools, Electronics, ...); a dropdown suggests categories you've already used.</li>
+    <li>Set the <strong>Quantity</strong> you have on hand, and optionally where you bought it, a cost, and purchase/manual links.</li>
   </ol>
   <details><summary>Where does inventory come from?</summary>
-    <p>The household's inventory starts empty — add components, tools, and vehicles/equipment
-    as you actually acquire them. Each item tracks on-hand/needed/ordered status; the stale-stock
-    notice flags anything at zero on hand that hasn't been used in 6+ months.</p></details>
+    <p>The household's inventory starts empty — add items, tools, and vehicles as you actually
+    acquire them. Each item just tracks how many you have; there's no stock ledger or
+    procurement workflow behind it.</p></details>
 </div>
 
 <!-- 8 -->
@@ -232,7 +233,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <li><strong>🔧 Admin → Access</strong>: grant per-person tool access.</li>
     <li><strong>🗄 Databases → Closed projects</strong>: review cancelled + completed projects; reopen a cancelled project.</li>
     <li><strong>Household overview</strong> (on the dashboard): pipeline counts, money in flight, attention row,
-      this week's installs, and the Wrap-up worklist — visible to everyone.</li>
+      and the Wrap-up worklist — visible to everyone.</li>
   </ul>
   <details><summary>How do we back up the data?</summary>
     <p>Everything lives in <code>job_creator.db</code> with uploaded files in the <code>uploads/</code> folder —
