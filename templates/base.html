@@ -30,7 +30,6 @@
       gap: 0.75rem;
     }
     header a { color: white; text-decoration: none; font-weight: 600; font-size: 1.15rem; }
-    header .sub { font-size: 0.85rem; opacity: 0.85; }
     /* Grouped nav dropdown (e.g. "Databases"), JS-free via <details>. */
     .navdrop { position: relative; }
     .navdrop > summary {
@@ -421,14 +420,12 @@
     }
     @media (max-width: 420px) {
       header > a[href="/"] { font-size: 1.05rem; }
-      header .sub { display: none; }
     }
   </style>
 </head>
 <body>
   <header>
-    <a href="/">☀️ Compendium</a>
-    <span class="sub">Vixinman Designs internal tool</span>
+    <a href="/">🦊 Compendium</a>
     {% if current_user or not login_active %}
     {# Piece 31.6: hamburger toggles the nav into a vertical panel on small
        screens; on desktop .mainnav is display:contents so the row is unchanged. #}
@@ -441,15 +438,27 @@
       <div id="navsearch-menu" class="navsearch-menu" style="display:none;"></div>
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
-    {# Order (left→right): Tasks · Boards · Chores · Appointments · Budget · Work Bag · Approvals · Household · Databases (incl. Inventory/Wishlist) · Admin #}
-    <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
-    <a href="{{ url_for('boards_page') }}" style="font-size:0.9rem; font-weight:500;">📋 Boards</a>
-    <a href="{{ url_for('chores_page') }}" style="font-size:0.9rem; font-weight:500;">🔁 Chores</a>
-    <a href="{{ url_for('appointments_page') }}" style="font-size:0.9rem; font-weight:500;">📅 Appointments</a>
-    <a href="{{ url_for('household_budget_page') }}" style="font-size:0.9rem; font-weight:500;">💵 Budget</a>
-    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
-    {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
-    <a href="/household-members" style="font-size:0.9rem; font-weight:500;">👥 Household</a>
+    {# Order (left→right): To-do (Tasks/Boards/Chores/Notifications/Appointments) ·
+       Household (Budget/Work Bag/Approvals) · Family · Databases (incl. Inventory/Wishlist) · Admin #}
+    <details class="navdrop"{% if not current_user %} style="margin-left:auto;"{% endif %}>
+      <summary>✅ To-do{% if unread_notifications %} ({{ unread_notifications if unread_notifications < 100 else '99+' }}){% endif %}</summary>
+      <div class="navdrop-menu">
+        <a href="/tasks">✅ Tasks</a>
+        <a href="{{ url_for('boards_page') }}">📋 Boards</a>
+        <a href="{{ url_for('chores_page') }}">🔁 Chores</a>
+        <a href="{{ url_for('notifications_page') }}">🔔 Notifications{% if unread_notifications %} ({{ unread_notifications if unread_notifications < 100 else '99+' }}){% endif %}</a>
+        <a href="{{ url_for('appointments_page') }}">📅 Appointments</a>
+      </div>
+    </details>
+    <details class="navdrop">
+      <summary>🏠 Household{% if can('approvals') and pending_submissions %} ({{ pending_submissions }}){% endif %}</summary>
+      <div class="navdrop-menu">
+        <a href="{{ url_for('household_budget_page') }}">💵 Budget</a>
+        <a href="/work-bag">🎒 Work Bag</a>
+        {% if can('approvals') %}<a href="/submissions">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
+      </div>
+    </details>
+    <a href="/household-members" style="font-size:0.9rem; font-weight:500;">👨‍👩‍👧 Family</a>
     <details class="navdrop">
       <summary>🗄 Databases</summary>
       <div class="navdrop-menu">
@@ -489,8 +498,6 @@
        style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">💬 Assistant</a>
     <a href="{{ url_for('help_page') }}" title="Tutorials &amp; FAQ"
        style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">❓ Help</a>
-    <a href="{{ url_for('notifications_page') }}" title="Notifications"
-       style="position:relative; font-size:1.15rem; text-decoration:none; margin-left:0.3rem;">🔔{% if unread_notifications %}<span style="position:absolute; top:-0.4rem; right:-0.5rem; background:#dc2626; color:#fff; font-size:0.62rem; font-weight:700; min-width:1rem; height:1rem; line-height:1rem; text-align:center; border-radius:999px; padding:0 0.2rem;">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>{% endif %}</a>
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; line-height:1.1;">
     <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
        title="My account">
