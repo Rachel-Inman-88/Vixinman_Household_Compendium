@@ -630,6 +630,49 @@ later, not just its outputs.
   inserts into `project_notes` unchanged — plus the standard 40-route sweep
   and a boot against the real household database (0 rows, zero risk).
 
+**Piece 49 (v0.24): nav-bar UI cleanup + header rebrand — done.** The
+long-deferred nav-bar cleanup (queued since the end of Piece 47) — the top
+bar had grown a link per feature (Tasks/Boards/Chores/Appointments/Budget/
+Work Bag/Approvals/Household, plus the Databases and Admin dropdowns and a
+standalone 🔔 bell). Regrouped per explicit user instruction into two new
+`.navdrop` dropdowns (the same `<details>`-based, JS-free pattern Databases/
+Admin already use): **✅ To-do** (Tasks, Boards, Chores, 🔔 Notifications,
+Appointments) and **🏠 Household** (Budget, Work Bag, Approvals). The
+standalone notification bell (previously its own header icon with a red
+count badge, far right near account/logout) moved into the To-do dropdown;
+its unread count now renders as `(N)` on the dropdown summary itself instead
+of a circular badge, matching how Approvals already showed its pending count
+as `(N)` text. The Household dropdown's summary shows the same
+pending-approvals count, gated the same `can('approvals')` way the standalone
+Approvals link always was.
+- **A real naming collision, resolved via AskUserQuestion**: the new "🏠
+  Household" dropdown would have collided with the existing "👥 Household"
+  nav link (the household-members/roles/accounts page). User picked
+  **"👨‍👩‍👧 Family"** as the new label for that page — updated the nav link,
+  `README.md`'s People/roles section, and `help.html`'s "add a household
+  member" tutorial to match.
+- Removed the "Vixinman Designs internal tool" subtitle span from the header
+  entirely (plus its now-dead `.sub` CSS rule in both the base and the
+  small-screen media query) and swapped the ☀️ logo for 🦊 in the header,
+  the login page's heading, and `README.md`'s own masthead — the app's
+  `<title>` tag still reads "· Vixinman Designs" (browser tab text, not
+  asked about, left as-is). Docs-only branding change, no functional impact.
+- Swept `templates/help.html`'s nav-path references (Boards/Chores/
+  Appointments now say "✅ To-do → ...", Work Bag/Budget now say "🏠
+  Household → ...", the Notifications section explains the bell moved under
+  To-do) so the tutorials still match where things actually are.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client check of the rendered nav (🦊 present, the old subtitle and ☀️
+  gone, exactly one 🔔 in the page — confirming it isn't duplicated between
+  the old standalone spot and the new dropdown, all five To-do items and all
+  three Household items present, the old "👥 Household" label gone and
+  "👨‍👩‍👧 Family" present) plus the login page, a manual browser click-through
+  (opened the real dev server against a scratch open-mode database, clicked
+  the To-do dropdown open via the actual DOM and confirmed only it opened,
+  not Household/Databases/Admin) — the first manual browser verification
+  done in this entire project, previously always automated-only — and the
+  standard 40-route sweep plus a boot against the real household database.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
@@ -639,10 +682,13 @@ later, not just its outputs.
   a CSS-variable swap — treat as its own phase, explicitly deferred by the user until
   **after every feature/file/database reorg piece is done**, not incrementally per
   piece.
-- **A manual browser click-through** — verification so far is automated
-  (Flask test-client route sweeps + POST flows); no one has clicked through
-  the new household-member/dashboard/access/inventory/requirements/
-  Project-form UI in a real browser yet.
+- **A fuller manual browser click-through.** Piece 49 did the first-ever
+  manual browser check in this project (the new nav dropdowns, opened in a
+  real dev server against a scratch database), but that only covered the
+  nav bar itself — the household-member/dashboard/access/inventory/
+  requirements/Project-form UI still hasn't had a human click through it in
+  a real browser; verification there remains Flask test-client automation
+  only.
 
 ---
 
