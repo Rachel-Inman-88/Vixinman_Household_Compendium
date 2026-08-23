@@ -673,6 +673,41 @@ Approvals link always was.
   done in this entire project, previously always automated-only — and the
   standard 40-route sweep plus a boot against the real household database.
 
+**Piece 49 correction (v0.25): merge Family into the Household dropdown —
+done.** Immediately after Piece 49 shipped, the user reported "you dropped
+nav buttons" and, after a clarifying round, corrected the actual bug: **"Budget,
+Work Bag, and Approvals get lumped together under Household"** meant all four
+(those three plus the renamed household-member roster page) belong inside
+**one** 🏠 Household dropdown — not a separate 🏠 Household dropdown *next to*
+a standalone 👨‍👩‍👧 Family link, which is what Piece 49 actually built. Fixed
+by moving the `<a href="/household-members">👨‍👩‍👧 Family</a>` link inside the
+Household dropdown's `.navdrop-menu` (last item, after Approvals) and
+deleting the standalone link entirely. Updated the matching `help.html`
+nav-path reference ("Add them under 🏠 Household → 👨‍👩‍👧 Family") and
+`README.md`'s Nav grouping bullet + build-history to describe one merged
+dropdown instead of two separate elements.
+- Re-verified with an updated test-client check (regex-extracts the
+  Household dropdown's inner HTML and asserts Budget/Work Bag/Family are all
+  inside it, plus asserts the `/household-members` href appears exactly
+  once in the whole page — proving there's no leftover standalone copy) and
+  a second manual browser click-through confirming the dropdown opens and
+  contains all four items.
+- **A real debugging detour, worth remembering for any future manual
+  browser check on this repo**: the first re-verification attempt was
+  misleading because a stale `python app.py` process from the *previous*
+  piece's manual check was still bound to port 5000 (never fully killed),
+  so requests intermittently hit the old process's stale state (pointing at
+  the real household DB, hence an unexpected login redirect) instead of the
+  freshly-started one. `Get-Process` failed to find the stale PIDs even
+  though `netstat` still showed them `LISTENING` — inconsistent enough that
+  chasing it further wasn't worth it. Switched to a fresh port (5050) with
+  the reloader off (`app.run(port=5050, debug=False)`) to sidestep the
+  confusion entirely, which also surfaced a second, smaller gotcha:
+  `python -c "import app; app.run(...)"` skips `app.py`'s own
+  `if __name__ == "__main__": init_db(); app.run(...)` guard, so the DB
+  never gets created (`no such table: household_members`) unless `init_db()`
+  is called explicitly first.
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

@@ -260,16 +260,16 @@ can confirm a pull/update took effect.
   Discontinue clears the mark. (Barcode/asset-tag scanning and stock audits —
   built for a multi-person crew truck-loading parts — were cut; they didn't
   fit household scale.)
-- **Nav grouping**: the top nav bar is organized into four dropdowns plus one
-  plain link, rather than one link per feature — **✅ To-do** (Tasks, Boards,
-  Chores, 🔔 Notifications, Appointments — the unread-notification count
-  shows right on the dropdown itself), **🏠 Household** (Budget, Work Bag,
-  Approvals — the pending-approvals count shows on the dropdown for anyone
-  who can approve), **🗄 Databases** (Projects, Backlog, Household Files,
-  Contacts, Requirements Editor, Requirements Library, Inventory, Wishlist,
-  plus admin-only Closed projects), and **🔧 Admin** (Log / Trash / Access).
-  **👨‍👩‍👧 Family** (the household-member roster/roles/accounts page) stays a
-  plain link, distinct from the 🏠 Household dropdown above it. Each grouped
+- **Nav grouping**: the top nav bar is organized into dropdowns rather than
+  one link per feature — **✅ To-do** (Tasks, Boards, Chores, 🔔
+  Notifications, Appointments — the unread-notification count shows right on
+  the dropdown itself), **🏠 Household** (Budget, Work Bag, Approvals, and
+  👨‍👩‍👧 Family — the household-member roster/roles/accounts page, relabeled
+  from "Household" to avoid colliding with this dropdown's own name; the
+  pending-approvals count shows on the dropdown for anyone who can approve),
+  **🗄 Databases** (Projects, Backlog, Household Files, Contacts,
+  Requirements Editor, Requirements Library, Inventory, Wishlist, plus
+  admin-only Closed projects), and **🔧 Admin** (Log / Trash / Access). Each
   dropdown shows only the items the user may reach and collapses to a plain
   link when only one applies.
 - **Permissions**: a flat **`is_admin`** flag — admins get every tool except
@@ -439,16 +439,22 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.25** — nav-bar correction: v0.24 (below) put the renamed **👨‍👩‍👧
+  Family** link *next to* the new 🏠 Household dropdown instead of *inside*
+  it, splitting one intended group into two nav elements. Merged them —
+  **🏠 Household** is now a single dropdown containing Budget, Work Bag,
+  Approvals, **and** Family together, with no separate standalone Family
+  link. Caught from user feedback ("Family... does not open as a drop-down
+  at all") right after v0.24 shipped.
 - **v0.24** — nav-bar UI cleanup: the top bar had grown a link per feature
   (10+ items) — regrouped into two new dropdowns, **✅ To-do** (Tasks, Boards,
   Chores, 🔔 Notifications, Appointments — the standalone notification bell
   moved in here, with its unread count now shown on the dropdown itself) and
-  **🏠 Household** (Budget, Work Bag, Approvals — the pending-approvals count
-  moves onto the dropdown too). The household-member roster page (previously
-  labeled "👥 Household") is relabeled **👨‍👩‍👧 Family** to avoid colliding with
-  the new 🏠 Household dropdown. Also removed the "Vixinman Designs internal
-  tool" subtitle from the header and swapped the ☀️ logo for 🦊 throughout
-  the live UI (header, login page) and the README masthead — docs-only
+  **🏠 Household** (Budget, Work Bag, Approvals, and the renamed household-
+  member roster page — see v0.25 above for the correction to how Family was
+  actually wired in). Also removed the "Vixinman Designs internal tool"
+  subtitle from the header and swapped the ☀️ logo for 🦊 throughout the
+  live UI (header, login page) and the README masthead — docs-only
   branding, no functional change. No schema/route changes.
 - **v0.23** — new feature: **AI-assisted project planning** — a "🧠 Plan" tab
   on each project's own page, a brainstorming chat scoped to that one
