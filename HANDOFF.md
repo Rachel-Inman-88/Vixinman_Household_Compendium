@@ -722,6 +722,108 @@ test-client check (the link only renders once a session exists, so an
 open-mode/no-session request never shows it either way — confirmed the new
 📊 renders and the old 🏠 variant doesn't).
 
+**Piece 51 (v0.27): roles actually grant access + close finance/project
+gaps — done.** User asked to "overhaul the roles and permissions." A
+full-codebase audit found `HOUSEHOLD_ROLES = ["Parent", "Child", "Assistant"]`
+had zero effect on any `has_permission()`/`_is_admin()`/`admin_required()`
+decision anywhere — pure display labels since Piece 35 — and that huge
+swaths of the app (creating/editing/cancelling projects; adding/editing
+household Budget entries and a project's own billing ledger) had **no
+permission gate at all**. Confirmed via AskUserQuestion: (1) roles now grant
+a default permission bundle; (2) two new permissions, `finances.manage` and
+`projects.manage`; (3) for a Child, finances are hidden **entirely** (not
+just edit-locked, unlike every other `.manage` permission — this one gates
+viewing too).
+- **`ROLE_DEFAULT_PERMISSIONS`** (app.py, near `HOUSEHOLD_ROLES`): Parent =
+  everything but `delete`; Assistant = `rules.manage`/`inventory.manage`/
+  `approvals`/`projects.manage` (deliberately narrow — see below); Child =
+  none. Materialized as real `permission_grants` rows by a new
+  `_seed_role_default_grants(db, member_id, role)` helper, called from
+  `new_household_member()`, `edit_household_member()` (only when the
+  submitted role differs from the row's previous role), and `seed_org_team()`
+  (the fresh-install roster seeder — without this, Gremory/Victor/Dmitri
+  would have gotten zero grants on a brand-new install, silently defeating
+  the whole feature for the app's own starter roster). **Additive only** —
+  never revokes an existing grant, even on a role change to a smaller
+  bundle, matching this app's "nothing destructive without an explicit
+  action" pattern. `has_permission()`/`_has_grant()`/the Access console
+  needed zero logic changes — grants are still just rows in
+  `permission_grants`, checked exactly as before.
+- **Gated the real gaps** with the existing `@admin_required`/
+  `VIEW_PERMISSION` pattern: `finances.manage` on `/budget` (view + every
+  budget-editing route — viewing is gated too, unlike every other
+  `.manage` permission, because "hidden entirely" was the explicit ask) and
+  a project's own `set_contract`/`add_transaction`/`toggle_transaction_paid`/
+  `delete_transaction` routes; `projects.manage` on `new_project`/
+  `edit_project`/`set_project_status`/`cancel_project`/`reopen_project`/
+  `set_install_date` (viewing a project stays open). Two already-
+  `@delete_required` budget-delete routes got a second, stacked
+  `@admin_required` layered on top (both decorators' `@wraps` preserve
+  `view.__name__`, so `VIEW_PERMISSION` lookup still resolves correctly for
+  both). **A real pre-existing bug fixed along the way**: `delete_transaction`
+  had no gate of any kind — not even `@delete_required` — and does a hard
+  SQL `DELETE` instead of routing through `trash_item()` like every other
+  delete route. Only the missing gate was fixed; the hard-delete mechanism
+  itself is a known, deliberately untouched issue (fixing it needs a new
+  `TRASH_REGISTRY` entry, a separate piece).
+- **Template gating** to match: the Billing tab (button + whole panel) and
+  "✎ Edit project"/"↩ Reopen project"/"🚫 Cancel this project" in
+  `project_detail.html`; "＋ New project" in `projects_list.html` and
+  `dashboard.html`; the dashboard's "Money in flight" tiles and "💵 Payments"
+  table; the "💵 Budget" nav link in `base.html` (found unconditional while
+  its neighboring "🕗 Approvals" link already correctly checked `can(...)` —
+  without this fix a Child would still see "Budget" in the nav and just
+  bounce off a flash error on click, undermining "hidden entirely").
+- **A real leak found and fixed beyond the plan's own scope, because it
+  directly undermined this piece's core promise**: the 💬 Assistant and 🧠
+  Plan chat's `build_assistant_snapshot()`, `find_projects` tool, and
+  `project_details` tool all included contract-total figures completely
+  unconditionally — a Child could have just asked the AI for the exact
+  dollar amounts the UI now hides entirely. Gated all three behind
+  `has_permission("finances.manage")` (a `can_finances` flag computed once
+  in `build_assistant_tools()`). Caught this by reasoning through the
+  feature's own stated goal rather than treating the plan's checklist as
+  exhaustive.
+- **Found, deliberately NOT touched this piece** (tangential to
+  roles/permissions specifically): `board_delete`'s ownership-based bypass
+  (admin OR assignee OR creator, skipping the `delete` grant entirely);
+  `delete_project_note`/`delete_task_photo`'s inline author/label-scoped
+  bypasses of `@delete_required`; three dead `VIEW_PERMISSION` entries
+  (`delete_rule`/`delete_credential`/`delete_household_member_file` — those
+  routes use `@delete_required`, not `@admin_required`, so the dict entries
+  never get consulted); Household Files upload being wide open.
+- **Assistant's bundle is deliberately narrow for now, not an oversight.**
+  Mid-review, the user revealed the real long-term plan for the Assistant
+  role: an AI agent under its own Assistant account that reads everything a
+  Parent can, but whose writes never land directly — every create/edit/
+  approve becomes a **draft** on a new unified Drafts page, only becoming
+  real once a Parent signs off, and this should eventually cover every
+  permission area consistently (not just projects/budget/approvals).
+  Confirmed via AskUserQuestion to ship this piece's baseline first and
+  design the drafts system as its **own, separate, larger piece** —
+  granting Assistant broad read access now, with no draft-interception
+  layer yet built, would let an Assistant-role account write finances/
+  household data directly with no human in the loop. **This is the single
+  biggest piece of unfinished work from this session** — see the project's
+  memory file for the fuller design sketch (a generic `drafts` table, a
+  write-interception layer in front of every route an Assistant can reach,
+  and "apply this draft for real" logic per kind).
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot (confirms
+  `seed_org_team()` gives Gremory exactly the 4-permission Assistant bundle
+  and Victor/Dmitri zero grants), a test-client cycle (creating a new
+  Child/Assistant/Parent each gets exactly their expected bundle; a Child
+  is denied `/budget` and `/projects/new` with the standard "no access"
+  flash and sees no Billing tab/money tiles/Payments table/Budget nav link
+  in rendered HTML; a Parent/Admin can reach `/budget`, an Assistant
+  correctly cannot; changing an existing Child's role to Parent adds the
+  new bundle while a pre-existing custom grant survives untouched; `/access`
+  still renders and round-trips both new permission checkboxes; the AI
+  assistant leak-fix confirmed end-to-end with a stubbed provider call), the
+  standard 40-route sweep, and a boot against the real household database
+  (confirmed real accounts are unaffected unless an admin explicitly edits
+  someone's role or uses the Access console — no retroactive changes to
+  real data).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

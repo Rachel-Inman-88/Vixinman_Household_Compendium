@@ -277,8 +277,14 @@ can confirm a pull/update took effect.
   Non-admins get only what's individually checked off for them on the
   **🔐 Access** console (manage rules, manage the catalog, manage inventory,
   manage household members & accounts, approve field work, view the audit
-  log, or delete). No tiers above admin, no role auto-conferring permissions,
-  and grants don't expire.
+  log, manage finances, manage projects, or delete). **Roles pre-fill a
+  default bundle** (Piece 51): Parent gets everything but Delete, Assistant
+  gets an operational bundle (rules/inventory/approvals/projects, no
+  finances/household/audit), Child gets none of it by default — set once
+  as real grants when a person is added or their role changes, and always
+  still editable per person from there afterward (additive only: changing
+  someone's role never removes a grant they already had). No tiers above
+  admin, and grants don't expire.
 - **Deletion & trash**: deleting anything needs the explicit **Delete**
   permission (even an admin doesn't have it by default), prompts before
   deleting, and is **blocked with an error if the data is in use** elsewhere.
@@ -331,8 +337,10 @@ can confirm a pull/update took effect.
   still editable). The Billing tab shows a **paperwork-on-file** tally (count +
   total for each type).
 - **Payments table** on the shared dashboard: every active project with Contract /
-  Collected / Outstanding / Expenses / Net and a grand-total row, visible to every
-  signed-in household member.
+  Collected / Outstanding / Expenses / Net and a grand-total row. **Gated by the
+  `finances.manage` permission (Piece 51)** — a Child has none of it by default,
+  so this table (and the dashboard's "Money in flight" tiles, and the project
+  page's whole Billing tab) don't render for them at all.
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
   (a comma appears for amounts ≥ $1,000).
 
@@ -348,7 +356,8 @@ tab were cut entirely** (Piece 40): all of it priced a job for a paying
 customer — equipment markup percentages, a 33-county tax table, an internal
 cost-vs-margin breakdown — with no household equivalent. What's left is
 exactly what a household budget needs: a plain contract-total field plus the
-income/expense ledger above, both visible to everyone.
+income/expense ledger above, both gated by `finances.manage` (Piece 51) —
+visible to whoever's granted it (Parent by default; not Assistant or Child).
 
 ### Household Budget
 - **💵 Budget**: a household-wide income/expense ledger for spending that
@@ -439,6 +448,25 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.27** — **roles actually grant access.** Parent/Child/Assistant were
+  pure display labels since Piece 35 — confirmed by a full-codebase audit
+  that `role` had zero effect on any access decision anywhere. Each role now
+  comes with a default permission bundle, materialized as real grants when a
+  person is added or their role changes (additive only — a role change never
+  removes a grant someone already has; per-person overrides still work
+  exactly as before on the Access console). Two new permissions:
+  **`finances.manage`** and **`projects.manage`**, closing real gaps —
+  creating/editing/cancelling projects and adding/editing household Budget
+  entries or a project's own billing ledger were wide open to any signed-in
+  user before this. For a Child specifically, finances are **hidden
+  entirely** (not just edit-locked, unlike every other `.manage`
+  permission) — the Budget page, a project's Billing tab, the dashboard's
+  money tiles, and even the 💬 Assistant/🧠 Plan chat's contract-total
+  answers are all gated the same way, so there's no back door. Also fixed a
+  pre-existing bug found along the way: a project transaction's delete route
+  had no permission gate of any kind (now gated, though its hard-delete
+  behavior — no soft-delete/trash routing like every other delete route —
+  is left as a separate, known issue).
 - **v0.26** — the "📊 My Dashboard" nav link's icon changed from 🏠 to 📊 —
   since Piece 49 gave the new "🏠 Household" dropdown the same house icon,
   sitting right next to "My Dashboard" in the nav bar, the two looked like
