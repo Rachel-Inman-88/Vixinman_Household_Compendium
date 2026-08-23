@@ -439,7 +439,7 @@
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
     {# Order (left→right): To-do (Tasks/Boards/Chores/Notifications/Appointments) ·
-       Household (Budget/Work Bag/Approvals) · Family · Databases (incl. Inventory/Wishlist) · Admin #}
+       Household (Budget/Work Bag/Approvals/Family) · Databases (incl. Inventory/Wishlist) · Admin #}
     <details class="navdrop"{% if not current_user %} style="margin-left:auto;"{% endif %}>
       <summary>✅ To-do{% if unread_notifications %} ({{ unread_notifications if unread_notifications < 100 else '99+' }}){% endif %}</summary>
       <div class="navdrop-menu">
@@ -456,9 +456,9 @@
         <a href="{{ url_for('household_budget_page') }}">💵 Budget</a>
         <a href="/work-bag">🎒 Work Bag</a>
         {% if can('approvals') %}<a href="/submissions">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
+        <a href="/household-members">👨‍👩‍👧 Family</a>
       </div>
     </details>
-    <a href="/household-members" style="font-size:0.9rem; font-weight:500;">👨‍👩‍👧 Family</a>
     <details class="navdrop">
       <summary>🗄 Databases</summary>
       <div class="navdrop-menu">
