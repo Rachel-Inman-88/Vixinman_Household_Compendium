@@ -7,12 +7,16 @@
 </div>
 <p class="muted"><strong>Admins</strong> already have every tool except
 <strong>Delete</strong>, which always needs an explicit grant even for
-admins. Everyone else gets only what's checked below.</p>
+admins. Everyone else gets only what's checked below. A person's
+<strong>role</strong> (Parent/Assistant/Child) pre-fills a sensible default
+set of grants when they're added or their role changes — you can still
+check or uncheck anything here on top of that default, per person.</p>
 
 {% for r in rows %}
 <div class="card" id="member{{ r.id }}">
   <div class="toolbar" style="margin-bottom:0.5rem;">
     <h2 style="margin:0; font-size:1.05rem;">{{ r.name }}
+      <span class="muted" style="font-weight:400; font-size:0.85rem;">({{ r.role }})</span>
       {% if r.is_admin %}<span class="badge warn">Admin</span>{% endif %}</h2>
   </div>
   {% if r.is_admin %}

@@ -453,7 +453,7 @@
     <details class="navdrop">
       <summary>🏠 Household{% if can('approvals') and pending_submissions %} ({{ pending_submissions }}){% endif %}</summary>
       <div class="navdrop-menu">
-        <a href="{{ url_for('household_budget_page') }}">💵 Budget</a>
+        {% if can('finances.manage') %}<a href="{{ url_for('household_budget_page') }}">💵 Budget</a>{% endif %}
         <a href="/work-bag">🎒 Work Bag</a>
         {% if can('approvals') %}<a href="/submissions">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
         <a href="/household-members">👨‍👩‍👧 Family</a>

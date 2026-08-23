@@ -89,7 +89,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="projects">
   <h2>3. Projects &amp; the pipeline</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
-  <p class="muted" style="margin-top:0;">Stages: <strong>Planning → Prep → In Progress → Wrap-up → Done</strong> (plus Abandoned), each with its own exit criteria.</p>
+  <p class="muted" style="margin-top:0;">Stages: <strong>Planning → Prep → In Progress → Wrap-up → Done</strong> (plus Abandoned), each with its own exit criteria.
+  Creating, editing, cancelling, and reopening a project needs the <strong>Manage projects</strong> permission
+  (Parent/Assistant by default, not Child) — everyone can still view any project.</p>
   <h3>Tutorial — advance a project</h3>
   <ol class="steps">
     <li>Open the project. The <strong>Pipeline stage</strong> panel shows what's needed to advance.</li>
@@ -241,7 +243,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
   <h2>6b. Household Budget — expenses, income &amp; receipts</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <p class="muted" style="margin-top:0;"><strong>💵 Budget</strong> tracks whole-household money — groceries,
-  utilities, subscriptions — separate from a project's own <strong>Billing</strong> tab, which stays project-only.</p>
+  utilities, subscriptions — separate from a project's own <strong>Billing</strong> tab, which stays project-only.
+  Both need the <strong>Manage finances</strong> permission (Parent by default) — a Child doesn't see either at
+  all.</p>
   <h3>Tutorial — set a budget and log an expense</h3>
   <ol class="steps">
     <li>Open <strong>🏠 Household → 💵 Budget</strong> and add a <strong>category</strong> with a monthly target amount.</li>
@@ -318,11 +322,23 @@ button below isn't visible to you, you may not have access to it (ask an admin).
       catalog, and view the log.</li>
   </ol>
   <details><summary>What's the difference between Parent, Child, and Assistant?</summary>
-    <p>These are just labels for the roster — they don't grant access on their own. <strong>Admin</strong> is
-    a separate flag, set explicitly per person on their profile.</p></details>
+    <p>Each role now comes with a starting set of permissions: <strong>Parent</strong> gets everything except
+    Delete, <strong>Assistant</strong> gets an operational bundle (rules, inventory, approvals, projects — no
+    finances, household management, or the audit log), and <strong>Child</strong> gets none of the named
+    permissions by default (day-to-day features like Tasks, Boards, Chores, Appointments, and adding a Wishlist
+    item still work for everyone regardless). <strong>Admin</strong> is a separate flag, set explicitly per
+    person on their profile, independent of role.</p></details>
   <details><summary>How are permissions granted?</summary>
     <p>Admins have full access except <strong>Delete</strong>, which always needs an explicit grant even for
-    admins. Everyone else gets only what's granted individually on the <strong>Access</strong> page.</p></details>
+    admins. Everyone else starts with their role's default bundle (above) and can be given more — or have
+    something unchecked — individually on the <strong>Access</strong> page. Changing someone's role only ever
+    adds their new role's defaults; it never removes a permission they already had.</p></details>
+  <details><summary>Why can't my child see the Budget page or a project's Billing tab?</summary>
+    <p>Household finances are hidden entirely from anyone without the <strong>Manage finances</strong>
+    permission — not just locked to editing, like most other tools. A Child has none of it by default, so the
+    Budget page, the Billing tab, the dashboard's money tiles, and the 💬 Assistant/🧠 Plan chat's answers about
+    contract totals are all unavailable to them. An admin can grant it individually on the Access page if
+    wanted.</p></details>
 </div>
 
 <!-- 9 -->
@@ -347,8 +363,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <li><strong>🔧 Admin → Trash</strong>: deleted items (an admin restores or purges). Deletes are blocked if data is in use.</li>
     <li><strong>🔧 Admin → Access</strong>: grant per-person tool access.</li>
     <li><strong>🗄 Databases → Closed projects</strong>: review cancelled + completed projects; reopen a cancelled project.</li>
-    <li><strong>Household overview</strong> (on the dashboard): pipeline counts, money in flight, attention row,
-      and the Wrap-up worklist — visible to everyone.</li>
+    <li><strong>Household overview</strong> (on the dashboard): pipeline counts, attention row, and the
+      Wrap-up worklist are visible to everyone; the money-in-flight tiles and Payments table need the
+      <strong>Manage finances</strong> permission.</li>
   </ul>
   <details><summary>How do we back up the data?</summary>
     <p>Everything lives in <code>job_creator.db</code> with uploaded files in the <code>uploads/</code> folder —

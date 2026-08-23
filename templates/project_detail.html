@@ -28,7 +28,7 @@
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
   <a href="{{ url_for('project_calendar_ics', project_id=project['id']) }}" class="btn btn-secondary"
      title="Download this project's due dates + install date to import into your calendar">📅 Calendar</a>
-  <a href="{{ url_for('edit_project', project_id=project['id']) }}" class="btn">✎ Edit project</a>
+  {% if can('projects.manage') %}<a href="{{ url_for('edit_project', project_id=project['id']) }}" class="btn">✎ Edit project</a>{% endif %}
   <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"
      style="margin-left:auto;">← Dashboard</a>
 </div>
@@ -38,10 +38,12 @@
 <div class="card" style="border-left:4px solid #9a1c1c; background:#fbe9e9; padding:0.9rem 1.1rem;">
   <div class="toolbar" style="margin-bottom:0.35rem;">
     <h2 style="margin:0; font-size:1.05rem; color:#9a1c1c;">🚫 Project cancelled (Abandoned)</h2>
+    {% if can('projects.manage') %}
     <form method="post" action="{{ url_for('reopen_project', project_id=project['id']) }}" style="margin:0;"
           onsubmit="return confirm('Reopen this project? Its tasks will show again.');">
       <button type="submit" class="btn">↩ Reopen project</button>
     </form>
+    {% endif %}
   </div>
   {% if project["cancel_reason"] %}<p style="margin:0.2rem 0;">Reason: “{{ project["cancel_reason"] }}”</p>{% endif %}
   <p class="muted" style="margin:0; font-size:0.85rem;">
@@ -93,6 +95,7 @@
 </div>
 {% endif %}
 {# Piece 30.2: cancel this project (requires a reason; recorded in the audit log). #}
+{% if can('projects.manage') %}
 <details class="card" style="border-left:4px solid #d97706; padding:0.6rem 0.9rem;">
   <summary style="cursor:pointer; font-weight:600; color:#92400e;">🚫 Cancel this project</summary>
   <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">Marks the project <strong>Abandoned</strong>
@@ -109,6 +112,7 @@
   </form>
 </details>
 {% endif %}
+{% endif %}
 
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
@@ -118,7 +122,7 @@
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
-  <button class="tab-btn" data-tab="billing" title="Payments &amp; expenses">💵 Billing</button>
+  {% if can('finances.manage') %}<button class="tab-btn" data-tab="billing" title="Payments &amp; expenses">💵 Billing</button>{% endif %}
 </div>
 
 <div class="tab-panel" id="tab-general">
@@ -555,6 +559,7 @@
 </div>
 </div>
 
+{% if can('finances.manage') %}
 <div class="tab-panel" id="tab-billing">
 
 <div class="card">
@@ -696,6 +701,7 @@
   txnCats();
 </script>
 </div>
+{% endif %}
 
 <script>
   // Tabs remember their state through the URL hash, so form posts that

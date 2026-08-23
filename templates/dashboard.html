@@ -6,7 +6,7 @@
 <div class="toolbar">
   <h1>👋 {% if user %}{{ user["name"].split(" ")[0] }}'s dashboard{% else %}Dashboard{% endif %}</h1>
   <div style="display:flex; gap:0.4rem;">
-    <a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>
+    {% if can('projects.manage') %}<a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>{% endif %}
     <a href="{{ url_for('projects_list') }}" class="btn btn-secondary">📁 View projects</a>
   </div>
 </div>
@@ -33,7 +33,8 @@
     </div>
   </section>
 
-  {# Money in flight #}
+  {# Money in flight -- finances.manage-gated, hidden entirely for a Child #}
+  {% if can('finances.manage') %}
   <section style="{{ panel }}">
     <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active projects</span></div>
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem;">
@@ -51,6 +52,7 @@
         <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (gm.money.expense)|money0 }}</div></div>
     </div>
   </section>
+  {% endif %}
 
   {# Attention needed #}
   <section style="{{ panel }}">
@@ -105,6 +107,7 @@
 {% endif %}
 
 {# ---- Payments table (money in flight across every active project) ---- #}
+{% if can('finances.manage') %}
 <details class="card sect" open>
   <summary>💵 Payments <span class="sect-count">{{ payments|length }} project{{ "s" if payments|length != 1 }}</span></summary>
   <p class="muted" style="margin:0 0 0.5rem; font-size:0.82rem;">Open a project's
@@ -148,6 +151,7 @@
   <p class="empty">No active projects to bill right now.</p>
   {% endif %}
 </details>
+{% endif %}
 
 {# ---- Procurement: materials by status, any active project with materials on file ---- #}
 <details class="card sect" open>

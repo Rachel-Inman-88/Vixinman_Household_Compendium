@@ -4,7 +4,7 @@
 <div class="toolbar">
   <h1>🗂 Projects</h1>
   <div style="display:flex; gap:0.5rem;">
-    <a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>
+    {% if can('projects.manage') %}<a href="{{ url_for('new_project') }}" class="btn">＋ New project</a>{% endif %}
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Dashboard</a>
   </div>
 </div>

@@ -232,6 +232,8 @@ PERMISSIONS = {
     "household.manage": "Manage household members & accounts",
     "approvals": "Approve field work & wishlist requests",
     "audit.view": "View the audit log",
+    "finances.manage": "Manage household & project finances (Budget, project billing) — hidden entirely without it",
+    "projects.manage": "Create, edit, cancel, and reopen projects",
     "delete": "Delete data (sends it to the trash)",
 }
 PASSWORD_MIN_LEN = 6
@@ -272,6 +274,23 @@ EXPIRY_SOON_DAYS = 60
 # an External helper (external_helpers table), who isn't a household member
 # at all.
 HOUSEHOLD_ROLES = ["Parent", "Child", "Assistant"]
+
+# Piece 51: each role's default permission bundle, materialized as real
+# permission_grants rows (see _seed_role_default_grants) rather than checked
+# live -- has_permission()/_has_grant() need no new code path. Admin (the
+# separate is_admin flag) already bypasses this entirely except "delete".
+# Assistant's bundle is deliberately narrow (no finances.manage/
+# household.manage/audit.view) -- it's reserved for the future "AI agent"
+# Assistant design, where writes will go through a drafts/approval layer
+# that doesn't exist yet; granting broad access now would let an
+# Assistant-role account write finances/household data directly with no
+# human in the loop.
+ROLE_DEFAULT_PERMISSIONS = {
+    "Parent": ["rules.manage", "inventory.manage", "household.manage",
+               "approvals", "audit.view", "finances.manage", "projects.manage"],
+    "Assistant": ["rules.manage", "inventory.manage", "approvals", "projects.manage"],
+    "Child": [],
+}
 
 # Piece 16.1 (revised Piece 35): the household's roster as a one-time seed
 # for a fresh install — (name, role, is_admin).
@@ -421,7 +440,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.26"
+VERSION = "0.27"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -715,6 +734,23 @@ def _has_grant(user, perm):
         " AND permission = ? LIMIT 1", (user["id"], perm)).fetchone() is not None
 
 
+def _seed_role_default_grants(db, member_id, role):
+    """Piece 51: materialize a role's default permission bundle as real
+    permission_grants rows. Additive only -- never revokes an existing
+    grant, even if the member's role later changes to a smaller bundle
+    (matches this app's "nothing destructive without an explicit action"
+    pattern; an admin can still manually uncheck anything on the Access
+    console)."""
+    existing = {r["permission"] for r in db.execute(
+        "SELECT permission FROM permission_grants WHERE household_member_id = ?",
+        (member_id,)).fetchall()}
+    for perm in ROLE_DEFAULT_PERMISSIONS.get(role, []):
+        if perm not in existing:
+            db.execute(
+                "INSERT INTO permission_grants (household_member_id, permission,"
+                " granted_by) VALUES (?, ?, ?)", (member_id, perm, "role default"))
+
+
 def notify_employees(db, recipient_ids, message, link="", kind=""):
     """Piece 29.3: drop an in-app notification to each recipient household
     member id."""
@@ -835,6 +871,31 @@ VIEW_PERMISSION = {
     "inventory_tool_edit": "inventory.manage",
     "inventory_vehicle_new": "inventory.manage",
     "inventory_vehicle_edit": "inventory.manage",
+    # Piece 51: household Budget + a project's own billing ledger are
+    # finances.manage -- viewing is gated too (not just editing), since a
+    # Child must not see finances at all, unlike every other .manage
+    # permission above (which only gates editing; viewing stays open).
+    "household_budget_page": "finances.manage",
+    "household_txn_new": "finances.manage",
+    "household_txn_edit": "finances.manage",
+    "household_txn_delete": "finances.manage",
+    "download_household_receipt": "finances.manage",
+    "household_budget_new": "finances.manage",
+    "household_budget_edit": "finances.manage",
+    "household_budget_delete": "finances.manage",
+    "set_contract": "finances.manage",
+    "add_transaction": "finances.manage",
+    "toggle_transaction_paid": "finances.manage",
+    "delete_transaction": "finances.manage",
+    # Piece 51: creating/editing/cancelling/reopening a project. Viewing
+    # (project_detail, projects_list, project_version) stays open, matching
+    # the inventory.manage precedent.
+    "new_project": "projects.manage",
+    "edit_project": "projects.manage",
+    "set_project_status": "projects.manage",
+    "cancel_project": "projects.manage",
+    "reopen_project": "projects.manage",
+    "set_install_date": "projects.manage",
 }
 
 
@@ -897,7 +958,7 @@ def access_console():
     for g in db.execute("SELECT household_member_id, permission FROM permission_grants"):
         grants.setdefault(g["household_member_id"], set()).add(g["permission"])
     rows = [{
-        "id": p["id"], "name": p["name"],
+        "id": p["id"], "name": p["name"], "role": p["role"],
         "is_admin": str(p["is_admin"] or "") == "1",
         "grants": grants.get(p["id"], set()),
     } for p in people]
@@ -1529,8 +1590,9 @@ def seed_org_team(db):
     for name, role, admin in HOUSEHOLD_ROSTER:
         if not db.execute("SELECT 1 FROM household_members WHERE name = ?",
                           (name,)).fetchone():
-            db.execute("INSERT INTO household_members (name, role, is_admin)"
-                       " VALUES (?, ?, ?)", (name, role, "1" if admin else ""))
+            cur = db.execute("INSERT INTO household_members (name, role, is_admin)"
+                             " VALUES (?, ?, ?)", (name, role, "1" if admin else ""))
+            _seed_role_default_grants(db, cur.lastrowid, role)
     db.execute("INSERT INTO meta (key, value) VALUES ('org_team_seeded', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
@@ -3511,6 +3573,7 @@ def _household_month_bounds(month_str=None):
 
 
 @app.route("/budget")
+@admin_required
 def household_budget_page():
     db = get_db()
     month_str, month_label = _household_month_bounds(request.args.get("month"))
@@ -3599,6 +3662,7 @@ def _save_household_receipt(existing_filename=""):
 
 
 @app.route("/budget/transactions/new", methods=["POST"])
+@admin_required
 def household_txn_new():
     v = _household_txn_form_values()
     if not v["amount"]:
@@ -3620,6 +3684,7 @@ def household_txn_new():
 
 
 @app.route("/budget/transactions/<int:txn_id>/edit", methods=["POST"])
+@admin_required
 def household_txn_edit(txn_id):
     db = get_db()
     txn = db.execute("SELECT * FROM household_transactions WHERE id = ?",
@@ -3645,6 +3710,7 @@ def household_txn_edit(txn_id):
 
 @app.route("/budget/transactions/<int:txn_id>/delete", methods=["POST"])
 @delete_required
+@admin_required
 def household_txn_delete(txn_id):
     ok, msg = trash_item("household_transaction", txn_id)
     flash(msg, "" if ok else "error")
@@ -3652,6 +3718,7 @@ def household_txn_delete(txn_id):
 
 
 @app.route("/budget/transactions/<int:txn_id>/receipt")
+@admin_required
 def download_household_receipt(txn_id):
     txn = get_db().execute(
         "SELECT receipt_filename FROM household_transactions WHERE id = ?",
@@ -3662,6 +3729,7 @@ def download_household_receipt(txn_id):
 
 
 @app.route("/budget/categories/new", methods=["POST"])
+@admin_required
 def household_budget_new():
     category = request.form.get("category", "").strip()
     amount = _to_float(request.form.get("monthly_amount")) or 0.0
@@ -3678,6 +3746,7 @@ def household_budget_new():
 
 
 @app.route("/budget/categories/<int:budget_id>/edit", methods=["POST"])
+@admin_required
 def household_budget_edit(budget_id):
     db = get_db()
     if db.execute("SELECT 1 FROM household_budgets WHERE id = ?",
@@ -3698,6 +3767,7 @@ def household_budget_edit(budget_id):
 
 @app.route("/budget/categories/<int:budget_id>/delete", methods=["POST"])
 @delete_required
+@admin_required
 def household_budget_delete(budget_id):
     ok, msg = trash_item("household_budget", budget_id)
     flash(msg, "" if ok else "error")
@@ -3705,6 +3775,7 @@ def household_budget_delete(budget_id):
 
 
 @app.route("/projects/new", methods=["GET", "POST"])
+@admin_required
 def new_project():
     db = get_db()
     if request.method == "POST":
@@ -3746,6 +3817,7 @@ def render_project_form(values, editing_job_id=None):
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
+@admin_required
 def edit_project(project_id):
     db = get_db()
     project = fetch_project(project_id)
@@ -3921,6 +3993,7 @@ def project_detail(project_id):
 
 
 @app.route("/projects/<int:project_id>/contract", methods=["POST"])
+@admin_required
 def set_contract(project_id):
     fetch_project(project_id)
     db = get_db()
@@ -3932,6 +4005,7 @@ def set_contract(project_id):
 
 
 @app.route("/projects/<int:project_id>/transactions/add", methods=["POST"])
+@admin_required
 def add_transaction(project_id):
     fetch_project(project_id)
     kind = request.form.get("kind", "Expense")
@@ -3983,6 +4057,7 @@ def add_transaction(project_id):
 
 
 @app.route("/projects/<int:project_id>/transactions/<int:txn_id>/paid", methods=["POST"])
+@admin_required
 def toggle_transaction_paid(project_id, txn_id):
     db = get_db()
     row = db.execute("SELECT status FROM project_transactions WHERE id = ? AND project_id = ?",
@@ -3995,6 +4070,7 @@ def toggle_transaction_paid(project_id, txn_id):
 
 
 @app.route("/projects/<int:project_id>/transactions/<int:txn_id>/delete", methods=["POST"])
+@admin_required
 def delete_transaction(project_id, txn_id):
     db = get_db()
     db.execute("DELETE FROM project_transactions WHERE id = ? AND project_id = ?",
@@ -4364,6 +4440,7 @@ def inventory_vehicle_delete(vehicle_id):
     return redirect(url_for("inventory_page", _anchor="vehicles"))
 
 @app.route("/projects/<int:project_id>/status", methods=["POST"])
+@admin_required
 def set_project_status(project_id):
     project = fetch_project(project_id)
     status = request.form.get("status", "")
@@ -4403,6 +4480,7 @@ def set_project_status(project_id):
 
 
 @app.route("/projects/<int:project_id>/cancel", methods=["POST"])
+@admin_required
 def cancel_project(project_id):
     """Piece 30.2: cancel a project — mark it Abandoned with a required reason
     (captured in the audit log), remembering the current stage so it can be
@@ -4439,6 +4517,7 @@ def cancel_project(project_id):
 
 
 @app.route("/projects/<int:project_id>/reopen", methods=["POST"])
+@admin_required
 def reopen_project(project_id):
     """Piece 30.2: reopen a cancelled project — restore the stage it was at before
     it was marked Abandoned (its tasks reappear) and clear the cancellation
@@ -4489,6 +4568,7 @@ def projects_list():
 
 
 @app.route("/projects/<int:project_id>/install-date", methods=["POST"])
+@admin_required
 def set_install_date(project_id):
     """Set (or clear) the project's target/completion date. Piece 41: this used
     to auto-advance Prep -> In Progress once permits were filed too (an
@@ -5902,6 +5982,7 @@ def new_household_member():
             [values[f] for f in HOUSEHOLD_MEMBER_FIELDS],
         )
         _apply_household_member_auth(db, cur.lastrowid)
+        _seed_role_default_grants(db, cur.lastrowid, values["role"])
         db.commit()
         flash(f"Household member added: {values['name']}")
         return redirect(url_for("household_member_detail", household_member_id=cur.lastrowid))
@@ -5977,6 +6058,8 @@ def edit_household_member(household_member_id):
             [values[f] for f in HOUSEHOLD_MEMBER_FIELDS] + [household_member_id],
         )
         _apply_household_member_auth(db, household_member_id)
+        if values["role"] != member["role"]:
+            _seed_role_default_grants(db, household_member_id, values["role"])
         db.commit()
         flash(f"Household member updated: {values['name']}")
         return redirect(url_for("household_member_detail", household_member_id=household_member_id))
@@ -6389,14 +6472,19 @@ def build_assistant_snapshot(db, user):
     ).fetchone()[0]
     lines.append(f"Company-wide overdue open tasks: {overdue}.")
 
-    row = db.execute(
-        "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
-        " WHERE status NOT IN ('Done','Abandoned')"
-        " AND COALESCE(contract_amount,0) > 0").fetchone()
-    if row and row["n"]:
-        lines.append(
-            f"Active projects with a contract total: {row['n']}, "
-            f"summing ${row['t']:,.0f}.")
+    # Piece 51: contract/financial figures are finances.manage-gated
+    # everywhere else in the app (Budget page, Billing tab, dashboard money
+    # tiles) -- the assistant must respect the same gate, or a Child could
+    # just ask the AI for numbers the UI otherwise hides entirely.
+    if has_permission("finances.manage"):
+        row = db.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
+            " WHERE status NOT IN ('Done','Abandoned')"
+            " AND COALESCE(contract_amount,0) > 0").fetchone()
+        if row and row["n"]:
+            lines.append(
+                f"Active projects with a contract total: {row['n']}, "
+                f"summing ${row['t']:,.0f}.")
 
     return "\n".join(lines)
 
@@ -6463,6 +6551,10 @@ def build_assistant_tools(db, user):
     """Piece 32.1: read-only, permission-scoped tools the assistant may call to
     look data up live. Every tool respects what the signed-in user may see —
     no tool exposes pay. Each returns a compact text block for the model to read."""
+    # Piece 51: contract/financial figures are finances.manage-gated
+    # everywhere else in the app -- these tools must match, or a Child could
+    # just ask the AI for numbers the UI otherwise hides entirely.
+    can_finances = has_permission("finances.manage")
 
     def find_projects(args):
         text = (args.get("text") or "").strip()
@@ -6477,7 +6569,7 @@ def build_assistant_tools(db, user):
             where.append("j.job_name LIKE ?"); params.append(f"%{text}%")
         if stage:
             where.append("j.status = ?"); params.append(stage)
-        if args.get("min_contract") not in (None, ""):
+        if can_finances and args.get("min_contract") not in (None, ""):
             try:
                 where.append("COALESCE(j.contract_amount,0) >= ?")
                 params.append(float(args.get("min_contract")))
@@ -6503,7 +6595,7 @@ def build_assistant_tools(db, user):
         for r in rows:
             line = (f"#{r['id']} {r['job_name'] or 'Project'} — "
                     f"{r['status']} — target date {r['install_date'] or 'none set'}")
-            if r["amt"]:
+            if can_finances and r["amt"]:
                 line += f" — contract {_assist_money(r['amt'])}"
             out.append("• " + line)
         return "\n".join(out)
@@ -6526,7 +6618,7 @@ def build_assistant_tools(db, user):
         out = [f"Project #{row['id']}: {row['job_name'] or 'Project'}",
                f"Stage: {row['status']}",
                f"Target date: {row['install_date'] or 'none set'}"]
-        if row["contract_amount"] or 0:
+        if can_finances and (row["contract_amount"] or 0):
             out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
         if (row["status"] or "") == "Abandoned" and (row["cancel_reason"] or ""):
             out.append(f"Cancelled — reason: {row['cancel_reason']}")
