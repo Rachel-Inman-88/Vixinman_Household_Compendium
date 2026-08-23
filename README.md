@@ -239,7 +239,7 @@ can confirm a pull/update took effect.
 - **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
   pipeline turnovers, project cancellations, chore/requirement reminders, and
   security notices; each notification **clears when the recipient accesses it**.
-- **One unified dashboard** (🏠 My Dashboard) — the sign-in landing. Every
+- **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Every
   section renders for every signed-in member, all the time; no per-role mode
   switcher. Sections include a household-wide **overview** (pipeline counts by
   stage, money-in-flight tiles, an attention row, this week's installs, a
@@ -439,6 +439,10 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.26** — the "📊 My Dashboard" nav link's icon changed from 🏠 to 📊 —
+  since Piece 49 gave the new "🏠 Household" dropdown the same house icon,
+  sitting right next to "My Dashboard" in the nav bar, the two looked like
+  duplicates. Cosmetic only, no functional change.
 - **v0.25** — nav-bar correction: v0.24 (below) put the renamed **👨‍👩‍👧
   Family** link *next to* the new 🏠 Household dropdown instead of *inside*
   it, splitting one intended group into two nav elements. Merged them —

@@ -708,6 +708,20 @@ dropdown instead of two separate elements.
   never gets created (`no such table: household_members`) unless `init_db()`
   is called explicitly first.
 
+**Piece 50 (v0.26): dashboard nav icon changed 🏠→📊 — done.** Small,
+cosmetic follow-up: the "📊 My Dashboard" nav link and the new "🏠 Household"
+dropdown (Piece 49) sat right next to each other both using 🏠, reading as
+duplicates. Scoped with one AskUserQuestion (which of the three 🏠 usages —
+nav link / dashboard page heading / "Household overview" section — the user
+meant) to avoid guessing wrong on an otherwise-ambiguous "pick a different
+image" request; user confirmed just the nav link. Changed only
+`templates/base.html`'s "My Dashboard" link and the matching README bullet;
+the dashboard page's own 👋 heading and the 🏠 Household overview section
+are untouched. Verified via compile, a route sweep, and a signed-in
+test-client check (the link only renders once a session exists, so an
+open-mode/no-session request never shows it either way — confirmed the new
+📊 renders and the old 🏠 variant doesn't).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
