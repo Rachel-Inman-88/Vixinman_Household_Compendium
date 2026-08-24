@@ -824,6 +824,90 @@ viewing too).
   someone's role or uses the Access console — no retroactive changes to
   real data).
 
+**Piece 52 (v0.28): Drafts/approval system for the Assistant (AI agent)
+role — done.** Closes the loop Piece 51 deliberately left open. Confirmed
+via three AskUserQuestion rounds: (1) Assistant's bundle expands to match
+Parent (everything but `delete`) — every write gated by any of those 7
+permissions becomes draftable; (2) a draft's optional file upload saves
+immediately into a **separate** draft-only storage folder, Approve moves it
+into live storage, Discard deletes it outright with one confirm prompt;
+(3) build all ~26 draftable write routes across all 7 permission areas in
+this one piece, not a phased subset.
+- New `drafts` table (`kind`, `ref_id`, `payload` JSON, `file_stored_name`,
+  `created_by`, `status`, `reviewed_by`/`reviewed_at`) — same shape
+  precedent as the existing `trash` table's payload-blob pattern. New
+  `draft_upload_dir()` (mirrors `household_upload_dir()`) plus
+  `_save_draft_file()`/`_move_draft_file()`/`_discard_draft_file()`.
+- New `@draftable(kind, ref_id_kwarg=None)` decorator, stacked under the
+  existing `@admin_required` on every route in scope: when the signed-in
+  user's role is `"Assistant"` and the request is a POST, it validates the
+  submission (via the kind's own capture function — reusing each route's
+  existing extractor/validator wherever one already existed) and, if valid,
+  inserts a Pending `drafts` row instead of calling the real view at all.
+  Every other user (and every GET) passes straight through, unchanged.
+- Refactored 26 live routes into a `_capture_*`/`_apply_*` pair each (new
+  `DRAFT_KINDS` registry maps kind name → capture/apply/summarize), so the
+  exact same "do the real write" logic runs for a live user AND for a
+  Parent approving a draft later — nothing was reimplemented, just
+  extracted. Every `apply` function returns `(ok, message, new_id_or_None)`;
+  the live routes are otherwise behaviorally identical to before this piece.
+- Two genuinely unique pieces of logic, reproduced in full rather than
+  generically: `approve_submission`'s cascade (a Work-Bag submission
+  approval re-runs its full per-task status/notes/due-date-recompute
+  update across every `field_submission_items` row, not just a status
+  flip) and the household-member "3-part bundle" (profile fields + login/
+  admin flag + role-default-grant reseeding must apply as one atomic unit —
+  `_apply_household_member_auth()` was refactored from reading
+  `request.form` internally to taking explicit params, so it works
+  identically whether called live or from a draft's stored payload).
+- **Attribution rule, a deliberate choice**: a draft's real write is
+  attributed to whoever *proposed* it (the Assistant), preserved on
+  `created_by`/`cancelled_by`-style columns — except the four
+  "recommendation" kinds (Wishlist/Work-Bag approve-or-reject), where
+  `reviewed_by` is the *approving Parent* instead, since that's who
+  actually exercised the review judgment, not the Assistant that only
+  flagged a recommendation.
+- **File uploads** (a Budget-transaction receipt; a project-transaction
+  document): saved into `draft_upload_dir()` at draft-creation time,
+  `Outstanding⇄Paid`-style re-checked against the *live* row's current
+  state at apply-time rather than frozen from draft-creation time
+  (relevant for `project_txn.toggle_paid` too — it re-derives the target
+  status at apply-time, not from whatever was true when the Assistant
+  drafted it).
+- New `/drafts` (list, `show=pending|all`), `/drafts/<id>/approve`,
+  `/drafts/<id>/discard` routes, gated by the existing `"approvals"`
+  permission (same "parental oversight of pending stuff" concept as
+  Wishlist/Work-Bag approvals — no new permission invented). New
+  `templates/drafts.html`. New "🗒 Drafts" nav link inside the 🏠 Household
+  dropdown, with its own pending-count badge folded into the dropdown's
+  combined total alongside `pending_submissions`.
+- **A real, pre-existing bug found and fixed along the way, unrelated to
+  this piece's own scope but necessary for it to even be testable**:
+  `update_rule` (editing a requirement rule) was **never** registered in
+  `VIEW_PERMISSION` — it silently fell back to the generic admin-only gate
+  the entire time since Piece 17/35, meaning a non-admin ever granted
+  `rules.manage` could add a rule but never edit one. Fixed by adding the
+  missing `"update_rule": "rules.manage"` entry (matching its sibling
+  `"add_rule"` entry exactly).
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, and an
+  11-step test-client cycle: Gremory (Assistant) gets the full 7-permission
+  bundle; an Assistant's POST to one representative route per area (new
+  project, rule edit, inventory item, new household member, a budget
+  transaction *with a receipt file*, a wishlist approve-recommendation)
+  produces a `drafts` row and **zero** change to the real table, with the
+  receipt landing in `draft_upload_dir()` not `household_upload_dir()`;
+  approving each draft as Jacob (Parent/Admin) produces the exact real-table
+  change the live route would have, the receipt file actually moves into
+  live storage, and the wishlist item's `reviewed_by` is confirmed to be
+  "Jacob" (the approving Parent), not "Gremory"; discarding a draft with an
+  attached file deletes the file and leaves the real table untouched; a
+  Parent's own direct write is confirmed to create **no** draft row at all
+  (regression check); approving a draft whose referenced row was deleted in
+  the meantime produces a clean error flash and leaves the draft Pending,
+  no crash — plus the standard 40-route sweep and a boot against the real
+  household database (0 `drafts` rows, real accounts' existing grants
+  untouched).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

@@ -278,12 +278,15 @@ can confirm a pull/update took effect.
   **🔐 Access** console (manage rules, manage the catalog, manage inventory,
   manage household members & accounts, approve field work, view the audit
   log, manage finances, manage projects, or delete). **Roles pre-fill a
-  default bundle** (Piece 51): Parent gets everything but Delete, Assistant
-  gets an operational bundle (rules/inventory/approvals/projects, no
-  finances/household/audit), Child gets none of it by default — set once
-  as real grants when a person is added or their role changes, and always
-  still editable per person from there afterward (additive only: changing
-  someone's role never removes a grant they already had). No tiers above
+  default bundle** (Piece 51): Parent and Assistant both get everything but
+  Delete, Child gets none of it by default — set once as real grants when a
+  person is added or their role changes, and always still editable per
+  person from there afterward (additive only: changing someone's role never
+  removes a grant they already had). **Assistant is meant for an AI agent's
+  own account** (Piece 52) — it can read everything a Parent can, but every
+  write it makes is captured as a **draft** on the new 🗒 Drafts page instead
+  of landing directly; a Parent/Admin reviews each one and Approves (applies
+  it for real) or Discards it. No tiers above
   admin, and grants don't expire.
 - **Deletion & trash**: deleting anything needs the explicit **Delete**
   permission (even an admin doesn't have it by default), prompts before
@@ -357,7 +360,9 @@ customer — equipment markup percentages, a 33-county tax table, an internal
 cost-vs-margin breakdown — with no household equivalent. What's left is
 exactly what a household budget needs: a plain contract-total field plus the
 income/expense ledger above, both gated by `finances.manage` (Piece 51) —
-visible to whoever's granted it (Parent by default; not Assistant or Child).
+visible to whoever's granted it (Parent and Assistant by default, not
+Child). An Assistant can still see every figure, but editing anything here
+goes through a draft first (Piece 52), same as everywhere else it can write.
 
 ### Household Budget
 - **💵 Budget**: a household-wide income/expense ledger for spending that
@@ -382,9 +387,12 @@ visible to whoever's granted it (Parent by default; not Assistant or Child).
   stage/county/overdue/contract, drill into one project, list
   tasks, look up staff) rather than inventing details.
 - **Permission-scoped & private.** It only ever sees what the signed-in user is
-  already allowed to see (contract totals are visible to every signed-in member,
-  same as the dashboard; pay/payroll doesn't exist in this app). **Online-only**
-  — nothing is sent until a question is asked, and nothing is sent while offline.
+  already allowed to see — contract totals only appear for someone with the
+  `finances.manage` permission (Piece 52 closed a real gap here: the
+  assistant used to include them unconditionally, a text-based way around
+  the Budget/Billing gate); pay/payroll doesn't exist in this app.
+  **Online-only** — nothing is sent until a question is asked, and nothing
+  is sent while offline.
 - **🧠 Plan tab** (on each project's own page): a project-scoped brainstorm chat
   to think through finishing *that* project — same read-only, permission-scoped,
   Claude-or-Gemini design as 💬 Assistant, but its conversation is **saved per
@@ -395,6 +403,20 @@ visible to whoever's granted it (Parent by default; not Assistant or Child).
   task to the project's current stage, so it counts toward advancing it), and
   any reply can be kept with **💾 Save as project note**. Turned off for
   Done/Abandoned projects.
+- **🗒 Drafts** (Piece 52): the Assistant role is meant for an AI agent's own
+  household-member account — it reads everything a Parent can, but every
+  write it attempts (a new project, a rule, an inventory item, a household
+  member, a budget/project transaction — even a receipt/document upload —
+  or an approve/reject decision on a Wishlist item or Work Bag submission)
+  is captured as a **draft** instead of applying directly. A Parent/Admin
+  reviews each one on the 🗒 Drafts page (under 🏠 Household) and either
+  **Approves** it — applying the exact same change a live user's action
+  would have made, attributed to whoever proposed it (an approve/reject
+  recommendation is attributed to the approving Parent instead, since
+  that's who actually exercised the judgment) — or **Discards** it, which
+  deletes any attached file and leaves the real data untouched. A Parent or
+  Admin's own actions are completely unaffected — everything above only
+  intercepts a signed-in **Assistant**.
 - Setup is below under **[Setting up the AI Assistant](#setting-up-the-ai-assistant)**.
 
 ### Help & records
@@ -448,6 +470,25 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.28** — **the Assistant role becomes an AI agent's own account**,
+  closing the loop v0.27 (below) deliberately left open. Assistant's
+  permission bundle now matches Parent (everything but Delete), but every
+  one of its writes — across all 7 permission areas: projects, requirement
+  rules, inventory, household members, household/project finances
+  (including receipt and document uploads), and Wishlist/Work-Bag approve-
+  or-reject decisions — is captured as a **draft** (new `drafts` table)
+  instead of applying directly. A new **🗒 Drafts** page (under 🏠 Household)
+  lets a Parent/Admin Approve (apply the change for real, moving any
+  attached file from a separate draft-only upload folder into live storage)
+  or Discard (deletes any attached file, changes nothing) each one. A Parent
+  or Admin's own actions are completely unaffected. Also closed a real gap
+  the same audit surfaced: the 💬 Assistant/🧠 Plan AI chat included contract
+  totals unconditionally, a text-based way around the finances.manage gate
+  — now respects it like everything else. Fixed a genuinely pre-existing
+  bug found along the way: `update_rule` (editing a requirement rule) was
+  never registered against the `rules.manage` permission, so it silently
+  fell back to admin-only access the whole time since Piece 17/35 — a
+  non-admin granted `rules.manage` could add a rule but never edit one.
 - **v0.27** — **roles actually grant access.** Parent/Child/Assistant were
   pure display labels since Piece 35 — confirmed by a full-codebase audit
   that `role` had zero effect on any access decision anywhere. Each role now
