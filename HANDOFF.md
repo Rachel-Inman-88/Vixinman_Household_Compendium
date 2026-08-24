@@ -1094,13 +1094,124 @@ Spending** Budget category. Confirmed via 3 AskUserQuestion rounds.
   zero pre-existing-table row-count drift, run twice to confirm
   idempotence.
 
+**Piece 55 (v0.31): Household Budget at-a-glance reporting — done.** User:
+"Let's refine finances" — the first of 4 identified finance workstreams
+(CSV bank import, this reporting piece, the Contract extraction, general
+UI polish), sequenced via AskUserQuestion; CSV import was picked first but
+is blocked pending a sample export from the user (Navy Federal Credit
+Union — flagged, not built, per explicit instruction), so this reporting
+piece went next. Scoped across 3 more AskUserQuestion rounds: cash-flow
+tracker = forward projection (not historical); scope = household + project
+combined (matching the dashboard's own v0.30 rollup); plus income-vs-
+expense and category-spending historical trends as the "among others" the
+user mentioned.
+- **No charting library exists anywhere in this app** (re-confirmed via
+  exhaustive grep before building — no Chart.js/D3/`<canvas>`/CDN
+  `<script src>` anywhere) — every chart is **hand-rolled inline SVG,
+  computed server-side in Python and rendered via Jinja**, matching this
+  app's offline-in-the-field requirement (Work Bag's own offline support
+  since Piece 26) — no CDN, no vendored JS bundle. `math` was already
+  imported, no new dependency.
+- **New Python helpers** (`app.py`, between `_household_month_bounds()`
+  and `household_budget_page()`): `_recent_months`/`_forward_months`
+  (hand-rolled month walk, backward/forward — no `relativedelta` anywhere
+  in this app, stdlib only); `_combined_month_totals(db, month_str)` (one
+  shared query shape backing all 4 reports, instead of duplicating the
+  household+project UNION logic 4 times); `_category_breakdown_series`
+  (top-5-by-total + "Other", pure function); `_cash_flow_projection(db,
+  horizon_months)` (the real new logic — buckets Outstanding rows from
+  both ledgers by their own `txn_date`'s month, clamping anything beyond
+  the horizon into the last bucket and anything overdue/undated into
+  bucket 0; projects `household_budgets` recurring targets forward, netting
+  bucket 0 against this-month's already-recorded spend so only the
+  *remaining* target counts as still-anticipated); `_assign_category_colors`
+  (deterministic, so a category is the same color in both the pie and the
+  category trend); `_pie_geometry` (the classic multi-`<circle>`
+  `stroke-dasharray`/`stroke-dashoffset` donut technique) and
+  `_bar_series_geometry` (generic grouped-bar geometry, shared by all 3 bar
+  charts — cash-flow, income/expense trend, category trend).
+- **Explicitly NOT a running bank balance**: this app has no
+  starting-balance concept anywhere (re-confirmed via grep — nothing
+  tracks "how much cash is actually in the bank"), so the cash-flow
+  tracker only ever shows anticipated **net flow per future month**, never
+  a fabricated running total. Called out directly in the UI copy so this
+  isn't mistaken for real account tracking.
+- **4 new cards on `templates/household_budget.html`**: the two
+  current-month visuals (pie, cash-flow) placed right after the
+  month-picker — "at a glance" before the data-entry workflow; the two
+  historical trend visuals placed after the Transactions card, near the
+  bottom — deliberately **not** stacked on top of the day-to-day
+  add-transaction workflow, since burying it under 4 new cards would hurt
+  the page on the small screen this app is about to be field-tested on
+  (Pixel 9a). Both a `trend_months` (3–24, default 6) and `horizon_months`
+  (1–12, default 3) selector, GET-submitting with the existing
+  `month`/`show` state preserved as hidden fields — same pattern the page's
+  existing This-month/All toggle already uses.
+- **New CSS** (`templates/base.html`, near `.jobprog*`): `.chart-svg`/
+  `.chart-legend`/`.swatch` — 4 small rules, no new stylesheet.
+- **Verified visually, not just via test-client**: started a real scratch
+  dev server, seeded a 6-month realistic scenario (multiple categories,
+  an Outstanding transaction, budget targets with partial current-month
+  spend), and inspected the actual rendered page — both via
+  `get_page_text()` (correct dollar figures, correct category legends,
+  "Other" bucketing working, both selectors present) and via
+  `javascript_tool` reading the live DOM's `<circle>`/`<rect>` attributes
+  directly (confirmed sane, non-NaN, non-negative geometry across all 4
+  charts: 6 pie slices with valid dasharray/dashoffset pairs, 6/12/36 bars
+  across the three bar charts with correct viewBox scaling). Screenshot
+  capture itself failed in this environment (a known, previously-noted
+  limitation — the Browser pane doesn't composite frames here) — the DOM
+  inspection was the working fallback, same as Piece 49's precedent.
+- Also verified via compile, a full Jinja parse sweep, unit-level checks on
+  every pure function (month-walk year-boundary correctness, pie/bar
+  geometry on an empty/all-zero dataset with no division-by-zero), a
+  hand-computed cash-flow scenario (an overdue Outstanding project
+  expense landing in bucket 0, an Outstanding household income 2 months
+  out landing in bucket 2, a row dated beyond the horizon clamping into
+  the last bucket, a partially-spent budget category producing exactly the
+  remaining amount in bucket 0 and the full target in future buckets — all
+  matched hand-computed expected values exactly), the standard 40-route
+  sweep, and an empty-database smoke test (fresh DB, `GET /budget` still
+  200, every new card's empty state renders instead of throwing).
+
 **NOT done yet:**
-- **The "Contract" legacy-code extraction**, flagged by the user this piece
-  (see the Piece 54 entry above for the full inventory) — `contract_amount`/
+- **CSV bank-statement import, blocked on the user.** User: "refine
+  finances," ordered CSV import first among 4 finance workstreams, but has
+  no sample export on hand yet. Bank: **Navy Federal Credit Union**.
+  Confirmed scope for whenever the sample arrives: imports land in
+  **Household Budget only** (`household_transactions`, not project/Loan/
+  Savings ledgers); a **staged preview-then-confirm** step (parse → review
+  table → edit/uncheck rows → commit), never a direct silent import.
+  **Do not guess at Navy Federal's column layout** (varies by account
+  type, could be stale info) — wait for a real sample or the exact header
+  row, and remind the user to hand it over next time this comes up. Also
+  build a flexible column-mapping fallback alongside the NFCU-specific
+  matching, so a format change or a second bank doesn't need a rebuild.
+- **Budget reporting — 2 more items still open.** Piece 55 built the pie
+  chart, cash-flow projection, and both trend charts the user asked for by
+  name; the user's own "among others" phrasing implied more might be
+  wanted — nothing further has been specified. Ask before assuming what's
+  still missing.
+- **The "Contract" legacy-code extraction**, flagged by the user (see the
+  Piece 54 entry above for the full inventory) — `contract_amount`/
   `set_contract`/the Billing tab's Contract tile are a leftover from this
   app's original solar-installation-business origins and don't really fit a
-  household project. Not touched this piece by design; a future piece
-  should reconsider/rename/replace it using the inventory already gathered.
+  household project. Not touched yet by design; a future piece should
+  reconsider/rename/replace it using the inventory already gathered.
+- **Loans/Savings/Budget UI polish** — queued (4th of the 4 finance
+  workstreams), no specific complaints identified yet; needs its own
+  scoping pass before starting.
+- **Pixel 9a beta-test readiness**, queued right after finance work
+  wraps: (1) a mobile-responsive UI pass — this app has never had a
+  real small-screen-phone check, only desktop dev-server click-throughs
+  (Piece 49) plus automated Flask test-client work; (2) getting the app
+  actually reachable from the phone — no deployment story exists anywhere
+  in this project (local-network IP? a tunnel? cloud hosting?), needs its
+  own conversation; (3) a real-data readiness check on `job_creator.db`
+  itself before starting an actual project in it. Note: this app already
+  has some PWA/offline infrastructure (`/sw.js`, `/offline`, Work Bag's
+  offline support since Piece 26) — check what already works there before
+  assuming a phone deployment needs offline support built from scratch.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate

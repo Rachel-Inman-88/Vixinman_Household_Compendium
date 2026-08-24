@@ -401,6 +401,20 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   offers suggestions (Groceries, Utilities, Subscriptions, **Discretionary
   Spending**, Other) via a browser-native autocomplete list — type anything
   else if none fit.
+- **At-a-glance reporting** (Piece 55): four hand-rolled SVG visualizations
+  — no charting library anywhere in this app, so every chart is computed
+  server-side and rendered as inline SVG (works offline, no CDN). All four
+  combine **both** the household Budget ledger and the per-project Billing
+  ledger:
+  - **Expenses by category** — a donut chart for the currently selected
+    month, top 5 categories + an "Other" bucket.
+  - **Anticipated cash flow** — a forward-looking projection (default 3
+    months, adjustable) combining Outstanding transactions from both
+    ledgers with Budget's recurring monthly targets. Shows expected net
+    flow per month, not a running account balance — this app has no
+    concept of a starting bank balance anywhere.
+  - **Income vs. expense trend** and **spending by category over time** —
+    historical monthly bar charts, default 6 months back, adjustable.
 
 ### Loans
 - **💳 Loans**: named loan accounts (a car loan, a mortgage) — each has a
@@ -514,6 +528,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.31** — **the Household Budget page gets at-a-glance reporting**: a
+  donut chart of expenses by category, a forward-looking anticipated
+  cash-flow projection (Outstanding transactions from both ledgers +
+  Budget's recurring monthly targets, netted per month — not a running
+  bank balance, since this app has no starting-balance concept anywhere),
+  and two historical trend bar charts (income vs. expense, spending by
+  category), both adjustable in window length. All four combine the
+  household and project ledgers, matching v0.30's dashboard rollup. No
+  charting library exists anywhere in this app (confirmed — nothing but
+  inline JS, no CDN scripts), so every chart is hand-rolled inline SVG
+  computed server-side in Python (`_pie_geometry`/`_bar_series_geometry`)
+  — works offline like the rest of this app, no new dependency. New
+  month-range helpers (`_recent_months`/`_forward_months`) since no
+  multi-month query existed anywhere before this piece. Pure reporting —
+  no schema changes.
 - **v0.30** — **the dashboard money widget rolls up the whole household**,
   and two new money features. The old 4-tile "Money in flight" (Contract/
   Collected/Outstanding/Expenses) is now 6 tiles — **unpaid expenses,
