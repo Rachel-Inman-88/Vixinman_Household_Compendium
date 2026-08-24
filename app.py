@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.39"
+VERSION = "0.40"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -965,6 +965,7 @@ VIEW_PERMISSION = {
     # Child must not see finances at all, unlike every other .manage
     # permission above (which only gates editing; viewing stays open).
     "household_budget_page": "finances.manage",
+    "money_page": "finances.manage",
     "household_txn_new": "finances.manage",
     "household_txn_edit": "finances.manage",
     "household_txn_delete": "finances.manage",
@@ -3292,6 +3293,60 @@ def _build_month_calendar(month_str, items_by_date, today_s):
     return weeks
 
 
+def _household_money_snapshot(db):
+    """Piece 54 (extracted Piece 62): whole-household money-in-flight
+    totals -- unpaid expenses/loans/income/savings/money-in-projects, plus
+    an estimate-vs-actual variance -- rolling up both the project and
+    household ledgers and the Loans/Savings accounts' live-computed
+    balances. Shared by dashboard()'s Household overview tiles and the
+    /money page, so the two never drift apart."""
+    money = {"unpaid_expenses": 0.0, "loans": 0.0, "income": 0.0,
+             "savings": 0.0, "projects": 0.0,
+             "estimated": 0.0, "actual_expense": 0.0}
+    for j in db.execute(
+            "SELECT id, contract_amount, estimated_cost FROM projects"
+            " WHERE status != 'Abandoned'").fetchall():
+        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        money["unpaid_expenses"] += b["expense_out"]
+        money["income"] += b["collected"]
+        money["projects"] += b["contract"]
+        money["estimated"] += _to_float(j["estimated_cost"]) or 0.0
+        money["actual_expense"] += b["expense"]
+    # Fold in the whole-household ledger (lifetime totals, matching
+    # project_billing()'s own lifetime -- not month-scoped -- nature; the
+    # Budget page's separate current-month view is untouched) and the
+    # Loans/Savings accounts' live-computed balances.
+    for r in db.execute(
+            "SELECT kind, status, COALESCE(SUM(amount), 0) AS total"
+            " FROM household_transactions GROUP BY kind, status").fetchall():
+        if r["kind"] == "Income":
+            money["income"] += r["total"]
+        elif r["kind"] == "Expense" and r["status"] == "Outstanding":
+            money["unpaid_expenses"] += r["total"]
+    for a in db.execute("SELECT id, original_amount FROM loan_accounts").fetchall():
+        money["loans"] += loan_balance(db, a["id"], a["original_amount"])["balance"]
+    for a in db.execute("SELECT id FROM savings_accounts").fetchall():
+        money["savings"] += savings_balance(db, a["id"])["balance"]
+    return money
+
+
+def _payments_summary(db):
+    """Piece 22.3 (extracted Piece 62): the Payments/Finance table across
+    every active project (all in-flight money -- deposits, invoices,
+    expenses). Shared by dashboard()'s Payments card and the /money page."""
+    payments = []
+    pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
+                  "expense": 0.0, "net": 0.0}
+    for j in db.execute(
+            "SELECT id, job_name, status, contract_amount FROM projects"
+            " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
+        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        payments.append({"project": j, "b": b})
+        for k in pay_totals:
+            pay_totals[k] += b[k]
+    return payments, pay_totals
+
+
 @app.route("/dashboard")
 @app.route("/", endpoint="home")
 def dashboard():
@@ -3460,39 +3515,12 @@ def dashboard():
     # Wrap-up worklist. Shown to every signed-in member, not admin-gated.
     exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
     counts = {s: 0 for s in exec_stages}
-    # Piece 54: reworked from Contract/Collected/Outstanding/Expenses into
-    # unpaid expenses/loans/income/savings/money in projects (+ an
-    # estimate-vs-actual variance), rolling up both the project and
-    # household ledgers -- see the dashboard template for tile rendering.
-    money = {"unpaid_expenses": 0.0, "loans": 0.0, "income": 0.0,
-             "savings": 0.0, "projects": 0.0,
-             "estimated": 0.0, "actual_expense": 0.0}
     for j in db.execute(
-            "SELECT id, status, contract_amount, estimated_cost FROM projects"
+            "SELECT id, status FROM projects"
             " WHERE status != 'Abandoned'").fetchall():
         if j["status"] in counts:
             counts[j["status"]] += 1
-        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
-        money["unpaid_expenses"] += b["expense_out"]
-        money["income"] += b["collected"]
-        money["projects"] += b["contract"]
-        money["estimated"] += _to_float(j["estimated_cost"]) or 0.0
-        money["actual_expense"] += b["expense"]
-    # Fold in the whole-household ledger (lifetime totals, matching
-    # project_billing()'s own lifetime -- not month-scoped -- nature; the
-    # Budget page's separate current-month view is untouched) and the
-    # Loans/Savings accounts' live-computed balances.
-    for r in db.execute(
-            "SELECT kind, status, COALESCE(SUM(amount), 0) AS total"
-            " FROM household_transactions GROUP BY kind, status").fetchall():
-        if r["kind"] == "Income":
-            money["income"] += r["total"]
-        elif r["kind"] == "Expense" and r["status"] == "Outstanding":
-            money["unpaid_expenses"] += r["total"]
-    for a in db.execute("SELECT id, original_amount FROM loan_accounts").fetchall():
-        money["loans"] += loan_balance(db, a["id"], a["original_amount"])["balance"]
-    for a in db.execute("SELECT id FROM savings_accounts").fetchall():
-        money["savings"] += savings_balance(db, a["id"])["balance"]
+    money = _household_money_snapshot(db)
     overdue = db.execute(
         "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
         " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
@@ -3517,16 +3545,7 @@ def dashboard():
 
     # Payments/Finance table across every active project (all in-flight
     # money — deposits, invoices, expenses).
-    payments = []
-    pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
-                  "expense": 0.0, "net": 0.0}
-    for j in db.execute(
-            "SELECT id, job_name, status, contract_amount FROM projects"
-            " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
-        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
-        payments.append({"project": j, "b": b})
-        for k in pay_totals:
-            pay_totals[k] += b[k]
+    payments, pay_totals = _payments_summary(db)
 
     backlog_worklist = db.execute(
         "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
@@ -4304,6 +4323,59 @@ def _balance_history_geometry(entries, starting_balance, deltas,
     zero_y = pad_y + (hi - 0) / span * (height - 2 * pad_y)
     return {"points": coords, "path": path, "width": width, "height": height,
             "zero_y": round(zero_y, 2)}
+
+
+@app.route("/money")
+@admin_required
+def money_page():
+    """Piece 62: a financial overview -- summary tiles, a needs-attention
+    row, Budget's headline charts, and the Payments table -- sitting in
+    front of the Budget/Loans/Savings pages (each keeps its own full URL
+    and editing UI; this page links out to them, it doesn't replace them)."""
+    db = get_db()
+    money = _household_money_snapshot(db)
+
+    loan_accounts = db.execute("SELECT * FROM loan_accounts").fetchall()
+    total_loan_balance = sum(
+        loan_balance(db, a["id"], a["original_amount"])["balance"] for a in loan_accounts)
+    savings_accounts = db.execute("SELECT * FROM savings_accounts").fetchall()
+    total_savings_balance = sum(savings_balance(db, a["id"])["balance"] for a in savings_accounts)
+    total_savings_goal = sum(a["goal_amount"] for a in savings_accounts if a["goal_amount"])
+
+    month_str, month_label = _household_month_bounds(None)
+    month_totals = _combined_month_totals(db, month_str)
+    color_map = _assign_category_colors(set(month_totals["by_category"]))
+    expense_pie = _pie_geometry(month_totals["by_category"], color_map)
+    cash_flow = _cash_flow_projection(db, horizon_months=3)
+    cf_labels = [datetime.strptime(b["month"], "%Y-%m").strftime("%b '%y")
+                for b in cash_flow["buckets"]]
+    cash_flow_bars = _bar_series_geometry(
+        cf_labels,
+        {"Income": [b["income"] for b in cash_flow["buckets"]],
+         "Expense": [b["total_expense"] for b in cash_flow["buckets"]]},
+        {"Income": "#1a6e3c", "Expense": "#b02a2a"})
+
+    budgets = db.execute("SELECT * FROM household_budgets").fetchall()
+    spent_by_category = {r["category"]: r["spent"] for r in db.execute(
+        "SELECT category, COALESCE(SUM(amount), 0) AS spent FROM household_transactions"
+        " WHERE kind = 'Expense' AND substr(txn_date, 1, 7) = ? GROUP BY category",
+        (month_str,)).fetchall()}
+    over_budget = [b["category"] for b in budgets
+                   if b["monthly_amount"] > 0 and spent_by_category.get(b["category"], 0) > b["monthly_amount"]]
+    outstanding_bills = db.execute(
+        "SELECT COUNT(*) FROM household_transactions WHERE status = 'Outstanding'").fetchone()[0]
+
+    payments, pay_totals = _payments_summary(db)
+
+    return render_template(
+        "money.html", money=money,
+        total_loan_balance=total_loan_balance,
+        total_savings_balance=total_savings_balance, total_savings_goal=total_savings_goal,
+        month_label=month_label, expense_pie=expense_pie,
+        cash_flow=cash_flow, cash_flow_bars=cash_flow_bars,
+        over_budget=over_budget, outstanding_bills=outstanding_bills,
+        payments=payments, pay_totals=pay_totals,
+        job_status_class=PROJECT_STATUS_CLASS)
 
 
 @app.route("/budget")

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Money{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>💰 Money <span class="muted" style="font-size:0.95rem; font-weight:400;">— a financial overview</span></h1>
+  <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+    <a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary">💵 Budget</a>
+    <a href="{{ url_for('loans_page') }}" class="btn btn-secondary">💳 Loans</a>
+    <a href="{{ url_for('savings_page') }}" class="btn btn-secondary">🐷 Savings</a>
+  </div>
+</div>
+
+{% set panel = "background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:0.75rem 0.9rem; margin-bottom:0.85rem;" %}
+{% set panelh = "font-weight:700; margin:0 0 0.5rem; font-size:0.95rem;" %}
+{% set tile = "background:var(--card); border:1px solid var(--border); border-radius:8px;" %}
+
+<div class="card">
+
+  {# ---- Money in flight -- same tiles as the dashboard's Household overview ---- #}
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active projects and the household ledger</span></div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem;">
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Unpaid expenses</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (money.unpaid_expenses)|money0 }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Loans</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ (money.loans)|money0 }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Income</div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ (money.income)|money0 }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Savings</div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand-dark);">${{ (money.savings)|money0 }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Money in projects</div>
+        <div style="font-size:1.25rem; font-weight:800;">${{ (money.projects)|money0 }}</div></div>
+      {% set variance = money.estimated - money.actual_expense %}
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Anticipated spending <span class="muted" style="font-weight:400;">(est. vs. actual)</span></div>
+        <div style="font-size:1.25rem; font-weight:800; color:{{ 'var(--brand)' if variance >= 0 else '#b02a2a' }};">{{ "-" if variance < 0 }}${{ (variance)|abs|money0 }}</div>
+        <div class="muted" style="font-size:0.7rem;">est. ${{ (money.estimated)|money0 }} · actual ${{ (money.actual_expense)|money0 }}</div></div>
+    </div>
+  </section>
+
+  {# ---- Savings goal, combined across every account with a goal set ---- #}
+  {% if total_savings_goal %}
+  {% set pct = (total_savings_balance / total_savings_goal * 100) if total_savings_goal else 0 %}
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">Savings goal <span class="muted" style="font-weight:400; font-size:0.8rem;">— combined across every account with a goal set</span></div>
+    <div class="muted" style="font-size:0.85rem; margin-bottom:0.3rem;">
+      ${{ (total_savings_balance)|money0 }} of ${{ (total_savings_goal)|money0 }}
+      ({{ pct|round(0, 'floor')|int }}%{{ " reached!" if pct >= 100 else "" }})
+    </div>
+    <div style="background:var(--card); border:1px solid var(--border); border-radius:4px; height:0.6rem; overflow:hidden;">
+      <div style="height:100%; width:{{ [[pct, 0]|max, 100]|min }}%; background:var(--brand);"></div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---- Needs attention ---- #}
+  {% if over_budget or outstanding_bills %}
+  <section style="{{ panel }} margin-bottom:0;">
+    <div style="{{ panelh }}">Needs attention</div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      {% for cat in over_budget %}
+      <a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; border-color:#b02a2a; color:#b02a2a !important;">💸 {{ cat }} over budget</a>
+      {% endfor %}
+      {% if outstanding_bills %}
+      <a href="{{ url_for('household_budget_page', show='all') }}" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; border-color:#8a5a00; color:#8a5a00 !important;">🧾 {{ outstanding_bills }} unpaid bill{{ "s" if outstanding_bills != 1 }}</a>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+{# ---- Expense pie chart, this month ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Expenses by category — {{ month_label }}</h2>
+  {% if expense_pie.slices %}
+  <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center;">
+    <svg class="chart-svg" viewBox="0 0 {{ expense_pie.size }} {{ expense_pie.size }}"
+         style="max-width:{{ expense_pie.size }}px;" role="img"
+         aria-label="Expense breakdown by category for {{ month_label }}: {% for s in expense_pie.slices %}{{ s.category }} {{ s.pct }} percent{% if not loop.last %}, {% endif %}{% endfor %}. Total ${{ expense_pie.total|money0 }}.">
+      <g transform="rotate(-90 {{ expense_pie.size / 2 }} {{ expense_pie.size / 2 }})">
+        {% for s in expense_pie.slices %}
+        <circle cx="{{ expense_pie.size / 2 }}" cy="{{ expense_pie.size / 2 }}" r="{{ expense_pie.r }}"
+                fill="none" stroke="{{ s.color }}" stroke-width="{{ expense_pie.stroke }}"
+                stroke-dasharray="{{ s.dasharray }}" stroke-dashoffset="{{ s.dashoffset }}"></circle>
+        {% endfor %}
+      </g>
+    </svg>
+    <ul class="chart-legend">
+      {% for s in expense_pie.slices %}
+      <li><span class="swatch" style="background:{{ s.color }};"></span> {{ s.category }} — ${{ s.amount|money0 }} ({{ s.pct }}%)</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p class="empty">No expenses recorded for {{ month_label }}.</p>
+  {% endif %}
+  <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Open <a href="{{ url_for('household_budget_page') }}">💵 Budget</a> for other months and full category-spending trends.</p>
+</div>
+
+{# ---- Anticipated cash flow, fixed 3-month horizon (adjustable on the Budget page itself) ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Anticipated cash flow <span class="muted" style="font-weight:400; font-size:0.85rem;">— next 3 months</span></h2>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Outstanding income/expenses (both ledgers) plus
+    projected household budget targets, netted per month. Expected cash flow, not a running account balance —
+    this app doesn't track a starting bank balance.</p>
+  <div style="overflow-x:auto;">
+    <svg class="chart-svg" viewBox="0 0 {{ cash_flow_bars.width + 20 }} {{ cash_flow_bars.height + 34 }}"
+         style="height:{{ cash_flow_bars.height + 34 }}px;" role="img"
+         aria-label="Anticipated cash flow: {% for b in cash_flow.buckets %}{{ b.label }}: ${{ b.income|money0 }} in, ${{ b.total_expense|money0 }} out, net ${{ b.net|money0 }}{% if not loop.last %}; {% endif %}{% endfor %}.">
+      <g transform="translate(10,10)">
+        {% for grp in cash_flow_bars.groups %}
+          {% for bar in grp.bars %}
+          <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" fill="{{ bar.color }}"></rect>
+          {% endfor %}
+          <text x="{{ grp.x_center }}" y="{{ cash_flow_bars.height + 14 }}" text-anchor="middle" font-size="10" fill="var(--muted)">{{ grp.label }}</text>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  <div class="chart-legend" style="margin-top:0.4rem; flex-direction:row;">
+    <span><span class="swatch" style="background:#1a6e3c;"></span> Income</span>
+    <span><span class="swatch" style="background:#b02a2a;"></span> Expense</span>
+  </div>
+  <table style="margin-top:0.6rem;">
+    <thead><tr><th>Month</th><th style="text-align:right;">In</th><th style="text-align:right;">Out</th><th style="text-align:right;">Net</th></tr></thead>
+    <tbody>
+      {% for b in cash_flow.buckets %}
+      <tr>
+        <td>{{ b.label }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ b.income|money0 }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ b.total_expense|money0 }}</td>
+        <td style="text-align:right; font-weight:600; {{ 'color:#b02a2a;' if b.net < 0 }}">${{ b.net|money0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ---- Payments (also shown on the dashboard's Household overview) ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">💵 Payments <span class="sect-count">{{ payments|length }} project{{ "s" if payments|length != 1 }}</span></h2>
+  {% if payments %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Project</th><th>Stage</th>
+      <th style="text-align:right;">Contract</th><th style="text-align:right;">Collected</th>
+      <th style="text-align:right;">Outstanding</th><th style="text-align:right;">Expenses</th>
+      <th style="text-align:right;">Net</th></tr></thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td><a href="{{ url_for('project_detail', project_id=p.project['id'], _anchor='billing') }}">{{ p.project["job_name"] or "Project #" ~ p.project["id"] }}</a></td>
+        <td><span class="badge {{ job_status_class.get(p.project['status'], 'neutral') }}">{{ p.project["status"] }}</span></td>
+        <td style="text-align:right;">${{ (p.b.contract)|money0 }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ (p.b.collected)|money0 }}</td>
+        <td style="text-align:right; color:#8a5a00;">${{ (p.b.outstanding)|money0 }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ (p.b.expense)|money0 }}</td>
+        <td style="text-align:right; font-weight:600;">${{ (p.b.net)|money0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="font-weight:700; border-top:2px solid var(--border);">
+        <td colspan="2">Totals</td>
+        <td style="text-align:right;">${{ (pay_totals.contract)|money0 }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ (pay_totals.collected)|money0 }}</td>
+        <td style="text-align:right; color:#8a5a00;">${{ (pay_totals.outstanding)|money0 }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ (pay_totals.expense)|money0 }}</td>
+        <td style="text-align:right;">${{ (pay_totals.net)|money0 }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Open a project's
+  <strong>💵 Billing</strong> tab to set its contract total and record deposits,
+  invoices and expenses. Net = collected − expenses paid.</p>
+  {% else %}
+  <p class="empty">No active projects to bill right now.</p>
+  {% endif %}
+</div>
+{% endblock %}
