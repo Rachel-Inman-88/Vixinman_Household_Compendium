@@ -455,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.32"
+VERSION = "0.33"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -8353,4 +8353,13 @@ def assistant_settings_page():
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    # Piece 56: COMPENDIUM_HOST lets a beta-test run bind to the machine's
+    # LAN address (0.0.0.0) so a phone on the same WiFi can reach it --
+    # default stays 127.0.0.1 (localhost-only) so plain `python app.py`
+    # behaves exactly as before. Debug mode (the interactive Werkzeug
+    # debugger + verbose tracebacks) is only ever on for the localhost-only
+    # default -- it's a real code-execution risk if left on while reachable
+    # from other devices on the network.
+    host = os.environ.get("COMPENDIUM_HOST", "127.0.0.1")
+    port = int(os.environ.get("COMPENDIUM_PORT", "5000"))
+    app.run(host=host, port=port, debug=(host == "127.0.0.1"))
