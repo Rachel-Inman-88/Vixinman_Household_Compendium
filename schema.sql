@@ -298,6 +298,18 @@ CREATE TABLE IF NOT EXISTS board_collaborators (
     added_by             TEXT DEFAULT '',
     added_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 59: explicit "this project is in my Work Bag" membership,
+-- independent of task assignment. A project shows up in someone's Work
+-- Bag either because they have a task assigned on it (existing behavior)
+-- OR because they've explicitly added it here. Disposable preference, not
+-- a historical record -- deleted outright on cleanup, no TRASH_REGISTRY
+-- entry (matches permission_grants' precedent, not field_submissions').
+CREATE TABLE IF NOT EXISTS work_bag_members (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id           INTEGER NOT NULL REFERENCES projects(id),
+    household_member_id  INTEGER NOT NULL REFERENCES household_members(id),
+    added_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
 -- Piece 37: "Chores" — recurring household tasks, not tied to any project.
 -- A row is one recurring chore definition; completing it advances next_due
 -- by recurrence_days rather than generating a new row per occurrence.

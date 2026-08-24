@@ -455,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.35"
+VERSION = "0.36"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3328,6 +3328,14 @@ def dashboard():
         for s in sections:
             s["projects"] = [j for j in s["projects"] if j["id"] in child_project_ids]
 
+    # Piece 59: which active projects this member has explicitly loaded
+    # into their Work Bag, for the per-stage cards' 🎒 toggle button.
+    my_bag_project_ids = set()
+    if user is not None:
+        my_bag_project_ids = {r["project_id"] for r in db.execute(
+            "SELECT project_id FROM work_bag_members"
+            " WHERE household_member_id = ?", (user["id"],)).fetchall()}
+
     # Progress for every active project.
     progress_by_job = {}
     for j in active_projects:
@@ -3451,7 +3459,8 @@ def dashboard():
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
         gm=gm, closing_jobs=closing_jobs,
         schedule_buckets=schedule_buckets,
-        job_status_class=PROJECT_STATUS_CLASS)
+        job_status_class=PROJECT_STATUS_CLASS,
+        my_bag_project_ids=my_bag_project_ids)
 
 
 # ---------------------------- Piece 20: calendar (.ics) export ------------
@@ -6334,6 +6343,27 @@ def _my_tasks_rows(db, household_member_id):
         (household_member_id,)).fetchall()
 
 
+def _work_bag_task_rows(db, household_member_id):
+    """Piece 59: like _my_tasks_rows(), but also includes every task (any
+    assignee, including unassigned) on a project the member has explicitly
+    bagged (work_bag_members) -- not just tasks assigned to them. Selects
+    household_member_id + assignee name so the caller can tell "mine" from
+    "visible because the project is in my bag". For someone with no bagged
+    projects this is identical to _my_tasks_rows()."""
+    return db.execute(
+        "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
+        " t.pipeline_status, t.household_member_id, e.name AS assignee_name,"
+        " j.id AS project_id, j.job_name, j.install_date"
+        " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+        " LEFT JOIN household_members e ON e.id = t.household_member_id"
+        " WHERE j.status != 'Abandoned' AND (t.household_member_id = ?"
+        "  OR j.id IN (SELECT project_id FROM work_bag_members"
+        "              WHERE household_member_id = ?))"
+        " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
+        " j.id, (t.due_date = ''), t.due_date, t.id",
+        (household_member_id, household_member_id)).fetchall()
+
+
 def _to_float(v):
     try:
         return float(v)
@@ -6378,6 +6408,55 @@ def work_bag_job(project_id):
         my_receipts=my_receipts, receipt_categories=RECEIPT_CATEGORIES)
 
 
+@app.route("/work-bag/<int:project_id>/toggle", methods=["POST"])
+def work_bag_toggle(project_id):
+    """Piece 59: add/remove a project from the current user's Work Bag
+    directly, independent of task assignment."""
+    user = current_user()
+    if user is None:
+        abort(404)
+    db = get_db()
+    existing = db.execute(
+        "SELECT id FROM work_bag_members WHERE project_id = ? AND household_member_id = ?",
+        (project_id, user["id"])).fetchone()
+    if existing:
+        db.execute("DELETE FROM work_bag_members WHERE id = ?", (existing["id"],))
+        flash("Removed from your Work Bag.")
+    else:
+        db.execute(
+            "INSERT INTO work_bag_members (project_id, household_member_id) VALUES (?, ?)",
+            (project_id, user["id"]))
+        flash("Added to your Work Bag.")
+    db.commit()
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/work-bag/<int:project_id>/load-tasks", methods=["POST"])
+def work_bag_load_tasks(project_id):
+    """Piece 59: bulk-load -- ensures bag membership, then claims (assigns
+    to the current user) every currently-unassigned task on the project.
+    Tasks already assigned to someone else are left untouched -- they show
+    up read-only in the bag view via _work_bag_task_rows()'s membership join."""
+    user = current_user()
+    if user is None:
+        abort(404)
+    db = get_db()
+    if not db.execute(
+            "SELECT 1 FROM work_bag_members WHERE project_id = ? AND household_member_id = ?",
+            (project_id, user["id"])).fetchone():
+        db.execute(
+            "INSERT INTO work_bag_members (project_id, household_member_id) VALUES (?, ?)",
+            (project_id, user["id"]))
+    claimed = db.execute(
+        "UPDATE project_tasks SET household_member_id = ?,"
+        " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+        " WHERE project_id = ? AND household_member_id IS NULL",
+        (user["id"], project_id))
+    db.commit()
+    flash(f"Loaded into your Work Bag — claimed {claimed.rowcount} unassigned task(s).")
+    return redirect(request.referrer or url_for("dashboard"))
+
+
 @app.route("/api/my-tasks")
 def api_my_tasks():
     """The worker's assigned tasks, their still-pending field edits, and a
@@ -6386,7 +6465,7 @@ def api_my_tasks():
     if user is None:
         return jsonify({"error": "not signed in"}), 401
     db = get_db()
-    rows = _my_tasks_rows(db, user["id"])
+    rows = _work_bag_task_rows(db, user["id"])
     pend = db.execute(
         "SELECT i.task_id, i.new_status, i.new_notes"
         " FROM field_submission_items i"
@@ -6415,6 +6494,8 @@ def api_my_tasks():
         d["is_photo_step"] = _is_photo_step(r["title"])
         d["photos_url"] = url_for("task_photos", task_id=r["id"])
         d["photos"] = photos_by_task.get(str(r["id"]), [])
+        d["assigned_to_me"] = (r["household_member_id"] == user["id"])
+        d["assignee_name"] = r["assignee_name"]
         tasks_out.append(d)
     # Piece 22.0: the materials list for each project on the board, so installers can
     # load the truck before they leave. Keyed by project so the Work Bag can show it
@@ -7678,6 +7759,7 @@ def delete_household_member(household_member_id):
         db.execute("DELETE FROM permission_grants WHERE household_member_id = ?", (household_member_id,))
         db.execute("DELETE FROM password_requests WHERE household_member_id = ?", (household_member_id,))
         db.execute("DELETE FROM security_answers WHERE household_member_id = ?", (household_member_id,))
+        db.execute("DELETE FROM work_bag_members WHERE household_member_id = ?", (household_member_id,))
         for f in db.execute("SELECT stored_name FROM household_member_files"
                             " WHERE household_member_id = ?", (household_member_id,)).fetchall():
             (household_member_upload_dir(household_member_id) / f["stored_name"]).unlink(missing_ok=True)

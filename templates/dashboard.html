@@ -242,7 +242,7 @@
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>
-      <th>Project</th><th title="Certification/Permit/Prerequisite documents filed / required">Requirements</th><th>Target date</th><th style="min-width:200px;">Progress</th>
+      <th>Project</th><th title="Certification/Permit/Prerequisite documents filed / required">Requirements</th><th>Target date</th><th style="min-width:200px;">Progress</th>{% if user %}<th>Work Bag</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for j in s.projects %}
@@ -253,6 +253,21 @@
           {% if pc[1] %}<span class="badge {{ '' if pc[0] >= pc[1] else 'warn' }}">{{ pc[0] }}/{{ pc[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</a></td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
+        {% if user %}
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('work_bag_toggle', project_id=j['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn {{ '' if j['id'] in my_bag_project_ids else 'btn-secondary' }}"
+                    style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                    title="{{ 'Remove from your Work Bag' if j['id'] in my_bag_project_ids else 'Add to your Work Bag' }}">
+              🎒{{ ' ✓' if j['id'] in my_bag_project_ids else '' }}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('work_bag_load_tasks', project_id=j['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                    title="Add to your bag and claim its unassigned tasks">⬇ Load tasks</button>
+          </form>
+        </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>

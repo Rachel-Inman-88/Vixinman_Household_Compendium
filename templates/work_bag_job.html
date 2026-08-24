@@ -210,6 +210,23 @@ device, so it keeps working offline.</p>
     }
     const ph = photoBlock(t);
 
+    // Piece 59: tasks visible only because the project is in your bag (not
+    // actually assigned to you) are reference-only — no Submit/Block
+    // controls, since /api/work-bag/submit only accepts changes to tasks
+    // assigned to the submitter. A task from an older cached copy that
+    // predates this field (assigned_to_me undefined) is treated as yours,
+    // matching the API's pre-Piece-59 own-tasks-only behavior.
+    if (t.assigned_to_me === false) {
+      const b = document.createElement("div"); b.style.marginTop = "0.4rem";
+      const cls = t.status === "Done" ? "" : (t.status === "Blocked" ? "danger" : "neutral");
+      b.innerHTML = '<span class="badge ' + cls + '">' + esc(t.status) + '</span>' +
+        '<div class="muted" style="font-size:0.8rem; margin-top:0.3rem;">Assigned to ' +
+        esc(t.assignee_name || "no one yet") + ' — view only</div>';
+      card.appendChild(b);
+      if (ph) card.appendChild(ph);
+      return card;
+    }
+
     // Locked: already submitted (awaiting review) or approved-done.
     if (pending[t.id]) {
       const b = document.createElement("div"); b.style.marginTop = "0.4rem";
