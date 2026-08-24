@@ -322,17 +322,27 @@ button below isn't visible to you, you may not have access to it (ask an admin).
       catalog, and view the log.</li>
   </ol>
   <details><summary>What's the difference between Parent, Child, and Assistant?</summary>
-    <p>Each role now comes with a starting set of permissions: <strong>Parent</strong> gets everything except
-    Delete, <strong>Assistant</strong> gets an operational bundle (rules, inventory, approvals, projects — no
-    finances, household management, or the audit log), and <strong>Child</strong> gets none of the named
-    permissions by default (day-to-day features like Tasks, Boards, Chores, Appointments, and adding a Wishlist
-    item still work for everyone regardless). <strong>Admin</strong> is a separate flag, set explicitly per
-    person on their profile, independent of role.</p></details>
+    <p>Each role now comes with a starting set of permissions: <strong>Parent</strong> and
+    <strong>Assistant</strong> both get everything except Delete, and <strong>Child</strong> gets none of the
+    named permissions by default (day-to-day features like Tasks, Boards, Chores, Appointments, and adding a
+    Wishlist item still work for everyone regardless). <strong>Admin</strong> is a separate flag, set
+    explicitly per person on their profile, independent of role.</p>
+    <p>Assistant is different from Parent in one important way: it's meant for an <strong>AI agent's own
+    account</strong>. An Assistant can see everything a Parent can, but every change it tries to make is
+    captured as a draft on the <strong>🗒 Drafts</strong> page instead of happening right away — see below.</p></details>
   <details><summary>How are permissions granted?</summary>
     <p>Admins have full access except <strong>Delete</strong>, which always needs an explicit grant even for
     admins. Everyone else starts with their role's default bundle (above) and can be given more — or have
     something unchecked — individually on the <strong>Access</strong> page. Changing someone's role only ever
     adds their new role's defaults; it never removes a permission they already had.</p></details>
+  <details><summary>What is the 🗒 Drafts page?</summary>
+    <p>Anything an <strong>Assistant</strong>-role account tries to write — a new project, a rule, an
+    inventory item, a household member, a budget or project transaction (including a receipt or document
+    upload), or an approve/reject decision on a Wishlist item or Work Bag submission — lands here first,
+    never straight into the real data. Open <strong>🏠 Household → 🗒 Drafts</strong> to review each one:
+    <strong>Approve</strong> applies it for real (any attached file moves into normal storage), or
+    <strong>Discard</strong> throws it away (any attached file is deleted). Parent and Admin actions are
+    never drafted — this only applies to a signed-in Assistant.</p></details>
   <details><summary>Why can't my child see the Budget page or a project's Billing tab?</summary>
     <p>Household finances are hidden entirely from anyone without the <strong>Manage finances</strong>
     permission — not just locked to editing, like most other tools. A Child has none of it by default, so the

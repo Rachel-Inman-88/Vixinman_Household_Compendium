@@ -555,3 +555,24 @@ CREATE TABLE IF NOT EXISTS project_plan_messages (
     content    TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 52: a write an Assistant-role account attempted, held for a
+-- Parent/Admin to Approve (apply for real) or Discard. kind identifies which
+-- DRAFT_KINDS entry (app.py) knows how to apply it; ref_id is the existing
+-- row's id for an edit/status-change/recommendation draft, NULL for a new
+-- row. payload is the captured form fields as JSON (mirrors trash.payload's
+-- json.dumps precedent). file_stored_name is set only for the two kinds
+-- that carry an optional upload -- the name of the file sitting in
+-- draft_upload_dir() until Approve (moved) or Discard (deleted).
+CREATE TABLE IF NOT EXISTS drafts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind             TEXT NOT NULL,
+    ref_id           INTEGER,
+    payload          TEXT NOT NULL,
+    file_stored_name TEXT DEFAULT '',
+    created_by       INTEGER NOT NULL REFERENCES household_members(id),
+    status           TEXT NOT NULL DEFAULT 'Pending',
+    reviewed_by      TEXT DEFAULT '',
+    reviewed_at      TEXT DEFAULT '',
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);

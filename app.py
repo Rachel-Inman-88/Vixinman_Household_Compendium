@@ -19,6 +19,7 @@ import math
 import os
 import random
 import re
+import shutil
 import sqlite3
 import sys
 import threading
@@ -279,16 +280,16 @@ HOUSEHOLD_ROLES = ["Parent", "Child", "Assistant"]
 # permission_grants rows (see _seed_role_default_grants) rather than checked
 # live -- has_permission()/_has_grant() need no new code path. Admin (the
 # separate is_admin flag) already bypasses this entirely except "delete".
-# Assistant's bundle is deliberately narrow (no finances.manage/
-# household.manage/audit.view) -- it's reserved for the future "AI agent"
-# Assistant design, where writes will go through a drafts/approval layer
-# that doesn't exist yet; granting broad access now would let an
-# Assistant-role account write finances/household data directly with no
-# human in the loop.
+# Piece 52: Assistant's bundle now matches Parent (everything but delete) --
+# this is the account an AI agent runs under. Every write it makes through
+# any of these 7 permissions is intercepted by @draftable and becomes a
+# Pending row in `drafts` instead of a real write; a Parent/Admin approves
+# (applies for real) or discards it from /drafts. See DRAFT_KINDS below.
 ROLE_DEFAULT_PERMISSIONS = {
     "Parent": ["rules.manage", "inventory.manage", "household.manage",
                "approvals", "audit.view", "finances.manage", "projects.manage"],
-    "Assistant": ["rules.manage", "inventory.manage", "approvals", "projects.manage"],
+    "Assistant": ["rules.manage", "inventory.manage", "household.manage",
+                  "approvals", "audit.view", "finances.manage", "projects.manage"],
     "Child": [],
 }
 
@@ -440,7 +441,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.27"
+VERSION = "0.28"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -850,6 +851,7 @@ VIEW_PERMISSION = {
     "wishlist_approve": "approvals",
     "wishlist_reject": "approvals",
     "add_rule": "rules.manage",
+    "update_rule": "rules.manage",
     "delete_rule": "rules.manage",
     "accounts_page": "household.manage",
     "approve_password_change": "household.manage",
@@ -896,6 +898,11 @@ VIEW_PERMISSION = {
     "cancel_project": "projects.manage",
     "reopen_project": "projects.manage",
     "set_install_date": "projects.manage",
+    # Piece 52: the Drafts oversight page -- reuses "approvals" (the same
+    # "parental oversight of pending stuff" concept as Wishlist/Work Bag).
+    "drafts_page": "approvals",
+    "approve_draft": "approvals",
+    "discard_draft": "approvals",
 }
 
 
@@ -910,6 +917,39 @@ def admin_required(view):
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
+
+
+def draftable(kind, ref_id_kwarg=None):
+    """Piece 52: stacks under @admin_required. If this is a POST and the
+    signed-in user's role is "Assistant" (the account an AI agent runs
+    under), capture it as a Pending row in `drafts` instead of writing for
+    real -- validating first (via the kind's own capture()) so a clearly-bad
+    submission bounces back with the same error a live user would get,
+    never becoming a junk draft. Everyone else (and every GET) goes straight
+    through to the real view, unchanged."""
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            user = current_user()
+            if request.method == "POST" and user is not None and user["role"] == "Assistant":
+                spec = DRAFT_KINDS[kind]
+                payload, errors = spec["capture"](**kwargs)
+                if errors:
+                    flash(" ".join(errors), "error")
+                    return redirect(request.referrer or url_for("home"))
+                ref_id = kwargs.get(ref_id_kwarg) if ref_id_kwarg else None
+                stored_file = spec["save_file"]() if spec.get("save_file") else None
+                db = get_db()
+                db.execute(
+                    "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (kind, ref_id, json.dumps(payload), stored_file, user["id"]))
+                db.commit()
+                flash("Submitted for review — a parent will approve or discard it on the 🗒 Drafts page.")
+                return redirect(url_for("drafts_page"))
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
 
 
 def _meta_get(db, key, default=""):
@@ -927,6 +967,7 @@ def _meta_set(db, key, value):
 def inject_auth():
     user = current_user()
     pending = 0
+    pending_drafts = 0
     if has_permission("approvals"):
         try:
             db = get_db()
@@ -938,12 +979,18 @@ def inject_auth():
             pending += db.execute(
                 "SELECT COUNT(*) FROM wishlist_items WHERE status = 'Pending'"
             ).fetchone()[0]
+            # Piece 52: Assistant-role drafts, reviewed under the same
+            # "approvals" permission but shown as their own nav badge/link.
+            pending_drafts = db.execute(
+                "SELECT COUNT(*) FROM drafts WHERE status = 'Pending'"
+            ).fetchone()[0]
         except Exception:
             pending = 0
+            pending_drafts = 0
     return {"current_user": user, "login_active": accounts_exist(),
             "is_admin": _is_admin(), "can": has_permission,
             "unread_notifications": unread_notification_count(user),  # Piece 29.3
-            "pending_submissions": pending}
+            "pending_submissions": pending, "pending_drafts": pending_drafts}
 
 
 @app.route("/access")
@@ -2851,31 +2898,38 @@ def wishlist_edit(item_id):
     return redirect(url_for("wishlist_page"))
 
 
+def _apply_wishlist_review(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    cur = db.execute(
+        "UPDATE wishlist_items SET status = ?, reviewed_by = ?, reviewed_at = datetime('now')"
+        " WHERE id = ? AND status = 'Pending'", (payload["status"], actor_name, ref_id))
+    if cur.rowcount == 0:
+        return False, "That wishlist item is no longer pending.", None
+    return True, f"Wishlist item {payload['status'].lower()}.", None
+
+
 @app.route("/wishlist/<int:item_id>/approve", methods=["POST"])
 @admin_required
+@draftable("wishlist.approve", ref_id_kwarg="item_id")
 def wishlist_approve(item_id):
     db = get_db()
     who = current_user()
-    db.execute(
-        "UPDATE wishlist_items SET status = 'Approved', reviewed_by = ?,"
-        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
-        (who["name"] if who else "", item_id))
+    ok, message, _ = _apply_wishlist_review(
+        db, {"status": "Approved"}, item_id, who["name"] if who else "")
     db.commit()
-    flash("Wishlist item approved.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("wishlist_page"))
 
 
 @app.route("/wishlist/<int:item_id>/reject", methods=["POST"])
 @admin_required
+@draftable("wishlist.reject", ref_id_kwarg="item_id")
 def wishlist_reject(item_id):
     db = get_db()
     who = current_user()
-    db.execute(
-        "UPDATE wishlist_items SET status = 'Rejected', reviewed_by = ?,"
-        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
-        (who["name"] if who else "", item_id))
+    ok, message, _ = _apply_wishlist_review(
+        db, {"status": "Rejected"}, item_id, who["name"] if who else "")
     db.commit()
-    flash("Wishlist item rejected.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("wishlist_page"))
 
 
@@ -3500,6 +3554,45 @@ def household_upload_dir():
     return directory
 
 
+# ------------------------------------------------------- Piece 52: drafts
+def draft_upload_dir():
+    directory = UPLOADS_DIR / "drafts"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _save_draft_file(field_name):
+    """Save an Assistant's upload into draft-only holding, using the same
+    stored-name scheme as a live upload so Approve can move it verbatim."""
+    upload = request.files.get(field_name)
+    if upload is None or not upload.filename:
+        return None
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if ext not in (PHOTO_EXTENSIONS | {"pdf"}):
+        flash("Attachments should be a photo (JPG/PNG/HEIC) or a PDF — draft saved without it.", "error")
+        return None
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(upload.filename)}"
+    upload.save(draft_upload_dir() / stored)
+    return stored
+
+
+def _move_draft_file(stored_name, dest_dir, dest_name=None):
+    """Approve-time: move a pending draft file into its real destination."""
+    src = draft_upload_dir() / stored_name
+    if not src.exists():
+        return None
+    final_name = dest_name or stored_name
+    shutil.move(str(src), str(dest_dir / final_name))
+    return final_name
+
+
+def _discard_draft_file(stored_name):
+    try:
+        (draft_upload_dir() / stored_name).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 @app.route("/household-files")
 def household_files_page():
     files = get_db().execute(
@@ -3661,50 +3754,82 @@ def _save_household_receipt(existing_filename=""):
     return stored
 
 
+def _capture_household_txn(**_):
+    v = _household_txn_form_values()
+    return {"values": v}, ([] if v["amount"] else ["Enter an amount."])
+
+
+def _apply_household_txn(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    """`payload["receipt_filename"]`, if present, is a filename ALREADY saved
+    into household_upload_dir() by a live caller (via _save_household_receipt).
+    Otherwise, if draft_file_stored_name is set, it's moved here from
+    draft_upload_dir() (an Assistant's draft being approved)."""
+    v = payload["values"]
+    if ref_id is None:
+        if draft_file_stored_name:
+            receipt = _move_draft_file(draft_file_stored_name, household_upload_dir())
+        else:
+            receipt = payload.get("receipt_filename", "")
+        db.execute(
+            "INSERT INTO household_transactions (kind, category, description, amount,"
+            " txn_date, party, external_helper_id, reference, method,"
+            " receipt_filename, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
+             v["party"], v["external_helper_id"], v["reference"], v["method"],
+             receipt, actor_name))
+        return True, f"{v['kind']} recorded: ${v['amount']:,.2f}", None
+    txn = db.execute("SELECT receipt_filename FROM household_transactions WHERE id = ?",
+                     (ref_id,)).fetchone()
+    if txn is None:
+        return False, "That transaction no longer exists.", None
+    if draft_file_stored_name:
+        receipt = _move_draft_file(draft_file_stored_name, household_upload_dir())
+    else:
+        receipt = payload.get("receipt_filename", txn["receipt_filename"] or "")
+    db.execute(
+        "UPDATE household_transactions SET kind = ?, category = ?, description = ?,"
+        " amount = ?, txn_date = ?, party = ?, external_helper_id = ?,"
+        " reference = ?, method = ?, receipt_filename = ? WHERE id = ?",
+        (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
+         v["party"], v["external_helper_id"], v["reference"], v["method"], receipt, ref_id))
+    return True, "Transaction updated.", None
+
+
 @app.route("/budget/transactions/new", methods=["POST"])
 @admin_required
+@draftable("household_txn.new")
 def household_txn_new():
-    v = _household_txn_form_values()
-    if not v["amount"]:
-        flash("Enter an amount.", "error")
+    payload, errors = _capture_household_txn()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("household_budget_page"))
     db = get_db()
-    receipt = _save_household_receipt()
+    payload["receipt_filename"] = _save_household_receipt()
     me = current_user()
-    db.execute(
-        "INSERT INTO household_transactions (kind, category, description, amount,"
-        " txn_date, party, external_helper_id, reference, method,"
-        " receipt_filename, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
-         v["party"], v["external_helper_id"], v["reference"], v["method"],
-         receipt, me["name"] if me else ""))
+    ok, message, _ = _apply_household_txn(db, payload, None, me["name"] if me else "")
     db.commit()
-    flash(f"{v['kind']} recorded: ${v['amount']:,.2f}")
+    flash(message, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
 
 
 @app.route("/budget/transactions/<int:txn_id>/edit", methods=["POST"])
 @admin_required
+@draftable("household_txn.edit", ref_id_kwarg="txn_id")
 def household_txn_edit(txn_id):
     db = get_db()
     txn = db.execute("SELECT * FROM household_transactions WHERE id = ?",
                      (txn_id,)).fetchone()
     if txn is None:
         abort(404)
-    v = _household_txn_form_values()
-    if not v["amount"]:
-        flash("Enter an amount.", "error")
+    payload, errors = _capture_household_txn()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("household_budget_page", edit=txn_id))
-    receipt = _save_household_receipt(txn["receipt_filename"])
-    db.execute(
-        "UPDATE household_transactions SET kind = ?, category = ?, description = ?,"
-        " amount = ?, txn_date = ?, party = ?, external_helper_id = ?,"
-        " reference = ?, method = ?, receipt_filename = ? WHERE id = ?",
-        (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
-         v["party"], v["external_helper_id"], v["reference"], v["method"],
-         receipt, txn_id))
+    payload["receipt_filename"] = _save_household_receipt(txn["receipt_filename"])
+    actor = current_user()
+    ok, message, _ = _apply_household_txn(db, payload, txn_id, actor["name"] if actor else "")
     db.commit()
-    flash("Transaction updated.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
 
 
@@ -3728,40 +3853,60 @@ def download_household_receipt(txn_id):
     return send_from_directory(household_upload_dir(), txn["receipt_filename"])
 
 
-@app.route("/budget/categories/new", methods=["POST"])
-@admin_required
-def household_budget_new():
+def _capture_household_budget(**_):
     category = request.form.get("category", "").strip()
     amount = _to_float(request.form.get("monthly_amount")) or 0.0
-    if not category:
-        flash("A budget category needs a name.", "error")
+    payload = {"category": category, "monthly_amount": amount}
+    return payload, ([] if category else ["A budget category needs a name."])
+
+
+def _apply_household_budget(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    category, amount = payload["category"], payload["monthly_amount"]
+    if ref_id is None:
+        db.execute(
+            "INSERT INTO household_budgets (category, monthly_amount) VALUES (?, ?)",
+            (category, amount))
+        return True, f"Budget added: {category} — ${amount:,.2f}/month", None
+    if db.execute("SELECT 1 FROM household_budgets WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That budget category no longer exists.", None
+    db.execute(
+        "UPDATE household_budgets SET category = ?, monthly_amount = ? WHERE id = ?",
+        (category, amount, ref_id))
+    return True, "Budget updated.", None
+
+
+@app.route("/budget/categories/new", methods=["POST"])
+@admin_required
+@draftable("household_budget.new")
+def household_budget_new():
+    payload, errors = _capture_household_budget()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("household_budget_page"))
     db = get_db()
-    db.execute(
-        "INSERT INTO household_budgets (category, monthly_amount) VALUES (?, ?)",
-        (category, amount))
+    actor = current_user()
+    ok, message, _ = _apply_household_budget(db, payload, None, actor["name"] if actor else "")
     db.commit()
-    flash(f"Budget added: {category} — ${amount:,.2f}/month")
+    flash(message, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
 
 
 @app.route("/budget/categories/<int:budget_id>/edit", methods=["POST"])
 @admin_required
+@draftable("household_budget.edit", ref_id_kwarg="budget_id")
 def household_budget_edit(budget_id):
     db = get_db()
     if db.execute("SELECT 1 FROM household_budgets WHERE id = ?",
                   (budget_id,)).fetchone() is None:
         abort(404)
-    category = request.form.get("category", "").strip()
-    amount = _to_float(request.form.get("monthly_amount")) or 0.0
-    if not category:
-        flash("A budget category needs a name.", "error")
+    payload, errors = _capture_household_budget()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("household_budget_page", edit_budget=budget_id))
-    db.execute(
-        "UPDATE household_budgets SET category = ?, monthly_amount = ? WHERE id = ?",
-        (category, amount, budget_id))
+    actor = current_user()
+    ok, message, _ = _apply_household_budget(db, payload, budget_id, actor["name"] if actor else "")
     db.commit()
-    flash("Budget updated.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
 
 
@@ -3772,30 +3917,6 @@ def household_budget_delete(budget_id):
     ok, msg = trash_item("household_budget", budget_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
-
-
-@app.route("/projects/new", methods=["GET", "POST"])
-@admin_required
-def new_project():
-    db = get_db()
-    if request.method == "POST":
-        values, errors = read_project_form()
-        if errors:
-            flash(" ".join(errors), "error")
-            return render_project_form(values), 400
-        cur = db.execute(
-            f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)})"
-            f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))})",
-            [values[f] for f in PROJECT_FIELDS],
-        )
-        new_job_row = {"id": cur.lastrowid, "job_name": values["job_name"]}
-        actor = current_user()
-        notify_stage_turnover(db, new_job_row, DEFAULT_PROJECT_STATUS,
-                              exclude_id=actor["id"] if actor else None)
-        db.commit()
-        flash(f"Project created: {values['job_name']}")
-        return redirect(url_for("project_detail", project_id=cur.lastrowid))
-    return render_project_form({})
 
 
 def read_project_form():
@@ -3816,8 +3937,58 @@ def render_project_form(values, editing_job_id=None):
     )
 
 
+def _apply_new_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    values = payload["values"]
+    cur = db.execute(
+        f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)})"
+        f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))})",
+        [values[f] for f in PROJECT_FIELDS])
+    notify_stage_turnover(db, {"id": cur.lastrowid, "job_name": values["job_name"]},
+                          DEFAULT_PROJECT_STATUS, exclude_id=exclude_id)
+    return True, f"Project created: {values['job_name']}", cur.lastrowid
+
+
+def _apply_edit_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    values = payload["values"]
+    project = db.execute("SELECT * FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    snapshot = {f: project[f] for f in PROJECT_FIELDS}
+    version = db.execute(
+        "SELECT COALESCE(MAX(version), 0) + 1 FROM project_versions"
+        " WHERE project_id = ?", (ref_id,)).fetchone()[0]
+    db.execute(
+        "INSERT INTO project_versions (project_id, version, data) VALUES (?, ?, ?)",
+        (ref_id, version, json.dumps(snapshot)))
+    db.execute(
+        f"UPDATE projects SET {', '.join(f + ' = ?' for f in PROJECT_FIELDS)}"
+        " WHERE id = ?", [values[f] for f in PROJECT_FIELDS] + [ref_id])
+    return True, f"Project updated — the previous state was kept as version {version}.", ref_id
+
+
+@app.route("/projects/new", methods=["GET", "POST"])
+@admin_required
+@draftable("project.new")
+def new_project():
+    db = get_db()
+    if request.method == "POST":
+        values, errors = read_project_form()
+        if errors:
+            flash(" ".join(errors), "error")
+            return render_project_form(values), 400
+        actor = current_user()
+        ok, message, new_id = _apply_new_project(
+            db, {"values": values}, None, actor["name"] if actor else "",
+            exclude_id=actor["id"] if actor else None)
+        db.commit()
+        flash(message, "" if ok else "error")
+        return redirect(url_for("project_detail", project_id=new_id))
+    return render_project_form({})
+
+
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
 @admin_required
+@draftable("project.edit", ref_id_kwarg="project_id")
 def edit_project(project_id):
     db = get_db()
     project = fetch_project(project_id)
@@ -3826,22 +3997,11 @@ def edit_project(project_id):
         if errors:
             flash(" ".join(errors), "error")
             return render_project_form(values, editing_job_id=project_id), 400
-        # Keep the outgoing state for recordkeeping before overwriting.
-        snapshot = {f: project[f] for f in PROJECT_FIELDS}
-        version = db.execute(
-            "SELECT COALESCE(MAX(version), 0) + 1 FROM project_versions"
-            " WHERE project_id = ?", (project_id,)).fetchone()[0]
-        db.execute(
-            "INSERT INTO project_versions (project_id, version, data) VALUES (?, ?, ?)",
-            (project_id, version, json.dumps(snapshot)),
-        )
-        db.execute(
-            f"UPDATE projects SET {', '.join(f + ' = ?' for f in PROJECT_FIELDS)}"
-            " WHERE id = ?",
-            [values[f] for f in PROJECT_FIELDS] + [project_id],
-        )
+        actor = current_user()
+        ok, message, _ = _apply_edit_project(
+            db, {"values": values}, project_id, actor["name"] if actor else "")
         db.commit()
-        flash(f"Project updated — the previous state was kept as version {version}.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("project_detail", project_id=project_id))
     values = {f: project[f] for f in PROJECT_FIELDS}
     return render_project_form(values, editing_job_id=project_id)
@@ -3992,79 +4152,143 @@ def project_detail(project_id):
     )
 
 
+def _capture_contract(**_):
+    return {"contract_amount": _to_float(request.form.get("contract_amount")) or 0.0}, []
+
+
+def _apply_set_contract(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    project = db.execute("SELECT 1 FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
+               (payload["contract_amount"], ref_id))
+    return True, "Billing details updated.", None
+
+
 @app.route("/projects/<int:project_id>/contract", methods=["POST"])
 @admin_required
+@draftable("project.contract", ref_id_kwarg="project_id")
 def set_contract(project_id):
     fetch_project(project_id)
     db = get_db()
-    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
-               (_to_float(request.form.get("contract_amount")) or 0.0, project_id))
+    actor = current_user()
+    ok, message, _ = _apply_set_contract(
+        db, _capture_contract()[0], project_id, actor["name"] if actor else "")
     db.commit()
-    flash("Billing details updated.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
 
-@app.route("/projects/<int:project_id>/transactions/add", methods=["POST"])
-@admin_required
-def add_transaction(project_id):
-    fetch_project(project_id)
+def _capture_project_transaction(**_):
     kind = request.form.get("kind", "Expense")
-    kind = kind if kind in TXN_KINDS else "Expense"
     status = request.form.get("status", "Outstanding")
-    status = status if status in TXN_STATUSES else "Outstanding"
     doc_type = request.form.get("doc_type", "").strip()
-    doc_type = doc_type if doc_type in DOC_TYPES else ""
-    who = current_user()
-    db = get_db()
+    payload = {
+        "kind": kind if kind in TXN_KINDS else "Expense",
+        "status": status if status in TXN_STATUSES else "Outstanding",
+        "doc_type": doc_type if doc_type in DOC_TYPES else "",
+        "category": request.form.get("category", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "amount": _to_float(request.form.get("amount")) or 0.0,
+        "txn_date": request.form.get("txn_date", "").strip(),
+        "party": request.form.get("party", "").strip(),
+        "reference": request.form.get("reference", "").strip(),
+        "method": request.form.get("method", "").strip(),
+    }
+    return payload, []
+
+
+def _apply_project_transaction(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    """ref_id is the project_id -- this kind only ever creates a new row.
+    A live call's document (if any) is read straight from request.files (the
+    same request that's calling this); a draft-approval call instead moves
+    the file that was set aside in draft_upload_dir() at draft-creation time."""
+    project = db.execute("SELECT job_name FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    kind, status, doc_type = payload["kind"], payload["status"], payload["doc_type"]
     cur = db.execute(
         "INSERT INTO project_transactions"
         " (project_id, kind, category, description, amount, txn_date, status,"
         "  party, reference, method, doc_type, created_by)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (project_id, kind, request.form.get("category", "").strip(),
-         request.form.get("description", "").strip(),
-         _to_float(request.form.get("amount")) or 0.0,
-         request.form.get("txn_date", "").strip(), status,
-         request.form.get("party", "").strip(),
-         request.form.get("reference", "").strip(),
-         request.form.get("method", "").strip(), doc_type,
-         who["name"] if who else ""))
+        (ref_id, kind, payload["category"], payload["description"], payload["amount"],
+         payload["txn_date"], status, payload["party"], payload["reference"],
+         payload["method"], doc_type, actor_name))
     txn_id = cur.lastrowid
-    # Piece 28.2: optionally attach a source document (receipt / invoice / bill)
-    # uploaded from the device — filed against this transaction (txn_id) so it
-    # shows the 📎 link in the ledger and lands on the project's document record.
-    upload = request.files.get("document")
-    if upload is not None and upload.filename:
-        ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
-        if ext in (PHOTO_EXTENSIONS | {"pdf"}):
-            info = db.execute(
-                "SELECT job_name FROM projects WHERE id = ?", (project_id,)).fetchone()
-            label = doc_type or "Billing"
-            friendly = friendly_filename(
-                [info["job_name"], label], ext,
-                taken=_taken_names(db, "project_files", "original_name", "project_id", project_id))
-            stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
-            upload.save(project_upload_dir(project_id) / stored)
-            db.execute(
-                "INSERT INTO project_files"
-                " (project_id, rule_label, stored_name, original_name, txn_id)"
-                " VALUES (?, ?, ?, ?, ?)", (project_id, label, stored, friendly, txn_id))
-        else:
-            flash("Attachment skipped — it must be a photo (JPG/PNG/HEIC) or a PDF.", "error")
+    label = doc_type or "Billing"
+
+    def _file_project_files(stored, friendly):
+        db.execute(
+            "INSERT INTO project_files (project_id, rule_label, stored_name, original_name, txn_id)"
+            " VALUES (?, ?, ?, ?, ?)", (ref_id, label, stored, friendly, txn_id))
+
+    if draft_file_stored_name:
+        ext = draft_file_stored_name.rsplit(".", 1)[-1].lower() if "." in draft_file_stored_name else ""
+        friendly = friendly_filename(
+            [project["job_name"], label], ext,
+            taken=_taken_names(db, "project_files", "original_name", "project_id", ref_id))
+        new_stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+        _move_draft_file(draft_file_stored_name, project_upload_dir(ref_id), new_stored)
+        _file_project_files(new_stored, friendly)
+    else:
+        # Piece 28.2: optionally attach a source document (receipt / invoice /
+        # bill) uploaded from the device — filed against this transaction
+        # (txn_id) so it shows the 📎 link in the ledger.
+        upload = request.files.get("document")
+        if upload is not None and upload.filename:
+            ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+            if ext in (PHOTO_EXTENSIONS | {"pdf"}):
+                friendly = friendly_filename(
+                    [project["job_name"], label], ext,
+                    taken=_taken_names(db, "project_files", "original_name", "project_id", ref_id))
+                stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+                upload.save(project_upload_dir(ref_id) / stored)
+                _file_project_files(stored, friendly)
+            else:
+                flash("Attachment skipped — it must be a photo (JPG/PNG/HEIC) or a PDF.", "error")
+    return True, f"{doc_type or kind} recorded.", None
+
+
+@app.route("/projects/<int:project_id>/transactions/add", methods=["POST"])
+@admin_required
+@draftable("project_txn.add", ref_id_kwarg="project_id")
+def add_transaction(project_id):
+    fetch_project(project_id)
+    payload, _errors = _capture_project_transaction()
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_project_transaction(
+        db, payload, project_id, actor["name"] if actor else "")
     db.commit()
-    flash(f"{doc_type or kind} recorded.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
+
+
+def _capture_toggle_paid(project_id=None, **_):
+    return {"project_id": project_id}, []
+
+
+def _apply_toggle_transaction_paid(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    project_id = payload["project_id"]
+    row = db.execute("SELECT status FROM project_transactions WHERE id = ? AND project_id = ?",
+                     (ref_id, project_id)).fetchone()
+    if row is None:
+        return False, "That transaction no longer exists.", None
+    db.execute("UPDATE project_transactions SET status = ? WHERE id = ? AND project_id = ?",
+               ("Outstanding" if row["status"] == "Paid" else "Paid", ref_id, project_id))
+    return True, "Payment status updated.", None
 
 
 @app.route("/projects/<int:project_id>/transactions/<int:txn_id>/paid", methods=["POST"])
 @admin_required
+@draftable("project_txn.toggle_paid", ref_id_kwarg="txn_id")
 def toggle_transaction_paid(project_id, txn_id):
     db = get_db()
-    row = db.execute("SELECT status FROM project_transactions WHERE id = ? AND project_id = ?",
-                     (txn_id, project_id)).fetchone()
-    if row:
-        db.execute("UPDATE project_transactions SET status = ? WHERE id = ? AND project_id = ?",
-                   ("Outstanding" if row["status"] == "Paid" else "Paid", txn_id, project_id))
+    actor = current_user()
+    ok, message, _ = _apply_toggle_transaction_paid(
+        db, {"project_id": project_id}, txn_id, actor["name"] if actor else "")
+    if ok:
         db.commit()
     return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
 
@@ -4231,17 +4455,16 @@ def _inventory_form_values():
     }
 
 
-@app.route("/inventory/items/new", methods=["GET", "POST"])
-@admin_required
-def inventory_item_new():
-    """Add a new inventory item (the per-category "New item" button preselects
-    the category)."""
-    db = get_db()
-    if request.method == "POST":
-        v = _inventory_form_values()
-        if not v["category"] or not (v["make"] or v["model"]):
-            flash("Category and a make or model are required.", "error")
-            return redirect(url_for("inventory_item_new", category=v["category"]))
+def _capture_inventory_item(**_):
+    v = _inventory_form_values()
+    errors = [] if (v["category"] and (v["make"] or v["model"])) else \
+        ["Category and a make or model are required."]
+    return {"values": v}, errors
+
+
+def _apply_inventory_item(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
         db.execute(
             "INSERT INTO inventory_items (category, make, model, description,"
             " purchased_from, cost, purchase_url, manual_url, quantity, notes)"
@@ -4249,9 +4472,36 @@ def inventory_item_new():
             (v["category"], v["make"], v["model"], v["description"],
              v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
              v["quantity"], v["notes"]))
+        return True, f"Added {v['make']} {v['model']}.".strip(), None
+    if db.execute("SELECT 1 FROM inventory_items WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That inventory item no longer exists.", None
+    db.execute(
+        "UPDATE inventory_items SET category = ?, make = ?, model = ?,"
+        " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
+        " manual_url = ?, quantity = ?, notes = ? WHERE id = ?",
+        (v["category"], v["make"], v["model"], v["description"],
+         v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+         v["quantity"], v["notes"], ref_id))
+    return True, "Item updated.", None
+
+
+@app.route("/inventory/items/new", methods=["GET", "POST"])
+@admin_required
+@draftable("inventory.item.new")
+def inventory_item_new():
+    """Add a new inventory item (the per-category "New item" button preselects
+    the category)."""
+    db = get_db()
+    if request.method == "POST":
+        payload, errors = _capture_inventory_item()
+        if errors:
+            flash(" ".join(errors), "error")
+            return redirect(url_for("inventory_item_new", category=payload["values"]["category"]))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_item(db, payload, None, actor["name"] if actor else "")
         db.commit()
-        flash(f"Added {v['make']} {v['model']}.".strip())
-        return redirect(url_for("inventory_page", _anchor=v["category"]))
+        flash(message, "" if ok else "error")
+        return redirect(url_for("inventory_page", _anchor=payload["values"]["category"]))
     category = request.args.get("category", "")
     return render_template(
         "inventory_item_form.html", item=None, category=category,
@@ -4260,6 +4510,7 @@ def inventory_item_new():
 
 @app.route("/inventory/items/<int:item_id>/edit", methods=["GET", "POST"])
 @admin_required
+@draftable("inventory.item.edit", ref_id_kwarg="item_id")
 def inventory_item_edit(item_id):
     """Update an existing inventory item in place."""
     db = get_db()
@@ -4269,15 +4520,11 @@ def inventory_item_edit(item_id):
         abort(404)
     if request.method == "POST":
         v = _inventory_form_values()
-        db.execute(
-            "UPDATE inventory_items SET category = ?, make = ?, model = ?,"
-            " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
-            " manual_url = ?, quantity = ?, notes = ? WHERE id = ?",
-            (v["category"], v["make"], v["model"], v["description"],
-             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
-             v["quantity"], v["notes"], item_id))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_item(
+            db, {"values": v}, item_id, actor["name"] if actor else "")
         db.commit()
-        flash("Item updated.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("inventory_page", _anchor=v["category"]))
     return render_template(
         "inventory_item_form.html", item=dict(row), category=row["category"],
@@ -4310,16 +4557,14 @@ def _tool_form_values():
     }
 
 
-@app.route("/inventory/tools/new", methods=["GET", "POST"])
-@admin_required
-def inventory_tool_new():
-    """Add a tool to the kit from inside the app."""
-    db = get_db()
-    if request.method == "POST":
-        v = _tool_form_values()
-        if not v["name"]:
-            flash("A tool name is required.", "error")
-            return redirect(url_for("inventory_tool_new"))
+def _capture_inventory_tool(**_):
+    v = _tool_form_values()
+    return {"values": v}, ([] if v["name"] else ["A tool name is required."])
+
+
+def _apply_inventory_tool(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
         db.execute(
             "INSERT INTO inventory_tools (name, category, make, model, description,"
             " purchased_from, cost, purchase_url, manual_url, notes)"
@@ -4327,14 +4572,41 @@ def inventory_tool_new():
             (v["name"], v["category"], v["make"], v["model"], v["description"],
              v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
              v["notes"]))
+        return True, f"Added tool: {v['name']}.", None
+    if db.execute("SELECT 1 FROM inventory_tools WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That tool no longer exists.", None
+    db.execute(
+        "UPDATE inventory_tools SET name = ?, category = ?, make = ?, model = ?,"
+        " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
+        " manual_url = ?, notes = ? WHERE id = ?",
+        (v["name"], v["category"], v["make"], v["model"], v["description"],
+         v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
+         v["notes"], ref_id))
+    return True, "Tool updated.", None
+
+
+@app.route("/inventory/tools/new", methods=["GET", "POST"])
+@admin_required
+@draftable("inventory.tool.new")
+def inventory_tool_new():
+    """Add a tool to the kit from inside the app."""
+    db = get_db()
+    if request.method == "POST":
+        payload, errors = _capture_inventory_tool()
+        if errors:
+            flash(" ".join(errors), "error")
+            return redirect(url_for("inventory_tool_new"))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_tool(db, payload, None, actor["name"] if actor else "")
         db.commit()
-        flash(f"Added tool: {v['name']}.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("inventory_page", _anchor="tools"))
     return render_template("inventory_tool_form.html", tool=None)
 
 
 @app.route("/inventory/tools/<int:tool_id>/edit", methods=["GET", "POST"])
 @admin_required
+@draftable("inventory.tool.edit", ref_id_kwarg="tool_id")
 def inventory_tool_edit(tool_id):
     """Update a tool in place."""
     db = get_db()
@@ -4343,15 +4615,11 @@ def inventory_tool_edit(tool_id):
         abort(404)
     if request.method == "POST":
         v = _tool_form_values()
-        db.execute(
-            "UPDATE inventory_tools SET name = ?, category = ?, make = ?, model = ?,"
-            " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
-            " manual_url = ?, notes = ? WHERE id = ?",
-            (v["name"], v["category"], v["make"], v["model"], v["description"],
-             v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
-             v["notes"], tool_id))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_tool(
+            db, {"values": v}, tool_id, actor["name"] if actor else "")
         db.commit()
-        flash("Tool updated.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("inventory_page", _anchor="tools"))
     return render_template("inventory_tool_form.html", tool=dict(row))
 
@@ -4384,16 +4652,14 @@ def _vehicle_form_values():
     }
 
 
-@app.route("/inventory/vehicles/new", methods=["GET", "POST"])
-@admin_required
-def inventory_vehicle_new():
-    """Add a vehicle to the household's registry."""
-    db = get_db()
-    if request.method == "POST":
-        v = _vehicle_form_values()
-        if not v["name"]:
-            flash("A vehicle name is required.", "error")
-            return redirect(url_for("inventory_vehicle_new"))
+def _capture_inventory_vehicle(**_):
+    v = _vehicle_form_values()
+    return {"values": v}, ([] if v["name"] else ["A vehicle name is required."])
+
+
+def _apply_inventory_vehicle(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
         db.execute(
             "INSERT INTO inventory_vehicles (name, nickname, category, make, model,"
             " year, description, purchased_from, cost, purchase_url, manual_url, notes)"
@@ -4401,14 +4667,41 @@ def inventory_vehicle_new():
             (v["name"], v["nickname"], v["category"], v["make"], v["model"],
              v["year"], v["description"], v["purchased_from"], v["cost"],
              v["purchase_url"], v["manual_url"], v["notes"]))
+        return True, f"Added: {v['name']}.", None
+    if db.execute("SELECT 1 FROM inventory_vehicles WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That vehicle no longer exists.", None
+    db.execute(
+        "UPDATE inventory_vehicles SET name = ?, nickname = ?, category = ?,"
+        " make = ?, model = ?, year = ?, description = ?, purchased_from = ?,"
+        " cost = ?, purchase_url = ?, manual_url = ?, notes = ? WHERE id = ?",
+        (v["name"], v["nickname"], v["category"], v["make"], v["model"],
+         v["year"], v["description"], v["purchased_from"], v["cost"],
+         v["purchase_url"], v["manual_url"], v["notes"], ref_id))
+    return True, "Vehicle updated.", None
+
+
+@app.route("/inventory/vehicles/new", methods=["GET", "POST"])
+@admin_required
+@draftable("inventory.vehicle.new")
+def inventory_vehicle_new():
+    """Add a vehicle to the household's registry."""
+    db = get_db()
+    if request.method == "POST":
+        payload, errors = _capture_inventory_vehicle()
+        if errors:
+            flash(" ".join(errors), "error")
+            return redirect(url_for("inventory_vehicle_new"))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_vehicle(db, payload, None, actor["name"] if actor else "")
         db.commit()
-        flash(f"Added: {v['name']}.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("inventory_page", _anchor="vehicles"))
     return render_template("inventory_vehicle_form.html", vehicle=None)
 
 
 @app.route("/inventory/vehicles/<int:vehicle_id>/edit", methods=["GET", "POST"])
 @admin_required
+@draftable("inventory.vehicle.edit", ref_id_kwarg="vehicle_id")
 def inventory_vehicle_edit(vehicle_id):
     """Update a vehicle in place."""
     db = get_db()
@@ -4418,15 +4711,11 @@ def inventory_vehicle_edit(vehicle_id):
         abort(404)
     if request.method == "POST":
         v = _vehicle_form_values()
-        db.execute(
-            "UPDATE inventory_vehicles SET name = ?, nickname = ?, category = ?,"
-            " make = ?, model = ?, year = ?, description = ?, purchased_from = ?,"
-            " cost = ?, purchase_url = ?, manual_url = ?, notes = ? WHERE id = ?",
-            (v["name"], v["nickname"], v["category"], v["make"], v["model"],
-             v["year"], v["description"], v["purchased_from"], v["cost"],
-             v["purchase_url"], v["manual_url"], v["notes"], vehicle_id))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_vehicle(
+            db, {"values": v}, vehicle_id, actor["name"] if actor else "")
         db.commit()
-        flash("Vehicle updated.")
+        flash(message, "" if ok else "error")
         return redirect(url_for("inventory_page", _anchor="vehicles"))
     return render_template("inventory_vehicle_form.html", vehicle=dict(row))
 
@@ -4439,101 +4728,140 @@ def inventory_vehicle_delete(vehicle_id):
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="vehicles"))
 
-@app.route("/projects/<int:project_id>/status", methods=["POST"])
-@admin_required
-def set_project_status(project_id):
-    project = fetch_project(project_id)
+def _capture_project_status(**_):
     status = request.form.get("status", "")
     if status == "Abandoned":
-        # Piece 30.2: cancelling goes through the reason flow, never the plain
-        # stage dropdown.
-        flash("Use “Cancel project” to mark a project Abandoned (a reason is required).", "error")
+        return None, ["Use “Cancel project” to mark a project Abandoned (a reason is required)."]
+    if status not in PROJECT_STATUSES:
+        return None, ["Not a valid stage."]
+    return {"status": status}, []
+
+
+def _apply_set_project_status(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    project = db.execute("SELECT * FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    status = payload["status"]
+    cur = project["status"] or DEFAULT_PROJECT_STATUS
+    warn = ""
+    if status == next_stage(cur):
+        rules = db.execute("SELECT * FROM resource_rules").fetchall()
+        groups = group_rules(match_rules(project, rules))
+        filed = {f["rule_label"] for f in db.execute(
+            "SELECT rule_label FROM project_files WHERE project_id = ?", (ref_id,))
+            if f["rule_label"]}
+        info = stage_info(db, project, groups, filed)
+        if not info["ready"]:
+            warn = " · ".join(info["pending"])
+    db.execute("UPDATE projects SET status = ? WHERE id = ?", (status, ref_id))
+    moved_forward = (status != cur and status in STAGE_ORDER
+                     and (cur not in STAGE_ORDER
+                          or STAGE_ORDER.index(status) > STAGE_ORDER.index(cur)))
+    if moved_forward:
+        notify_stage_turnover(db, project, status, exclude_id=exclude_id)
+    if warn:
+        return True, f"Advanced to {status} with {cur} still pending: {warn}.", None
+    return True, f"Advanced to {status}.", None
+
+
+@app.route("/projects/<int:project_id>/status", methods=["POST"])
+@admin_required
+@draftable("project.status", ref_id_kwarg="project_id")
+def set_project_status(project_id):
+    fetch_project(project_id)
+    payload, errors = _capture_project_status()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    if status in PROJECT_STATUSES:
-        db = get_db()
-        # Flexible guardrail: if advancing to the next stage before the current
-        # one is complete, allow it but note what was still pending.
-        cur = project["status"] or DEFAULT_PROJECT_STATUS
-        warn = ""
-        if status == next_stage(cur):
-            rules = db.execute("SELECT * FROM resource_rules").fetchall()
-            groups = group_rules(match_rules(project, rules))
-            filed = {f["rule_label"] for f in db.execute(
-                "SELECT rule_label FROM project_files WHERE project_id = ?", (project_id,))
-                if f["rule_label"]}
-            info = stage_info(db, project, groups, filed)
-            if not info["ready"]:
-                warn = " · ".join(info["pending"])
-        db.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
-        # Piece 29.4: on a forward turnover, notify the household.
-        moved_forward = (status != cur and status in STAGE_ORDER
-                         and (cur not in STAGE_ORDER
-                              or STAGE_ORDER.index(status) > STAGE_ORDER.index(cur)))
-        if moved_forward:
-            actor = current_user()
-            notify_stage_turnover(db, project, status,
-                                  exclude_id=actor["id"] if actor else None)
-        db.commit()
-        if warn:
-            flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_set_project_status(
+        db, payload, project_id, actor["name"] if actor else "",
+        exclude_id=actor["id"] if actor else None)
+    db.commit()
+    if not ok or "still pending" in message:
+        flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
-@app.route("/projects/<int:project_id>/cancel", methods=["POST"])
-@admin_required
-def cancel_project(project_id):
-    """Piece 30.2: cancel a project — mark it Abandoned with a required reason
-    (captured in the audit log), remembering the current stage so it can be
-    reopened. The project's open tasks stop showing in My Tasks / the board /
-    Work Bag while it's Abandoned, but nothing is deleted."""
-    project = fetch_project(project_id)
+def _capture_cancel_project(**_):
     reason = request.form.get("reason", "").strip()
     if not reason:
-        flash("A reason is required to cancel a project.", "error")
-        return redirect(url_for("project_detail", project_id=project_id))
+        return None, ["A reason is required to cancel a project."]
+    return {"reason": reason}, []
+
+
+def _apply_cancel_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    """Piece 30.2: cancel a project — mark it Abandoned with a required
+    reason, remembering the current stage so it can be reopened."""
+    project = db.execute("SELECT * FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
     if (project["status"] or "") == "Abandoned":
-        flash("This project is already cancelled.")
-        return redirect(url_for("project_detail", project_id=project_id))
-    db = get_db()
-    who = current_user()
+        return True, "This project is already cancelled.", None
+    reason = payload["reason"]
     db.execute(
         "UPDATE projects SET pre_lost_status = ?, status = 'Abandoned', cancel_reason = ?,"
         " cancelled_at = ?, cancelled_by = ? WHERE id = ?",
         (project["status"] or DEFAULT_PROJECT_STATUS, reason,
-         datetime.now().isoformat(timespec="seconds"),
-         who["name"] if who else "", project_id))
-    # Piece 30.3: tell everyone who was involved in the project up to this point.
-    recipients = project_involved_ids(db, project, exclude_id=who["id"] if who else None)
+         datetime.now().isoformat(timespec="seconds"), actor_name, ref_id))
+    recipients = project_involved_ids(db, project, exclude_id=exclude_id)
     if recipients:
         jobname = project["job_name"] or f"Project #{project['id']}"
         notify_employees(
             db, recipients,
             f"🚫 {jobname} was cancelled (Abandoned). Reason: “{reason}”.",
             link=url_for("project_detail", project_id=project["id"]), kind="job_cancelled")
+    return True, (f"Project cancelled (Abandoned). Reason recorded: “{reason}”."
+                 + (f" {len(recipients)} team member(s) notified." if recipients else "")), None
+
+
+@app.route("/projects/<int:project_id>/cancel", methods=["POST"])
+@admin_required
+@draftable("project.cancel", ref_id_kwarg="project_id")
+def cancel_project(project_id):
+    fetch_project(project_id)
+    payload, errors = _capture_cancel_project()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_cancel_project(
+        db, payload, project_id, actor["name"] if actor else "",
+        exclude_id=actor["id"] if actor else None)
     db.commit()
-    flash(f"Project cancelled (Abandoned). Reason recorded: “{reason}”."
-          + (f" {len(recipients)} team member(s) notified." if recipients else ""))
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id))
+
+
+def _apply_reopen_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    """Piece 30.2: reopen a cancelled project — restore the stage it was at
+    before it was marked Abandoned and clear the cancellation info."""
+    project = db.execute("SELECT * FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    if (project["status"] or "") != "Abandoned":
+        return False, "Only a cancelled (Abandoned) project can be reopened.", None
+    prev = (project["pre_lost_status"] if "pre_lost_status" in project.keys() else "") or ""
+    restore = prev if prev in STAGE_ORDER else DEFAULT_PROJECT_STATUS
+    db.execute(
+        "UPDATE projects SET status = ?, cancel_reason = '', cancelled_at = '',"
+        " cancelled_by = '', pre_lost_status = '' WHERE id = ?", (restore, ref_id))
+    return True, f"Project reopened at {restore}.", None
 
 
 @app.route("/projects/<int:project_id>/reopen", methods=["POST"])
 @admin_required
+@draftable("project.reopen", ref_id_kwarg="project_id")
 def reopen_project(project_id):
-    """Piece 30.2: reopen a cancelled project — restore the stage it was at before
-    it was marked Abandoned (its tasks reappear) and clear the cancellation
-    info."""
-    project = fetch_project(project_id)
-    if (project["status"] or "") != "Abandoned":
-        flash("Only a cancelled (Abandoned) project can be reopened.", "error")
-        return redirect(url_for("project_detail", project_id=project_id))
-    prev = (project["pre_lost_status"] if "pre_lost_status" in project.keys() else "") or ""
-    restore = prev if prev in STAGE_ORDER else DEFAULT_PROJECT_STATUS
+    fetch_project(project_id)
     db = get_db()
-    db.execute(
-        "UPDATE projects SET status = ?, cancel_reason = '', cancelled_at = '',"
-        " cancelled_by = '', pre_lost_status = '' WHERE id = ?", (restore, project_id))
+    actor = current_user()
+    ok, message, _ = _apply_reopen_project(
+        db, {}, project_id, actor["name"] if actor else "")
     db.commit()
-    flash(f"Project reopened at {restore}.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -4567,19 +4895,34 @@ def projects_list():
                            job_status_class=PROJECT_STATUS_CLASS)
 
 
+def _capture_install_date(**_):
+    return {"install_date": request.form.get("install_date", "").strip()}, []
+
+
+def _apply_set_install_date(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    project = db.execute("SELECT 1 FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    date = payload["install_date"]
+    db.execute("UPDATE projects SET install_date = ? WHERE id = ?", (date, ref_id))
+    return True, ("Target date saved." if date else "Target date cleared."), None
+
+
 @app.route("/projects/<int:project_id>/install-date", methods=["POST"])
 @admin_required
+@draftable("project.install_date", ref_id_kwarg="project_id")
 def set_install_date(project_id):
     """Set (or clear) the project's target/completion date. Piece 41: this used
     to auto-advance Prep -> In Progress once permits were filed too (an
     install-job-specific handoff) — that gating is gone, so this just saves
     the date."""
-    project = fetch_project(project_id)
+    fetch_project(project_id)
     db = get_db()
-    date = request.form.get("install_date", "").strip()
-    db.execute("UPDATE projects SET install_date = ? WHERE id = ?", (date, project_id))
+    actor = current_user()
+    ok, message, _ = _apply_set_install_date(
+        db, _capture_install_date()[0], project_id, actor["name"] if actor else "")
     db.commit()
-    flash("Target date saved." if date else "Target date cleared.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -5212,24 +5555,22 @@ def submissions_page():
                            show=show)
 
 
-@app.route("/submissions/<int:sub_id>/approve", methods=["POST"])
-@admin_required
-def approve_submission(sub_id):
-    db = get_db()
-    sub = db.execute(
-        "SELECT * FROM field_submissions WHERE id = ? AND status = 'Pending'",
-        (sub_id,)).fetchone()
+def _capture_submission_approval(**_):
+    return {"approved_hours": _to_float(request.form.get("approved_hours"))}, []
+
+
+def _apply_submission_approval(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    sub = db.execute("SELECT * FROM field_submissions WHERE id = ? AND status = 'Pending'",
+                     (ref_id,)).fetchone()
     if sub is None:
-        flash("Submission not found or already reviewed.", "error")
-        return redirect(url_for("submissions_page"))
-    approved_hours = _to_float(request.form.get("approved_hours"))
+        return False, "Submission not found or already reviewed.", None
+    approved_hours = payload.get("approved_hours")
     if approved_hours is None:
         approved_hours = sub["reported_hours"]
-    who = current_user()
     # Now — and only now — apply the field edits to the authoritative tasks.
     for it in db.execute(
             "SELECT * FROM field_submission_items WHERE submission_id = ?",
-            (sub_id,)).fetchall():
+            (ref_id,)).fetchall():
         row = db.execute("SELECT * FROM project_tasks WHERE id = ?",
                          (it["task_id"],)).fetchone()
         if row is None:
@@ -5246,23 +5587,42 @@ def approve_submission(sub_id):
     db.execute(
         "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"
         " reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?",
-        (approved_hours, who["name"] if who else "", sub_id))
+        (approved_hours, actor_name, ref_id))
+    return True, "Submission approved — task changes applied and hours logged.", None
+
+
+@app.route("/submissions/<int:sub_id>/approve", methods=["POST"])
+@admin_required
+@draftable("submission.approve", ref_id_kwarg="sub_id")
+def approve_submission(sub_id):
+    db = get_db()
+    payload, _errors = _capture_submission_approval()
+    who = current_user()
+    ok, message, _ = _apply_submission_approval(
+        db, payload, sub_id, who["name"] if who else "")
     db.commit()
-    flash("Submission approved — task changes applied and hours logged.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("submissions_page"))
+
+
+def _apply_submission_rejection(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    cur = db.execute(
+        "UPDATE field_submissions SET status = 'Rejected', reviewed_by = ?,"
+        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'", (actor_name, ref_id))
+    if cur.rowcount == 0:
+        return False, "Submission not found or already reviewed.", None
+    return True, "Submission rejected — no changes were applied.", None
 
 
 @app.route("/submissions/<int:sub_id>/reject", methods=["POST"])
 @admin_required
+@draftable("submission.reject", ref_id_kwarg="sub_id")
 def reject_submission(sub_id):
     who = current_user()
     db = get_db()
-    db.execute(
-        "UPDATE field_submissions SET status = 'Rejected', reviewed_by = ?,"
-        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
-        (who["name"] if who else "", sub_id))
+    ok, message, _ = _apply_submission_rejection(db, {}, sub_id, who["name"] if who else "")
     db.commit()
-    flash("Submission rejected — no changes were applied.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("submissions_page"))
 
 
@@ -5648,64 +6008,71 @@ def _rule_form_errors(standalone, v):
     return None
 
 
-@app.route("/rules/new", methods=["POST"])
-@admin_required
-def add_rule():
-    from_job = request.form.get("from_job") or None
+_RULE_COLUMNS = [
+    "field_name", "field_value", "match_type", "category", "label", "url",
+    "phone", "notes", "field_name2", "field_value2", "match_type2",
+    "link_text", "allowed_formats", "source_text", "verify_status",
+    "est_cost", "est_time", "maintenance_note", "household_member_id",
+    "recurrence_days", "next_due",
+]
+
+
+def _capture_rule(**_):
     standalone, v = _rule_form_values()
     error = _rule_form_errors(standalone, v)
-    if error:
-        flash(error, "error")
+    return {"values": v}, ([error] if error else [])
+
+
+def _apply_rule(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
+        db.execute(
+            f"INSERT INTO resource_rules ({', '.join(_RULE_COLUMNS)})"
+            f" VALUES ({', '.join('?' * len(_RULE_COLUMNS))})",
+            [v[c] for c in _RULE_COLUMNS])
+        return True, f"Rule added: {v['label']}", None
+    if db.execute("SELECT 1 FROM resource_rules WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That rule no longer exists.", None
+    db.execute(
+        f"UPDATE resource_rules SET {', '.join(c + ' = ?' for c in _RULE_COLUMNS)} WHERE id = ?",
+        [v[c] for c in _RULE_COLUMNS] + [ref_id])
+    return True, f"Rule updated: {v['label']}", None
+
+
+@app.route("/rules/new", methods=["POST"])
+@admin_required
+@draftable("rule.new")
+def add_rule():
+    from_job = request.form.get("from_job") or None
+    payload, errors = _capture_rule()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("rules_page", from_job=from_job))
     db = get_db()
-    db.execute(
-        "INSERT INTO resource_rules"
-        " (field_name, field_value, match_type, category, label, url, phone, notes,"
-        "  field_name2, field_value2, match_type2, link_text, allowed_formats,"
-        "  source_text, verify_status, est_cost, est_time, maintenance_note,"
-        "  household_member_id, recurrence_days, next_due)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (v["field_name"], v["field_value"], v["match_type"], v["category"],
-         v["label"], v["url"], v["phone"], v["notes"], v["field_name2"],
-         v["field_value2"], v["match_type2"], v["link_text"],
-         v["allowed_formats"], v["source_text"], v["verify_status"],
-         v["est_cost"], v["est_time"], v["maintenance_note"],
-         v["household_member_id"], v["recurrence_days"], v["next_due"]),
-    )
+    actor = current_user()
+    ok, message, _ = _apply_rule(db, payload, None, actor["name"] if actor else "")
     db.commit()
-    flash(f"Rule added: {v['label']}")
+    flash(message, "" if ok else "error")
     return redirect(url_for("rules_page", from_job=from_job))
 
 
 @app.route("/rules/<int:rule_id>/edit", methods=["POST"])
 @admin_required
+@draftable("rule.edit", ref_id_kwarg="rule_id")
 def update_rule(rule_id):
     db = get_db()
     if db.execute("SELECT 1 FROM resource_rules WHERE id = ?",
                   (rule_id,)).fetchone() is None:
         abort(404)
     from_job = request.form.get("from_job") or None
-    standalone, v = _rule_form_values()
-    error = _rule_form_errors(standalone, v)
-    if error:
-        flash(error, "error")
+    payload, errors = _capture_rule()
+    if errors:
+        flash(" ".join(errors), "error")
         return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
-    db.execute(
-        "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
-        " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
-        " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?,"
-        " source_text = ?, verify_status = ?, est_cost = ?, est_time = ?,"
-        " maintenance_note = ?, household_member_id = ?, recurrence_days = ?,"
-        " next_due = ? WHERE id = ?",
-        (v["field_name"], v["field_value"], v["match_type"], v["category"],
-         v["label"], v["url"], v["phone"], v["notes"], v["field_name2"],
-         v["field_value2"], v["match_type2"], v["link_text"],
-         v["allowed_formats"], v["source_text"], v["verify_status"],
-         v["est_cost"], v["est_time"], v["maintenance_note"],
-         v["household_member_id"], v["recurrence_days"], v["next_due"],
-         rule_id))
+    actor = current_user()
+    ok, message, _ = _apply_rule(db, payload, rule_id, actor["name"] if actor else "")
     db.commit()
-    flash(f"Rule updated: {v['label']}")
+    flash(message, "" if ok else "error")
     return redirect(url_for("rules_page", from_job=from_job))
 
 
@@ -5902,16 +6269,14 @@ def reject_password_change(req_id):
     return redirect(url_for("accounts_page"))
 
 
-def _apply_household_member_auth(db, household_member_id):
-    """Set or clear this household member's login from the form's Login
+def _apply_household_member_auth(db, household_member_id, username, password, is_admin_flag):
+    """Set or clear this household member's login from the given Login
     fields, and their is_admin flag. A blank username removes the login; the
     password hash is rewritten only when a new password is supplied, so
     editing other fields never disturbs an existing password. Guards against
     leaving accounts configured with no admin (which would lock everyone out
-    of admin functions)."""
-    username = request.form.get("username", "").strip()
-    password = request.form.get("password", "")
-    is_admin_flag = "1" if request.form.get("is_admin") else ""
+    of admin functions). Piece 52: parameterized (was request.form-reading)
+    so it can run identically for a live edit or a draft's stored payload."""
     setting_login = bool(username)
 
     if setting_login:
@@ -5959,33 +6324,72 @@ def _apply_household_member_auth(db, household_member_id):
             " WHERE id = ?", (household_member_id,))
 
 
+def _capture_household_member(**_):
+    values, errors = read_household_member_form()
+    payload = {
+        "values": values,
+        "auth": {
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "is_admin": "1" if request.form.get("is_admin") else "",
+        },
+        "confirm_duplicate": bool(request.form.get("confirm_duplicate")),
+    }
+    return payload, errors
+
+
+def _apply_household_member(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    values, auth = payload["values"], payload["auth"]
+    if ref_id is None:
+        dup = db.execute("SELECT 1 FROM household_members WHERE LOWER(name) = LOWER(?)",
+                         (values["name"],)).fetchone()
+        if dup and not payload.get("confirm_duplicate"):
+            return False, (f"“{values['name']}” already exists on the roster — "
+                           "discard this draft or have it resubmitted with the duplicate confirmed."), None
+        cur = db.execute(
+            f"INSERT INTO household_members ({', '.join(HOUSEHOLD_MEMBER_FIELDS)})"
+            f" VALUES ({', '.join('?' * len(HOUSEHOLD_MEMBER_FIELDS))})",
+            [values[f] for f in HOUSEHOLD_MEMBER_FIELDS])
+        member_id, prior_role = cur.lastrowid, None
+    else:
+        member = db.execute("SELECT * FROM household_members WHERE id = ?", (ref_id,)).fetchone()
+        if member is None:
+            return False, "That household member no longer exists.", None
+        db.execute(
+            f"UPDATE household_members SET {', '.join(f + ' = ?' for f in HOUSEHOLD_MEMBER_FIELDS)}"
+            " WHERE id = ?", [values[f] for f in HOUSEHOLD_MEMBER_FIELDS] + [ref_id])
+        member_id, prior_role = ref_id, member["role"]
+    _apply_household_member_auth(db, member_id, auth["username"], auth["password"], auth["is_admin"])
+    if prior_role is None or values["role"] != prior_role:
+        _seed_role_default_grants(db, member_id, values["role"])
+    return True, f"Household member saved: {values['name']}", member_id
+
+
 @app.route("/household-members/new", methods=["GET", "POST"])
 @admin_required
+@draftable("household_member.new")
 def new_household_member():
     if request.method == "POST":
-        values, errors = read_household_member_form()
-        username = request.form.get("username", "").strip()
+        payload, errors = _capture_household_member()
+        username = payload["auth"]["username"]
         if errors:
             flash(" ".join(errors), "error")
-            return render_household_member_form(values, username=username), 400
+            return render_household_member_form(payload["values"], username=username), 400
         db = get_db()
         # Guard against accidental duplicates: same composed name already on the
         # roster. Allow it only when the user confirms it's a different person.
         dup = db.execute("SELECT name FROM household_members WHERE LOWER(name) = LOWER(?)",
-                         (values["name"],)).fetchone()
-        if dup and not request.form.get("confirm_duplicate"):
+                         (payload["values"]["name"],)).fetchone()
+        if dup and not payload["confirm_duplicate"]:
             return render_household_member_form(
-                values, username=username, duplicate_warning=values["name"]), 400
-        cur = db.execute(
-            f"INSERT INTO household_members ({', '.join(HOUSEHOLD_MEMBER_FIELDS)})"
-            f" VALUES ({', '.join('?' * len(HOUSEHOLD_MEMBER_FIELDS))})",
-            [values[f] for f in HOUSEHOLD_MEMBER_FIELDS],
-        )
-        _apply_household_member_auth(db, cur.lastrowid)
-        _seed_role_default_grants(db, cur.lastrowid, values["role"])
+                payload["values"], username=username,
+                duplicate_warning=payload["values"]["name"]), 400
+        actor = current_user()
+        ok, message, member_id = _apply_household_member(
+            db, payload, None, actor["name"] if actor else "")
         db.commit()
-        flash(f"Household member added: {values['name']}")
-        return redirect(url_for("household_member_detail", household_member_id=cur.lastrowid))
+        flash(message, "" if ok else "error")
+        return redirect(url_for("household_member_detail", household_member_id=member_id))
     return render_household_member_form({})
 
 
@@ -6040,6 +6444,7 @@ def household_member_detail(household_member_id):
 
 @app.route("/household-members/<int:household_member_id>/edit", methods=["GET", "POST"])
 @admin_required
+@draftable("household_member.edit", ref_id_kwarg="household_member_id")
 def edit_household_member(household_member_id):
     db = get_db()
     member = db.execute(
@@ -6048,26 +6453,209 @@ def edit_household_member(household_member_id):
     if member is None:
         abort(404)
     if request.method == "POST":
-        values, errors = read_household_member_form()
+        payload, errors = _capture_household_member()
         if errors:
             flash(" ".join(errors), "error")
-            return render_household_member_form(values, household_member_id=household_member_id), 400
-        db.execute(
-            f"UPDATE household_members SET {', '.join(f + ' = ?' for f in HOUSEHOLD_MEMBER_FIELDS)}"
-            " WHERE id = ?",
-            [values[f] for f in HOUSEHOLD_MEMBER_FIELDS] + [household_member_id],
-        )
-        _apply_household_member_auth(db, household_member_id)
-        if values["role"] != member["role"]:
-            _seed_role_default_grants(db, household_member_id, values["role"])
+            return render_household_member_form(
+                payload["values"], household_member_id=household_member_id), 400
+        actor = current_user()
+        ok, message, _ = _apply_household_member(
+            db, payload, household_member_id, actor["name"] if actor else "")
         db.commit()
-        flash(f"Household member updated: {values['name']}")
+        flash(message, "" if ok else "error")
         return redirect(url_for("household_member_detail", household_member_id=household_member_id))
     values = {f: member[f] for f in HOUSEHOLD_MEMBER_FIELDS}
     return render_household_member_form(
         values, household_member_id=household_member_id,
         username=member["username"] or "",
         is_admin_checked=member["is_admin"] or "")
+
+# ------------------------------------------------------------------- drafts
+# Piece 52: every kind an Assistant-role account can write, and how to (a)
+# capture what it submitted and (b) apply it for real once a Parent/Admin
+# approves. "recommendation" kinds (wishlist/submission review) act on an
+# existing row via ref_id instead of creating a new one.
+DRAFT_KINDS = {
+    "project.new": {
+        "label": "New project", "capture": lambda **_: read_project_form(),
+        "apply": _apply_new_project,
+        "summarize": lambda p: p["values"]["job_name"] or "(untitled project)"},
+    "project.edit": {
+        "label": "Project edit", "capture": lambda **_: read_project_form(),
+        "apply": _apply_edit_project,
+        "summarize": lambda p: p["values"]["job_name"] or "(untitled project)"},
+    "project.status": {
+        "label": "Project stage change", "capture": _capture_project_status,
+        "apply": _apply_set_project_status,
+        "summarize": lambda p: f"Advance to {p['status']}"},
+    "project.cancel": {
+        "label": "Cancel project", "capture": _capture_cancel_project,
+        "apply": _apply_cancel_project,
+        "summarize": lambda p: f"Reason: {p['reason']}"},
+    "project.reopen": {
+        "label": "Reopen project", "capture": lambda **_: ({}, []),
+        "apply": _apply_reopen_project,
+        "summarize": lambda p: "Reopen this project"},
+    "project.install_date": {
+        "label": "Project target date", "capture": _capture_install_date,
+        "apply": _apply_set_install_date,
+        "summarize": lambda p: p["install_date"] or "(cleared)"},
+    "project.contract": {
+        "label": "Project contract total", "capture": _capture_contract,
+        "apply": _apply_set_contract,
+        "summarize": lambda p: f"${p['contract_amount']:,.2f}"},
+    "rule.new": {
+        "label": "New requirement rule", "capture": _capture_rule,
+        "apply": _apply_rule, "summarize": lambda p: p["values"]["label"]},
+    "rule.edit": {
+        "label": "Requirement rule edit", "capture": _capture_rule,
+        "apply": _apply_rule, "summarize": lambda p: p["values"]["label"]},
+    "inventory.item.new": {
+        "label": "New inventory item", "capture": _capture_inventory_item,
+        "apply": _apply_inventory_item,
+        "summarize": lambda p: (p["values"]["make"] + " " + p["values"]["model"]).strip()
+                     or p["values"]["category"]},
+    "inventory.item.edit": {
+        "label": "Inventory item edit", "capture": _capture_inventory_item,
+        "apply": _apply_inventory_item,
+        "summarize": lambda p: (p["values"]["make"] + " " + p["values"]["model"]).strip()
+                     or p["values"]["category"]},
+    "inventory.tool.new": {
+        "label": "New tool", "capture": _capture_inventory_tool,
+        "apply": _apply_inventory_tool, "summarize": lambda p: p["values"]["name"]},
+    "inventory.tool.edit": {
+        "label": "Tool edit", "capture": _capture_inventory_tool,
+        "apply": _apply_inventory_tool, "summarize": lambda p: p["values"]["name"]},
+    "inventory.vehicle.new": {
+        "label": "New vehicle", "capture": _capture_inventory_vehicle,
+        "apply": _apply_inventory_vehicle, "summarize": lambda p: p["values"]["name"]},
+    "inventory.vehicle.edit": {
+        "label": "Vehicle edit", "capture": _capture_inventory_vehicle,
+        "apply": _apply_inventory_vehicle, "summarize": lambda p: p["values"]["name"]},
+    "household_member.new": {
+        "label": "New household member", "capture": _capture_household_member,
+        "apply": _apply_household_member, "summarize": lambda p: p["values"]["name"]},
+    "household_member.edit": {
+        "label": "Household member edit", "capture": _capture_household_member,
+        "apply": _apply_household_member, "summarize": lambda p: p["values"]["name"]},
+    "household_txn.new": {
+        "label": "New household transaction", "capture": _capture_household_txn,
+        "apply": _apply_household_txn, "save_file": lambda: _save_draft_file("receipt"),
+        "summarize": lambda p: (f"{p['values']['kind']}: ${p['values']['amount']:,.2f}"
+                                f" ({p['values']['category'] or '—'})")},
+    "household_txn.edit": {
+        "label": "Household transaction edit", "capture": _capture_household_txn,
+        "apply": _apply_household_txn, "save_file": lambda: _save_draft_file("receipt"),
+        "summarize": lambda p: (f"{p['values']['kind']}: ${p['values']['amount']:,.2f}"
+                                f" ({p['values']['category'] or '—'})")},
+    "household_budget.new": {
+        "label": "New budget category", "capture": _capture_household_budget,
+        "apply": _apply_household_budget,
+        "summarize": lambda p: f"{p['category']}: ${p['monthly_amount']:,.2f}/mo"},
+    "household_budget.edit": {
+        "label": "Budget category edit", "capture": _capture_household_budget,
+        "apply": _apply_household_budget,
+        "summarize": lambda p: f"{p['category']}: ${p['monthly_amount']:,.2f}/mo"},
+    "project_txn.add": {
+        "label": "New project transaction", "capture": _capture_project_transaction,
+        "apply": _apply_project_transaction, "save_file": lambda: _save_draft_file("document"),
+        "summarize": lambda p: f"{p['doc_type'] or p['kind']}: ${p['amount']:,.2f}"},
+    "project_txn.toggle_paid": {
+        "label": "Transaction payment status", "capture": _capture_toggle_paid,
+        "apply": _apply_toggle_transaction_paid,
+        "summarize": lambda p: "Toggle paid/outstanding"},
+    "wishlist.approve": {
+        "label": "Wishlist recommendation", "capture": lambda **_: ({"status": "Approved"}, []),
+        "apply": _apply_wishlist_review, "summarize": lambda p: "Recommend: Approve"},
+    "wishlist.reject": {
+        "label": "Wishlist recommendation", "capture": lambda **_: ({"status": "Rejected"}, []),
+        "apply": _apply_wishlist_review, "summarize": lambda p: "Recommend: Reject"},
+    "submission.approve": {
+        "label": "Work Bag submission recommendation", "capture": _capture_submission_approval,
+        "apply": _apply_submission_approval, "summarize": lambda p: "Recommend: Approve"},
+    "submission.reject": {
+        "label": "Work Bag submission recommendation", "capture": lambda **_: ({}, []),
+        "apply": _apply_submission_rejection, "summarize": lambda p: "Recommend: Reject"},
+}
+
+
+@app.route("/drafts")
+@admin_required
+def drafts_page():
+    db = get_db()
+    show = request.args.get("show", "pending")
+    where = "WHERE d.status = 'Pending'" if show == "pending" else ""
+    rows = db.execute(
+        "SELECT d.*, m.name AS proposer_name FROM drafts d"
+        " JOIN household_members m ON m.id = d.created_by"
+        f" {where} ORDER BY (d.status='Pending') DESC, d.id DESC LIMIT 200").fetchall()
+    drafts = []
+    for r in rows:
+        spec = DRAFT_KINDS.get(r["kind"], {})
+        payload = json.loads(r["payload"])
+        try:
+            summary = spec["summarize"](payload) if "summarize" in spec else ""
+        except Exception:
+            summary = ""
+        drafts.append({
+            "row": r, "label": spec.get("label", r["kind"]),
+            "summary": summary, "has_file": bool(r["file_stored_name"]),
+        })
+    return render_template("drafts.html", drafts=drafts, show=show)
+
+
+@app.route("/drafts/<int:draft_id>/approve", methods=["POST"])
+@admin_required
+def approve_draft(draft_id):
+    db = get_db()
+    draft = db.execute("SELECT * FROM drafts WHERE id = ? AND status = 'Pending'", (draft_id,)).fetchone()
+    if draft is None:
+        flash("Draft not found or already reviewed.", "error")
+        return redirect(url_for("drafts_page"))
+    spec = DRAFT_KINDS[draft["kind"]]
+    proposer = db.execute("SELECT name FROM household_members WHERE id = ?",
+                          (draft["created_by"],)).fetchone()
+    who = current_user()
+    # Recommendation-style kinds (approve/reject a pending item someone else
+    # submitted) attribute reviewed_by to whoever actually exercised the
+    # review judgment -- the approving Parent, not the Assistant that only
+    # flagged a recommendation. Every other kind keeps the proposer's name.
+    is_recommendation = draft["kind"].startswith(("wishlist.", "submission."))
+    actor_name = (who["name"] if who else "") if is_recommendation \
+        else (proposer["name"] if proposer else "Assistant")
+    ok, message, _new_id = spec["apply"](
+        db, json.loads(draft["payload"]), draft["ref_id"], actor_name,
+        draft_file_stored_name=draft["file_stored_name"] or None,
+        exclude_id=who["id"] if who else None)
+    if not ok:
+        flash(message, "error")
+        return redirect(url_for("drafts_page"))
+    db.execute(
+        "UPDATE drafts SET status = 'Approved', reviewed_by = ?, reviewed_at = datetime('now')"
+        " WHERE id = ?", (who["name"] if who else "", draft_id))
+    db.commit()
+    flash(message)
+    return redirect(url_for("drafts_page"))
+
+
+@app.route("/drafts/<int:draft_id>/discard", methods=["POST"])
+@admin_required
+def discard_draft(draft_id):
+    db = get_db()
+    draft = db.execute("SELECT * FROM drafts WHERE id = ? AND status = 'Pending'", (draft_id,)).fetchone()
+    if draft is None:
+        flash("Draft not found or already reviewed.", "error")
+        return redirect(url_for("drafts_page"))
+    if draft["file_stored_name"]:
+        _discard_draft_file(draft["file_stored_name"])
+    who = current_user()
+    db.execute(
+        "UPDATE drafts SET status = 'Discarded', reviewed_by = ?, reviewed_at = datetime('now')"
+        " WHERE id = ?", (who["name"] if who else "", draft_id))
+    db.commit()
+    flash("Draft discarded.")
+    return redirect(url_for("drafts_page"))
+
 
 
 @app.route("/household-members/<int:household_member_id>/delete", methods=["GET", "POST"])

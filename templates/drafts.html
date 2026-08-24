@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Drafts{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🗒 Drafts</h1>
+  <div style="display:flex; gap:0.4rem;">
+    <a href="{{ url_for('drafts_page', show='pending') }}" class="btn {{ 'btn-secondary' if show != 'pending' }}">Pending</a>
+    <a href="{{ url_for('drafts_page', show='all') }}" class="btn {{ 'btn-secondary' if show == 'pending' }}">All</a>
+  </div>
+</div>
+<p class="muted" style="margin-top:0;">Writes from an Assistant-role account (an AI agent's own login) land here
+first, never straight into the real data. <strong>Approving</strong> applies the change for real, attributed to
+whoever proposed it; <strong>discarding</strong> throws it away — nothing changes until you decide.</p>
+
+{% if drafts %}
+{% for d in drafts %}
+{% set r = d.row %}
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.05rem;">{{ d.label }}
+      <span class="badge {{ 'warn' if r['status']=='Pending' else ('' if r['status']=='Approved' else 'danger') }}">{{ r["status"] }}</span></h2>
+    <span class="muted" style="font-size:0.85rem;">{{ r["proposer_name"] }} · {{ r["created_at"][:16] }}</span>
+  </div>
+  <p style="margin:0.3rem 0;">{{ d.summary }}{% if d.has_file %} · 📎 file attached{% endif %}</p>
+  {% if r["status"] == "Pending" %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('approve_draft', draft_id=r['id']) }}" style="display:inline; margin:0;">
+      <button type="submit" class="btn">✓ Approve</button>
+    </form>
+    <form method="post" action="{{ url_for('discard_draft', draft_id=r['id']) }}" style="display:inline; margin:0;">
+      <button type="submit" class="btn btn-secondary"
+        onclick="return confirm('Discard this draft?{{ ' Its attached file will be deleted.' if d.has_file else '' }}');">✕ Discard</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted" style="font-size:0.82rem; margin:0;">{{ r["reviewed_by"] }} · {{ r["reviewed_at"][:16] }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="empty">No {{ "pending " if show == "pending" }}drafts.</p>
+{% endif %}
+{% endblock %}
