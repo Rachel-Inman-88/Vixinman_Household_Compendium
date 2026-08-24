@@ -296,7 +296,8 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   Notifications, Appointments — the unread-notification count shows right on
   the dropdown itself), a standalone **🎒 Work Bag** button (Piece 53: pulled
   out of the Household dropdown so it's one click for everyone, not two),
-  **🏠 Household** (Budget, Approvals, Drafts, and 👨‍👩‍👧 Family — the
+  **🏠 Household** (💰 Money — a financial overview linking to Budget/
+  Loans/Savings, Approvals, Drafts, and 👨‍👩‍👧 Family — the
   household-member roster/roles/accounts page; the pending-approvals count
   shows on the dropdown for anyone who can approve), **🗄 Databases**
   (Projects, Backlog, Household Files, Contacts, Requirements Editor,
@@ -567,6 +568,19 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.40** — **"💰 Money" — a financial overview page.** The 🏠 Household
+  dropdown's three separate Budget/Loans/Savings links are now one "💰
+  Money" link, opening a new `/money` page styled like the dashboard's
+  other overview cards: the same "Money in flight" tiles Household
+  overview shows, a combined savings-goal progress bar across every
+  account with a goal set, a needs-attention row (over-budget categories,
+  unpaid bills), this month's expense-by-category pie chart, a 3-month
+  cash-flow projection, and the Payments table — all in one place, with
+  quick links out to the full Budget/Loans/Savings pages for actual
+  editing (none of those three pages changed or moved). The money-tile and
+  Payments-table calculations were extracted into shared functions
+  (`_household_money_snapshot()`/`_payments_summary()`) so the dashboard
+  and the new page are guaranteed to always agree.
 - **v0.39** — **Moved the Productivity Overview card** directly beneath
   Household overview (was further down, after Backlog) per follow-up
   feedback right after v0.38 shipped — pure layout reorder, no behavior
