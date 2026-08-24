@@ -14,6 +14,7 @@ Run it:
 then open http://127.0.0.1:5000 in your browser.
 """
 
+import calendar
 import json
 import math
 import os
@@ -455,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.37"
+VERSION = "0.38"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3242,6 +3243,55 @@ def _bucket_schedule(my_tasks, my_chores, my_appointments, today_d):
     return buckets
 
 
+def _bucket_appointments_with_overdue(my_appointments, today_d):
+    """Piece 61: like _bucket_schedule()'s appointment handling, but for
+    the Productivity Overview card an overdue appointment folds into
+    "today" (with its own overdue flag) instead of being dropped --
+    unlike the Child glance widget, this card is meant to be a complete
+    near-term worklist, not just a quick look-ahead."""
+    tomorrow_d = today_d + timedelta(days=1)
+    horizon_d = today_d + timedelta(days=14)
+    buckets = {"today": [], "tomorrow": [], "soon": []}
+    for a in my_appointments:
+        date_str = a["when_date"]
+        if not date_str:
+            continue
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d > horizon_d:
+            continue
+        overdue = d < today_d
+        bucket = "today" if overdue or d == today_d else "tomorrow" if d == tomorrow_d else "soon"
+        buckets[bucket].append({"appt": a, "overdue": overdue})
+    for key in buckets:
+        buckets[key].sort(key=lambda i: i["appt"]["when_date"])
+    return buckets
+
+
+def _build_month_calendar(month_str, items_by_date, today_s):
+    """Piece 61: a Sunday-start month grid for the dashboard's Month
+    Calendar widget. items_by_date maps 'YYYY-MM-DD' -> list of
+    {icon, kind, title, href}. Days outside the month are None cells so
+    every week is a full 7-column row."""
+    y, m = map(int, month_str.split("-"))
+    cal = calendar.Calendar(firstweekday=6)
+    weeks = []
+    for week in cal.monthdayscalendar(y, m):
+        cells = []
+        for day in week:
+            if day == 0:
+                cells.append(None)
+                continue
+            date_str = f"{y:04d}-{m:02d}-{day:02d}"
+            cells.append({"day": day, "date": date_str,
+                          "is_today": date_str == today_s,
+                          "items": items_by_date.get(date_str, [])})
+        weeks.append(cells)
+    return weeks
+
+
 @app.route("/dashboard")
 @app.route("/", endpoint="home")
 def dashboard():
@@ -3303,9 +3353,46 @@ def dashboard():
             " AND (household_member_id = ? OR household_member_id IS NULL)"
             " ORDER BY (when_date = ''), when_date, when_time", (user["id"],)).fetchall()
 
+    # Piece 61: this member's own boards (assignee or collaborator), for
+    # the Productivity Overview card -- mirrors boards_page()'s own "Mine"
+    # filter SQL exactly.
+    my_boards = []
+    if user is not None:
+        my_boards = db.execute(
+            "SELECT * FROM boards WHERE status != 'Done' AND (assigned_to = ?"
+            " OR id IN (SELECT board_id FROM board_collaborators WHERE household_member_id = ?))"
+            " ORDER BY (due_date = ''), due_date, due_time, id DESC",
+            (user["id"], user["id"])).fetchall()
+
     # Piece 53: Child-only day-by-day schedule widget, replacing the
     # household-wide overview on their dashboard.
     schedule_buckets = _bucket_schedule(my_tasks, my_chores, my_appointments, today_d)
+
+    # Piece 61: Productivity Overview card -- appointment tiers (overdue
+    # folded into "today" rather than dropped, unlike the Child glance
+    # widget above) and the Month Calendar's day-by-day item index.
+    appt_buckets = _bucket_appointments_with_overdue(my_appointments, today_d)
+
+    cal_month_str, cal_month_label = _household_month_bounds(request.args.get("cal"))
+    cal_prev = _recent_months(2, ending=cal_month_str)[0][0]
+    cal_next = _forward_months(2, starting=cal_month_str)[1][0]
+
+    items_by_date = {}
+    def _add_cal(date_str, icon, kind, title, href):
+        if date_str:
+            items_by_date.setdefault(date_str, []).append(
+                {"icon": icon, "kind": kind, "title": title, "href": href})
+    for t in my_tasks:
+        _add_cal(t["due_date"], "✅", "Task", t["title"],
+                 url_for("project_detail", project_id=t["project_id"], _anchor="tasks"))
+    for c in my_chores:
+        _add_cal(c["next_due"], "🔁", "Chore", c["title"], url_for("chores_page"))
+    for a in my_appointments:
+        _add_cal(a["when_date"], "📅", "Appointment", a["title"], url_for("appointments_page"))
+    for b in my_boards:
+        _add_cal(b["due_date"], "📋", "Board", b["title"], url_for("board_detail", board_id=b["id"]))
+
+    calendar_weeks = _build_month_calendar(cal_month_str, items_by_date, today_s)
 
     # Active-projects overview: every non-terminal project, grouped by stage
     # (replaces the old per-department project lists).
@@ -3460,7 +3547,10 @@ def dashboard():
         gm=gm, closing_jobs=closing_jobs,
         schedule_buckets=schedule_buckets,
         job_status_class=PROJECT_STATUS_CLASS,
-        my_bag_project_ids=my_bag_project_ids)
+        my_bag_project_ids=my_bag_project_ids,
+        my_boards=my_boards, appt_buckets=appt_buckets,
+        calendar_weeks=calendar_weeks, cal_month_str=cal_month_str,
+        cal_month_label=cal_month_label, cal_prev=cal_prev, cal_next=cal_next)
 
 
 # ---------------------------- Piece 20: calendar (.ics) export ------------

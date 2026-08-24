@@ -312,100 +312,140 @@
 {% endif %}
 
 
-{# ---- My tasks (bottom) ---- #}
+{# ---- Piece 61: Productivity Overview — Appointments/Chores/Boards/Tasks
+       consolidated into one card (a list pane + a Month Calendar pane).
+       Not shown on a Child's dashboard (Piece 53) -- they get 🗓 My
+       schedule above instead. ---- #}
+{% if not (user and user["role"] == "Child") %}
 <details class="card sect" open>
-  <summary>✅ My tasks <span class="sect-count">{{ my_tasks|length }}</span></summary>
-  {% if task_groups %}
-  <p style="margin:0 0 0.6rem;">
-    <a href="{{ url_for('my_calendar_ics') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
-       title="Download your due dates + install dates, then import in Google Calendar (Settings → Import & export)">📅 Add my dates to calendar</a>
-  </p>
-  {% for g in task_groups %}
-  <div style="margin-bottom:0.9rem; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
-    {# Project banner #}
-    <div style="background:var(--bg); border-bottom:1px solid var(--border); padding:0.5rem 0.8rem; display:flex; align-items:baseline; gap:0.5rem; flex-wrap:wrap;">
-      <a href="{{ url_for('project_detail', project_id=g.project_id) }}#tasks" style="font-weight:700;">{{ g.job_name or "Project #" ~ g.project_id }}</a>
-      <span class="sect-count" style="margin-left:auto;">{{ g.tasks|length }} task{{ "s" if g.tasks|length != 1 }}</span>
-    </div>
-    {# Tasks as bullet points #}
-    <ul style="list-style:none; margin:0; padding:0.3rem 0;">
-      {% for t in g.tasks %}
-      {% set overdue = t["due_date"] and t["due_date"] < today %}
-      <li style="display:flex; align-items:baseline; gap:0.5rem; padding:0.35rem 0.8rem 0.35rem 1.4rem; position:relative; flex-wrap:wrap;
-                 {% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
-        <span style="position:absolute; left:0.7rem; color:var(--muted);">•</span>
-        <span style="flex:1 1 auto;">{{ t["title"] }}
-          {% if t["pipeline_status"] %}<span class="badge neutral" style="font-size:0.68rem;">{{ t["pipeline_status"] }}</span>{% endif %}</span>
-        {% if t["due_date"] %}<span class="muted" style="font-size:0.8rem; white-space:nowrap;">due {{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</span>{% endif %}
-        <span class="badge {{ sc[t['status']] }}">{{ t["status"] }}</span>
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endfor %}
-  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Update these in the field on your <a href="{{ url_for('work_bag') }}">🎒 Work Bag</a>.</p>
-  {% else %}
-  <p class="empty">No open tasks assigned to you. 🎉</p>
-  {% endif %}
-</details>
+  <summary>🗂 Productivity Overview</summary>
+  <div style="display:flex; gap:1.2rem; flex-wrap:wrap; align-items:flex-start;">
 
-{# ---- My chores (recurring, not tied to a project) ---- #}
-<details class="card sect" open>
-  <summary>🔁 My chores <span class="sect-count">{{ my_chores|length }}</span></summary>
-  {% if my_chores %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Chore</th><th>Next due</th><th>Every</th><th></th></tr></thead>
-    <tbody>
-      {% for c in my_chores %}
-      {% set overdue = c["next_due"] and c["next_due"] < today %}
-      <tr>
-        <td>{{ c["title"] }}{% if c["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ c["notes"] }}</span>{% endif %}</td>
-        <td>{{ c["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td class="muted">{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}</td>
-        <td>
-          <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
-            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
-  {% endif %}
-</details>
+    {# ---- List pane ---- #}
+    <div style="flex:1 1 380px; min-width:300px;">
 
-{# ---- Upcoming appointments (assigned to me or whole-household) ---- #}
-<details class="card sect" open>
-  <summary>📅 Upcoming appointments <span class="sect-count">{{ my_appointments|length }}</span></summary>
-  {% if my_appointments %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Appointment</th><th>When</th><th>Location</th><th></th></tr></thead>
-    <tbody>
-      {% for a in my_appointments %}
-      {% set overdue = a["when_date"] and a["when_date"] < today %}
-      <tr>
-        <td>{{ a["title"] }}{% if a["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ a["notes"] }}</span>{% endif %}</td>
-        <td style="white-space:nowrap;">{{ a["when_date"] or "—" }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td class="muted">{{ a["location"] or "—" }}</td>
-        <td>
+      <div style="font-weight:700; margin-bottom:0.3rem;">📅 Appointments</div>
+      {% for key, heading in [("today", "Today"), ("tomorrow", "Tomorrow"), ("soon", "Next 2 weeks")] %}
+      <div style="font-size:0.8rem; font-weight:600; color:var(--muted); margin:0.5rem 0 0.15rem;">{{ heading }}</div>
+      {% if appt_buckets[key] %}
+      <ul style="list-style:none; margin:0 0 0.4rem; padding:0;">
+        {% for item in appt_buckets[key] %}
+        {% set a = item.appt %}
+        <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+          <span style="flex:1 1 auto;">{{ a["title"] }}{% if a["location"] %} <span class="muted" style="font-size:0.8rem;">— {{ a["location"] }}</span>{% endif %}</span>
+          {% if item.overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+          <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ a["when_date"] }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}</span>
           <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="margin:0;">
-            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
           </form>
-        </td>
-      </tr>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted" style="margin:0 0 0.4rem; font-size:0.82rem;">Nothing due.</p>
+      {% endif %}
       {% endfor %}
-    </tbody>
-  </table>
+
+      <div style="font-weight:700; margin:0.8rem 0 0.3rem;">🔁 Chores</div>
+      {% if my_chores %}
+      <ul style="list-style:none; margin:0; padding:0;">
+        {% for c in my_chores %}
+        {% set overdue = c["next_due"] and c["next_due"] < today %}
+        <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+          <span style="flex:1 1 auto;">{{ c["title"] }}</span>
+          {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+          <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ c["next_due"] or "—" }}</span>
+          <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty" style="margin:0;">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
+      {% endif %}
+
+      <div style="font-weight:700; margin:0.8rem 0 0.3rem;">📋 Boards</div>
+      {% if my_boards %}
+      <ul style="list-style:none; margin:0; padding:0;">
+        {% for b in my_boards %}
+        <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+          <a href="{{ url_for('board_detail', board_id=b['id']) }}" style="flex:1 1 auto;">{{ b["title"] }}</a>
+          <span class="badge {{ sc.get(b['status'], 'neutral') }}" style="font-size:0.68rem;">{{ b["status"] }}</span>
+          {% if b["due_date"] %}<span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ b["due_date"] }}{% if b["due_time"] %} · {{ b["due_time"] }}{% endif %}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty" style="margin:0;">No boards assigned to you. <a href="{{ url_for('boards_page') }}">Open Boards →</a></p>
+      {% endif %}
+
+      <div style="font-weight:700; margin:0.8rem 0 0.3rem;">✅ Tasks</div>
+      {% if my_tasks %}
+      <ul style="list-style:none; margin:0; padding:0;">
+        {% for t in my_tasks %}
+        {% set overdue = t["due_date"] and t["due_date"] < today %}
+        <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+          <a href="{{ url_for('project_detail', project_id=t['project_id']) }}#tasks" style="flex:1 1 auto;">{{ t["title"] }}</a>
+          <span class="muted" style="font-size:0.8rem;">{{ t["job_name"] }}</span>
+          {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+          {% if t["due_date"] %}<span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ t["due_date"] }}</span>{% endif %}
+          <span class="badge {{ sc[t['status']] }}" style="font-size:0.68rem;">{{ t["status"] }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty" style="margin:0;">No open tasks assigned to you. 🎉</p>
+      {% endif %}
+      <p style="margin:0.6rem 0 0;">
+        <a href="{{ url_for('my_calendar_ics') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
+           title="Download your due dates + install dates, then import in Google Calendar (Settings → Import & export)">📅 Add my dates to calendar</a>
+      </p>
+    </div>
+
+    {# ---- Month Calendar pane ---- #}
+    <div style="flex:1 1 380px; min-width:300px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.4rem;">
+        <a href="{{ url_for('dashboard', cal=cal_prev) }}" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.85rem;">←</a>
+        <span style="font-weight:700;">{{ cal_month_label }}</span>
+        <a href="{{ url_for('dashboard', cal=cal_next) }}" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.85rem;">→</a>
+      </div>
+      {% if cal_month_str != today[:7] %}
+      <p style="margin:0 0 0.4rem; text-align:center;"><a href="{{ url_for('dashboard') }}" style="font-size:0.8rem;">This month</a></p>
+      {% endif %}
+      <div style="overflow-x:auto;">
+      <table style="table-layout:fixed; width:100%;">
+        <thead><tr>
+          {% for wd in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}<th style="text-align:center; font-size:0.75rem;">{{ wd }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+          {% for week in calendar_weeks %}
+          <tr>
+            {% for cell in week %}
+            {% if cell is none %}
+            <td style="border:1px solid var(--border); background:var(--bg);"></td>
+            {% else %}
+            <td style="border:1px solid var(--border); vertical-align:top; padding:0.2rem; {% if cell.is_today %}background:var(--bg); box-shadow:inset 0 0 0 2px var(--brand);{% endif %}">
+              <div style="font-size:0.75rem; font-weight:{{ '800' if cell.is_today else '600' }};">{{ cell.day }}</div>
+              {% for it in cell['items'][:3] %}
+              <a href="{{ it.href }}" title="{{ it.kind }}: {{ it.title }}" style="display:block; font-size:0.68rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ it.icon }} {{ it.title }}</a>
+              {% endfor %}
+              {% if cell['items']|length > 3 %}
+              <div class="muted" style="font-size:0.65rem;">+{{ cell['items']|length - 3 }} more</div>
+              {% endif %}
+            </td>
+            {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
   </div>
-  {% else %}
-  <p class="empty">No upcoming appointments. <a href="{{ url_for('appointments_page') }}">Set one up →</a></p>
-  {% endif %}
 </details>
+{% endif %}
 
 {# ---- My requirements (standalone recurring, not tied to a project) ---- #}
 <details class="card sect" open>
