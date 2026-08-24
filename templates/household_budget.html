@@ -75,7 +75,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   {% if transactions %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Date</th><th>Kind</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th>Contact</th><th></th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Kind</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th><th>Contact</th><th></th><th></th></tr></thead>
     <tbody>
       {% for t in transactions %}
       <tr>
@@ -84,6 +84,12 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
         <td class="muted">{{ t["category"] or "—" }}</td>
         <td>{{ t["description"] or "—" }}{% if t["party"] %} <span class="muted" style="font-size:0.8rem;">— {{ t["party"] }}</span>{% endif %}</td>
         <td style="text-align:right; font-weight:600;">${{ (t["amount"])|money0 }}</td>
+        <td>
+          <form method="post" action="{{ url_for('household_txn_toggle_paid', txn_id=t['id']) }}" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;"
+                    title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
+          </form>
+        </td>
         <td class="muted">{% if t["contact_name"] %}<a href="{{ url_for('external_helpers_page', edit=t['external_helper_id']) }}">{{ t["contact_name"] }}</a>{% else %}—{% endif %}</td>
         <td>{% if t["receipt_filename"] %}<a href="{{ url_for('download_household_receipt', txn_id=t['id']) }}" target="_blank" rel="noopener" title="Receipt">🧾</a>{% endif %}</td>
         <td style="white-space:nowrap;">
@@ -119,10 +125,16 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
           <option value="Income" {% if et and et['kind'] == 'Income' %}selected{% endif %}>Income</option>
         </select></div>
       <div class="field"><label for="category">Category</label>
-        <input id="category" name="category" value="{{ et['category'] if et else '' }}" placeholder="e.g. Groceries, Utilities"></div>
+        <input id="category" name="category" list="budget_category_options" value="{{ et['category'] if et else '' }}" placeholder="e.g. Groceries, Utilities"></div>
       <div class="field"><label for="amount">Amount *</label>
         <input id="amount" name="amount" type="number" step="0.01" min="0" required
                value="{{ '%.2f'|format(et['amount']) if et else '' }}"></div>
+      <div class="field"><label for="status">Status</label>
+        <select id="status" name="status">
+          {% for s in txn_statuses %}
+          <option value="{{ s }}" {% if et and et['status'] == s %}selected{% elif not et and s == 'Paid' %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select></div>
       <div class="field"><label for="txn_date">Date</label>
         <input id="txn_date" name="txn_date" type="date" value="{{ et['txn_date'] if et else today }}"></div>
       <div class="field wide"><label for="description">Description</label>
@@ -162,7 +174,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   <form method="post" action="{{ url_for('household_budget_edit', budget_id=eb['id']) if eb else url_for('household_budget_new') }}">
     <div class="form-grid">
       <div class="field"><label for="budget_category">Category *</label>
-        <input id="budget_category" name="category" required
+        <input id="budget_category" name="category" list="budget_category_options" required
                value="{{ eb['category'] if eb else '' }}" placeholder="e.g. Groceries"></div>
       <div class="field"><label for="monthly_amount">Monthly target *</label>
         <input id="monthly_amount" name="monthly_amount" type="number" step="0.01" min="0" required
@@ -174,4 +186,8 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
     </div>
   </form>
 </div>
+
+<datalist id="budget_category_options">
+  {% for c in household_budget_categories %}<option value="{{ c }}">{% endfor %}
+</datalist>
 {% endblock %}

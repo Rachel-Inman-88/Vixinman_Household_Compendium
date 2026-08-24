@@ -35,23 +35,35 @@
     </div>
   </section>
 
-  {# Money in flight -- finances.manage-gated, hidden entirely for a Child #}
+  {# Money in flight -- finances.manage-gated, hidden entirely for a Child.
+     Piece 54: reworked from Contract/Collected/Outstanding/Expenses into
+     unpaid expenses/loans/income/savings/money in projects, rolling up
+     both the project and household ledgers, plus an estimate-vs-actual
+     variance tile. #}
   {% if can('finances.manage') %}
   <section style="{{ panel }}">
-    <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active projects</span></div>
+    <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active projects and the household ledger</span></div>
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem;">
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
-        <div class="muted" style="font-size:0.78rem;">Contract value</div>
-        <div style="font-size:1.25rem; font-weight:800;">${{ (gm.money.contract)|money0 }}</div></div>
+        <div class="muted" style="font-size:0.78rem;">Unpaid expenses</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (gm.money.unpaid_expenses)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
-        <div class="muted" style="font-size:0.78rem;">Collected</div>
-        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ (gm.money.collected)|money0 }}</div></div>
+        <div class="muted" style="font-size:0.78rem;">Loans</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ (gm.money.loans)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
-        <div class="muted" style="font-size:0.78rem;">Outstanding</div>
-        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ (gm.money.outstanding)|money0 }}</div></div>
+        <div class="muted" style="font-size:0.78rem;">Income</div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ (gm.money.income)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
-        <div class="muted" style="font-size:0.78rem;">Expenses</div>
-        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (gm.money.expense)|money0 }}</div></div>
+        <div class="muted" style="font-size:0.78rem;">Savings</div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand-dark);">${{ (gm.money.savings)|money0 }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Money in projects</div>
+        <div style="font-size:1.25rem; font-weight:800;">${{ (gm.money.projects)|money0 }}</div></div>
+      {% set variance = gm.money.estimated - gm.money.actual_expense %}
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Anticipated spending <span class="muted" style="font-weight:400;">(est. vs. actual)</span></div>
+        <div style="font-size:1.25rem; font-weight:800; color:{{ 'var(--brand)' if variance >= 0 else '#b02a2a' }};">{{ "-" if variance < 0 }}${{ (variance)|abs|money0 }}</div>
+        <div class="muted" style="font-size:0.7rem;">est. ${{ (gm.money.estimated)|money0 }} · actual ${{ (gm.money.actual_expense)|money0 }}</div></div>
     </div>
   </section>
   {% endif %}

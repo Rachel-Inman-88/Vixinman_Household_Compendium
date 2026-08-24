@@ -190,7 +190,8 @@ def ensure_requirement_reminders(db):
 # serve them once the install-job pipeline gating and the 145 solar-permit
 # resource_rules that matched on them were both cut. A generic household
 # project just needs a name, category, type, and (optional) location.
-PROJECT_FIELDS = ["job_name", "project_category", "project_type", "site_location"]
+PROJECT_FIELDS = ["job_name", "project_category", "project_type", "site_location",
+                  "estimated_cost"]
 
 # Piece 38: the two household project kinds the user actually undertakes —
 # home-improvement work and personal-improvement pursuits (a skill, a
@@ -213,6 +214,7 @@ PROJECT_FIELD_LABELS = {
     "project_category": "Project category",
     "project_type": "Subcategory",
     "site_location": "Site location",
+    "estimated_cost": "Estimated cost",
 }
 
 # Employee directory (Piece 8). The core fields on a person's record:
@@ -413,6 +415,12 @@ PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 # A blank doc type is a plain ledger note with no paperwork behind it.
 DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 
+# Piece 54: Household Budget's category fields are free text (unlike project
+# billing's hard <select>) -- these are suggestions via a <datalist>, not a
+# fixed vocabulary; a household can always type something else.
+HOUSEHOLD_BUDGET_CATEGORIES = ["Groceries", "Utilities", "Subscriptions",
+                               "Discretionary Spending", "Other"]
+
 # New Mexico gross-receipts tax. The rate is per project (it varies by the install
 # location), defaulting to 0% because Vixinman's solar systems are
 # GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance sets a
@@ -447,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.29"
+VERSION = "0.30"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -885,6 +893,8 @@ HELP_SECTION_PERMISSION = {
     "rules": "rules.manage",
     "finance": "finances.manage",
     "budget-help": "finances.manage",
+    "loans-help": "finances.manage",
+    "savings-help": "finances.manage",
     "people": "household.manage",
     "managers": "admin",
 }
@@ -958,9 +968,28 @@ VIEW_PERMISSION = {
     "household_txn_edit": "finances.manage",
     "household_txn_delete": "finances.manage",
     "download_household_receipt": "finances.manage",
+    "household_txn_toggle_paid": "finances.manage",
     "household_budget_new": "finances.manage",
     "household_budget_edit": "finances.manage",
     "household_budget_delete": "finances.manage",
+    # Piece 54: Loans and Savings accounts -- reuse finances.manage, the
+    # same all-or-nothing "see all money" gate as Budget/project billing.
+    "loans_page": "finances.manage",
+    "loan_account_new": "finances.manage",
+    "loan_account_edit": "finances.manage",
+    "loan_account_delete": "finances.manage",
+    "loan_account_detail": "finances.manage",
+    "loan_entry_new": "finances.manage",
+    "loan_entry_delete": "finances.manage",
+    "download_loan_statement": "finances.manage",
+    "savings_page": "finances.manage",
+    "savings_account_new": "finances.manage",
+    "savings_account_edit": "finances.manage",
+    "savings_account_delete": "finances.manage",
+    "savings_account_detail": "finances.manage",
+    "savings_entry_new": "finances.manage",
+    "savings_entry_delete": "finances.manage",
+    "download_savings_statement": "finances.manage",
     "set_contract": "finances.manage",
     "add_transaction": "finances.manage",
     "toggle_transaction_paid": "finances.manage",
@@ -1174,6 +1203,18 @@ def _inventory_item_uses(db, item_id):
     return [f"{n} wishlist item(s)"] if n else []
 
 
+def _loan_account_uses(db, account_id):
+    """Piece 54: loan_entries.account_id is a real FK -- same FK-safety
+    reasoning as _contact_uses()."""
+    n = _count(db, "SELECT COUNT(*) FROM loan_entries WHERE account_id = ?", (account_id,))
+    return [f"{n} ledger entr{'y' if n == 1 else 'ies'}"] if n else []
+
+
+def _savings_account_uses(db, account_id):
+    n = _count(db, "SELECT COUNT(*) FROM savings_entries WHERE account_id = ?", (account_id,))
+    return [f"{n} ledger entr{'y' if n == 1 else 'ies'}"] if n else []
+
+
 # entity_type -> how to label it, where it lived, what would block its delete,
 # and (for file rows) where its file sits on disk.
 TRASH_REGISTRY = {
@@ -1205,6 +1246,18 @@ TRASH_REGISTRY = {
                               # receipt_filename may be blank (no receipt attached) --
                               # unlink(missing_ok=True) on purge_trash() no-ops fine either way.
                               "file": lambda r: UPLOADS_DIR / "household" / (r["receipt_filename"] or "")},
+    "loan_account": {"table": "loan_accounts", "label": lambda r: r["name"],
+                     "found_in": lambda db, r: "Loans",
+                     "in_use": lambda db, r: _loan_account_uses(db, r["id"])},
+    "loan_entry": {"table": "loan_entries", "label": lambda r: r["description"] or r["kind"],
+                  "found_in": lambda db, r: "Loans", "in_use": lambda db, r: [],
+                  "file": lambda r: UPLOADS_DIR / "household" / (r["statement_filename"] or "")},
+    "savings_account": {"table": "savings_accounts", "label": lambda r: r["name"],
+                        "found_in": lambda db, r: "Savings",
+                        "in_use": lambda db, r: _savings_account_uses(db, r["id"])},
+    "savings_entry": {"table": "savings_entries", "label": lambda r: r["description"] or r["kind"],
+                      "found_in": lambda db, r: "Savings", "in_use": lambda db, r: [],
+                      "file": lambda r: UPLOADS_DIR / "household" / (r["statement_filename"] or "")},
     "household_budget": {"table": "household_budgets", "label": lambda r: r["category"],
                         "found_in": lambda db, r: "Budget",
                         "in_use": lambda db, r: []},
@@ -1878,6 +1931,18 @@ def init_db():
         db.execute("INSERT INTO meta (key, value) VALUES ('help_full_access_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+    # Piece 54: a real Outstanding/Paid status on household_transactions
+    # (matching project_transactions' exact vocabulary) so "unpaid expenses"
+    # can combine both ledgers. Added directly (not via ensure_columns(),
+    # which always defaults a new column to '') -- existing rows default to
+    # 'Paid' so nothing already logged retroactively becomes "unpaid". A
+    # fresh install's schema.sql-created table already has this column, so
+    # this is a no-op there (caught by the except).
+    try:
+        db.execute("ALTER TABLE household_transactions ADD COLUMN status"
+                   " TEXT NOT NULL DEFAULT 'Paid'")
+    except sqlite3.OperationalError:
+        pass
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     # Piece 26.9: verbatim source text for a rule (esp. a prerequisite) — the exact
@@ -3230,16 +3295,39 @@ def dashboard():
     # Wrap-up worklist. Shown to every signed-in member, not admin-gated.
     exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
     counts = {s: 0 for s in exec_stages}
-    money = {"contract": 0.0, "collected": 0.0,
-             "outstanding": 0.0, "expense": 0.0}
+    # Piece 54: reworked from Contract/Collected/Outstanding/Expenses into
+    # unpaid expenses/loans/income/savings/money in projects (+ an
+    # estimate-vs-actual variance), rolling up both the project and
+    # household ledgers -- see the dashboard template for tile rendering.
+    money = {"unpaid_expenses": 0.0, "loans": 0.0, "income": 0.0,
+             "savings": 0.0, "projects": 0.0,
+             "estimated": 0.0, "actual_expense": 0.0}
     for j in db.execute(
-            "SELECT id, status, contract_amount FROM projects"
+            "SELECT id, status, contract_amount, estimated_cost FROM projects"
             " WHERE status != 'Abandoned'").fetchall():
         if j["status"] in counts:
             counts[j["status"]] += 1
         b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
-        for k in money:
-            money[k] += b[k]
+        money["unpaid_expenses"] += b["expense_out"]
+        money["income"] += b["collected"]
+        money["projects"] += b["contract"]
+        money["estimated"] += _to_float(j["estimated_cost"]) or 0.0
+        money["actual_expense"] += b["expense"]
+    # Fold in the whole-household ledger (lifetime totals, matching
+    # project_billing()'s own lifetime -- not month-scoped -- nature; the
+    # Budget page's separate current-month view is untouched) and the
+    # Loans/Savings accounts' live-computed balances.
+    for r in db.execute(
+            "SELECT kind, status, COALESCE(SUM(amount), 0) AS total"
+            " FROM household_transactions GROUP BY kind, status").fetchall():
+        if r["kind"] == "Income":
+            money["income"] += r["total"]
+        elif r["kind"] == "Expense" and r["status"] == "Outstanding":
+            money["unpaid_expenses"] += r["total"]
+    for a in db.execute("SELECT id, original_amount FROM loan_accounts").fetchall():
+        money["loans"] += loan_balance(db, a["id"], a["original_amount"])["balance"]
+    for a in db.execute("SELECT id FROM savings_accounts").fetchall():
+        money["savings"] += savings_balance(db, a["id"])["balance"]
     overdue = db.execute(
         "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
         " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
@@ -3875,7 +3963,8 @@ def household_budget_page():
         transactions=transactions, totals=totals, contacts=contacts,
         month=month_str, month_label=month_label, show=show,
         edit_txn=edit_txn, edit_budget=edit_budget,
-        payment_methods=PAYMENT_METHODS,
+        payment_methods=PAYMENT_METHODS, txn_statuses=TXN_STATUSES,
+        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES,
         today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -3888,6 +3977,11 @@ def _household_txn_form_values():
         "amount": _to_float(request.form.get("amount")) or 0.0,
         "txn_date": request.form.get("txn_date", "").strip()
                    or datetime.now().strftime("%Y-%m-%d"),
+        # Piece 54: defaults to Paid -- an already-happened purchase is
+        # normally already paid; flip to Outstanding for a bill not yet
+        # settled. Matches the household_transactions.status migration's
+        # own safe default for pre-existing rows.
+        "status": request.form.get("status") if request.form.get("status") in TXN_STATUSES else "Paid",
         "party": request.form.get("party", "").strip(),
         "external_helper_id": int(contact) if contact.isdigit() else None,
         "reference": request.form.get("reference", "").strip(),
@@ -3895,21 +3989,27 @@ def _household_txn_form_values():
     }
 
 
-def _save_household_receipt(existing_filename=""):
-    """Optional receipt photo/PDF upload -- unlike Work Bag's add_receipt()
-    (Piece 26.2), a photo isn't required here since not every household
-    expense has a physical receipt worth keeping. Returns the stored
+def _save_household_upload(field_name, existing_filename=""):
+    """Optional photo/PDF upload into household_upload_dir() -- generalized
+    from the original _save_household_receipt() (Piece 46) so it's reused
+    for Budget receipts and Loan/Savings entry statements alike. Not
+    required (unlike Work Bag's add_receipt(), Piece 26.2) since not every
+    entry has a physical document worth keeping. Returns the stored
     filename to save (existing one kept if no new file was chosen)."""
-    upload = request.files.get("receipt")
+    upload = request.files.get(field_name)
     if upload is None or not upload.filename:
         return existing_filename
     ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if ext not in (PHOTO_EXTENSIONS | {"pdf"}):
-        flash("Receipts should be a photo (JPG/PNG/HEIC) or a PDF — kept the previous one.", "error")
+        flash("Attachments should be a photo (JPG/PNG/HEIC) or a PDF — kept the previous one.", "error")
         return existing_filename
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(upload.filename)}"
     upload.save(household_upload_dir() / stored)
     return stored
+
+
+def _save_household_receipt(existing_filename=""):
+    return _save_household_upload("receipt", existing_filename)
 
 
 def _capture_household_txn(**_):
@@ -3930,10 +4030,10 @@ def _apply_household_txn(db, payload, ref_id, actor_name, draft_file_stored_name
             receipt = payload.get("receipt_filename", "")
         db.execute(
             "INSERT INTO household_transactions (kind, category, description, amount,"
-            " txn_date, party, external_helper_id, reference, method,"
-            " receipt_filename, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " txn_date, status, party, external_helper_id, reference, method,"
+            " receipt_filename, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
-             v["party"], v["external_helper_id"], v["reference"], v["method"],
+             v["status"], v["party"], v["external_helper_id"], v["reference"], v["method"],
              receipt, actor_name))
         return True, f"{v['kind']} recorded: ${v['amount']:,.2f}", None
     txn = db.execute("SELECT receipt_filename FROM household_transactions WHERE id = ?",
@@ -3946,10 +4046,11 @@ def _apply_household_txn(db, payload, ref_id, actor_name, draft_file_stored_name
         receipt = payload.get("receipt_filename", txn["receipt_filename"] or "")
     db.execute(
         "UPDATE household_transactions SET kind = ?, category = ?, description = ?,"
-        " amount = ?, txn_date = ?, party = ?, external_helper_id = ?,"
+        " amount = ?, txn_date = ?, status = ?, party = ?, external_helper_id = ?,"
         " reference = ?, method = ?, receipt_filename = ? WHERE id = ?",
         (v["kind"], v["category"], v["description"], v["amount"], v["txn_date"],
-         v["party"], v["external_helper_id"], v["reference"], v["method"], receipt, ref_id))
+         v["status"], v["party"], v["external_helper_id"], v["reference"], v["method"],
+         receipt, ref_id))
     return True, "Transaction updated.", None
 
 
@@ -4009,6 +4110,27 @@ def download_household_receipt(txn_id):
     if txn is None or not txn["receipt_filename"]:
         abort(404)
     return send_from_directory(household_upload_dir(), txn["receipt_filename"])
+
+
+def _apply_household_txn_toggle_paid(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    row = db.execute("SELECT status FROM household_transactions WHERE id = ?", (ref_id,)).fetchone()
+    if row is None:
+        return False, "That transaction no longer exists.", None
+    db.execute("UPDATE household_transactions SET status = ? WHERE id = ?",
+               ("Outstanding" if row["status"] == "Paid" else "Paid", ref_id))
+    return True, "Payment status updated.", None
+
+
+@app.route("/budget/transactions/<int:txn_id>/paid", methods=["POST"])
+@admin_required
+@draftable("household_txn.toggle_paid", ref_id_kwarg="txn_id")
+def household_txn_toggle_paid(txn_id):
+    db = get_db()
+    actor = current_user()
+    ok, _, _ = _apply_household_txn_toggle_paid(db, {}, txn_id, actor["name"] if actor else "")
+    if ok:
+        db.commit()
+    return redirect(url_for("household_budget_page", _anchor="txn-form"))
 
 
 def _capture_household_budget(**_):
@@ -4075,6 +4197,353 @@ def household_budget_delete(budget_id):
     ok, msg = trash_item("household_budget", budget_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("household_budget_page"))
+
+
+# ------------------------------------------------------- Piece 54: loans/savings
+def _loan_account_form_values():
+    return {
+        "name": request.form.get("name", "").strip(),
+        "lender": request.form.get("lender", "").strip(),
+        "original_amount": _to_float(request.form.get("original_amount")) or 0.0,
+        "interest_rate": _to_float(request.form.get("interest_rate")) or 0.0,
+        "opened_date": request.form.get("opened_date", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+    }
+
+
+def _capture_loan_account(**_):
+    v = _loan_account_form_values()
+    return {"values": v}, ([] if v["name"] else ["Give this loan account a name."])
+
+
+def _apply_loan_account(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
+        cur = db.execute(
+            "INSERT INTO loan_accounts (name, lender, original_amount, interest_rate,"
+            " opened_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (v["name"], v["lender"], v["original_amount"], v["interest_rate"],
+             v["opened_date"], v["notes"], actor_name))
+        return True, f"Loan account added: {v['name']}", cur.lastrowid
+    if db.execute("SELECT 1 FROM loan_accounts WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That loan account no longer exists.", None
+    db.execute(
+        "UPDATE loan_accounts SET name = ?, lender = ?, original_amount = ?,"
+        " interest_rate = ?, opened_date = ?, notes = ? WHERE id = ?",
+        (v["name"], v["lender"], v["original_amount"], v["interest_rate"],
+         v["opened_date"], v["notes"], ref_id))
+    return True, "Loan account updated.", None
+
+
+def _loan_entry_form_values():
+    return {
+        "kind": "Charge" if request.form.get("kind") == "Charge" else "Payment",
+        "amount": _to_float(request.form.get("amount")) or 0.0,
+        "entry_date": request.form.get("entry_date", "").strip()
+                      or datetime.now().strftime("%Y-%m-%d"),
+        "description": request.form.get("description", "").strip(),
+        "method": request.form.get("method", "").strip(),
+        "reference": request.form.get("reference", "").strip(),
+    }
+
+
+def _capture_loan_entry(**_):
+    v = _loan_entry_form_values()
+    return {"values": v}, ([] if v["amount"] else ["Enter an amount."])
+
+
+def _apply_loan_entry(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    """ref_id is the account_id -- this kind only ever creates a new row,
+    same reasoning as _apply_project_transaction()."""
+    v = payload["values"]
+    if db.execute("SELECT 1 FROM loan_accounts WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That loan account no longer exists.", None
+    statement = (_move_draft_file(draft_file_stored_name, household_upload_dir())
+                 if draft_file_stored_name else payload.get("statement_filename", ""))
+    db.execute(
+        "INSERT INTO loan_entries (account_id, kind, amount, entry_date, description,"
+        " method, reference, statement_filename, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (ref_id, v["kind"], v["amount"], v["entry_date"], v["description"],
+         v["method"], v["reference"], statement, actor_name))
+    return True, f"{v['kind']} recorded: ${v['amount']:,.2f}", None
+
+
+@app.route("/loans")
+@admin_required
+def loans_page():
+    db = get_db()
+    accounts = [{"row": a, "balance": loan_balance(db, a["id"], a["original_amount"])["balance"]}
+                for a in db.execute("SELECT * FROM loan_accounts ORDER BY name").fetchall()]
+    edit_id = request.args.get("edit", type=int)
+    edit_account = db.execute(
+        "SELECT * FROM loan_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
+    return render_template("loans.html", accounts=accounts, edit_account=edit_account)
+
+
+@app.route("/loans/new", methods=["POST"])
+@admin_required
+@draftable("loan_account.new")
+def loan_account_new():
+    payload, errors = _capture_loan_account()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("loans_page"))
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_loan_account(db, payload, None, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("loans_page"))
+
+
+@app.route("/loans/<int:account_id>/edit", methods=["POST"])
+@admin_required
+@draftable("loan_account.edit", ref_id_kwarg="account_id")
+def loan_account_edit(account_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM loan_accounts WHERE id = ?", (account_id,)).fetchone() is None:
+        abort(404)
+    payload, errors = _capture_loan_account()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("loans_page", edit=account_id))
+    actor = current_user()
+    ok, message, _ = _apply_loan_account(db, payload, account_id, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("loans_page"))
+
+
+@app.route("/loans/<int:account_id>/delete", methods=["POST"])
+@delete_required
+@admin_required
+def loan_account_delete(account_id):
+    ok, msg = trash_item("loan_account", account_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("loans_page"))
+
+
+@app.route("/loans/<int:account_id>")
+@admin_required
+def loan_account_detail(account_id):
+    db = get_db()
+    account = db.execute("SELECT * FROM loan_accounts WHERE id = ?", (account_id,)).fetchone()
+    if account is None:
+        abort(404)
+    balance = loan_balance(db, account_id, account["original_amount"])
+    return render_template("loan_account_detail.html", account=account, balance=balance,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/loans/<int:account_id>/entries/new", methods=["POST"])
+@admin_required
+@draftable("loan_entry.new", ref_id_kwarg="account_id")
+def loan_entry_new(account_id):
+    if get_db().execute("SELECT 1 FROM loan_accounts WHERE id = ?", (account_id,)).fetchone() is None:
+        abort(404)
+    payload, errors = _capture_loan_entry()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("loan_account_detail", account_id=account_id))
+    db = get_db()
+    payload["statement_filename"] = _save_household_upload("statement")
+    actor = current_user()
+    ok, message, _ = _apply_loan_entry(db, payload, account_id, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("loan_account_detail", account_id=account_id))
+
+
+@app.route("/loans/entries/<int:entry_id>/delete", methods=["POST"])
+@delete_required
+@admin_required
+def loan_entry_delete(entry_id):
+    entry = get_db().execute("SELECT account_id FROM loan_entries WHERE id = ?", (entry_id,)).fetchone()
+    ok, msg = trash_item("loan_entry", entry_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("loan_account_detail", account_id=entry["account_id"]) if entry else url_for("loans_page"))
+
+
+@app.route("/loans/entries/<int:entry_id>/statement")
+@admin_required
+def download_loan_statement(entry_id):
+    entry = get_db().execute(
+        "SELECT statement_filename FROM loan_entries WHERE id = ?", (entry_id,)).fetchone()
+    if entry is None or not entry["statement_filename"]:
+        abort(404)
+    return send_from_directory(household_upload_dir(), entry["statement_filename"])
+
+
+def _savings_account_form_values():
+    return {
+        "name": request.form.get("name", "").strip(),
+        "institution": request.form.get("institution", "").strip(),
+        "goal_amount": _to_float(request.form.get("goal_amount")) or 0.0,
+        "opened_date": request.form.get("opened_date", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+    }
+
+
+def _capture_savings_account(**_):
+    v = _savings_account_form_values()
+    return {"values": v}, ([] if v["name"] else ["Give this savings account a name."])
+
+
+def _apply_savings_account(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
+        cur = db.execute(
+            "INSERT INTO savings_accounts (name, institution, goal_amount,"
+            " opened_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (v["name"], v["institution"], v["goal_amount"], v["opened_date"],
+             v["notes"], actor_name))
+        return True, f"Savings account added: {v['name']}", cur.lastrowid
+    if db.execute("SELECT 1 FROM savings_accounts WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That savings account no longer exists.", None
+    db.execute(
+        "UPDATE savings_accounts SET name = ?, institution = ?, goal_amount = ?,"
+        " opened_date = ?, notes = ? WHERE id = ?",
+        (v["name"], v["institution"], v["goal_amount"], v["opened_date"], v["notes"], ref_id))
+    return True, "Savings account updated.", None
+
+
+def _savings_entry_form_values():
+    return {
+        "kind": "Withdrawal" if request.form.get("kind") == "Withdrawal" else "Deposit",
+        "amount": _to_float(request.form.get("amount")) or 0.0,
+        "entry_date": request.form.get("entry_date", "").strip()
+                      or datetime.now().strftime("%Y-%m-%d"),
+        "description": request.form.get("description", "").strip(),
+        "method": request.form.get("method", "").strip(),
+        "reference": request.form.get("reference", "").strip(),
+    }
+
+
+def _capture_savings_entry(**_):
+    v = _savings_entry_form_values()
+    return {"values": v}, ([] if v["amount"] else ["Enter an amount."])
+
+
+def _apply_savings_entry(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if db.execute("SELECT 1 FROM savings_accounts WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That savings account no longer exists.", None
+    statement = (_move_draft_file(draft_file_stored_name, household_upload_dir())
+                 if draft_file_stored_name else payload.get("statement_filename", ""))
+    db.execute(
+        "INSERT INTO savings_entries (account_id, kind, amount, entry_date, description,"
+        " method, reference, statement_filename, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (ref_id, v["kind"], v["amount"], v["entry_date"], v["description"],
+         v["method"], v["reference"], statement, actor_name))
+    return True, f"{v['kind']} recorded: ${v['amount']:,.2f}", None
+
+
+@app.route("/savings")
+@admin_required
+def savings_page():
+    db = get_db()
+    accounts = [{"row": a, "balance": savings_balance(db, a["id"])["balance"]}
+                for a in db.execute("SELECT * FROM savings_accounts ORDER BY name").fetchall()]
+    edit_id = request.args.get("edit", type=int)
+    edit_account = db.execute(
+        "SELECT * FROM savings_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
+    return render_template("savings.html", accounts=accounts, edit_account=edit_account)
+
+
+@app.route("/savings/new", methods=["POST"])
+@admin_required
+@draftable("savings_account.new")
+def savings_account_new():
+    payload, errors = _capture_savings_account()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("savings_page"))
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_savings_account(db, payload, None, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("savings_page"))
+
+
+@app.route("/savings/<int:account_id>/edit", methods=["POST"])
+@admin_required
+@draftable("savings_account.edit", ref_id_kwarg="account_id")
+def savings_account_edit(account_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM savings_accounts WHERE id = ?", (account_id,)).fetchone() is None:
+        abort(404)
+    payload, errors = _capture_savings_account()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("savings_page", edit=account_id))
+    actor = current_user()
+    ok, message, _ = _apply_savings_account(db, payload, account_id, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("savings_page"))
+
+
+@app.route("/savings/<int:account_id>/delete", methods=["POST"])
+@delete_required
+@admin_required
+def savings_account_delete(account_id):
+    ok, msg = trash_item("savings_account", account_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("savings_page"))
+
+
+@app.route("/savings/<int:account_id>")
+@admin_required
+def savings_account_detail(account_id):
+    db = get_db()
+    account = db.execute("SELECT * FROM savings_accounts WHERE id = ?", (account_id,)).fetchone()
+    if account is None:
+        abort(404)
+    balance = savings_balance(db, account_id)
+    return render_template("savings_account_detail.html", account=account, balance=balance,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/savings/<int:account_id>/entries/new", methods=["POST"])
+@admin_required
+@draftable("savings_entry.new", ref_id_kwarg="account_id")
+def savings_entry_new(account_id):
+    if get_db().execute("SELECT 1 FROM savings_accounts WHERE id = ?", (account_id,)).fetchone() is None:
+        abort(404)
+    payload, errors = _capture_savings_entry()
+    if errors:
+        flash(" ".join(errors), "error")
+        return redirect(url_for("savings_account_detail", account_id=account_id))
+    db = get_db()
+    payload["statement_filename"] = _save_household_upload("statement")
+    actor = current_user()
+    ok, message, _ = _apply_savings_entry(db, payload, account_id, actor["name"] if actor else "")
+    db.commit()
+    flash(message, "" if ok else "error")
+    return redirect(url_for("savings_account_detail", account_id=account_id))
+
+
+@app.route("/savings/entries/<int:entry_id>/delete", methods=["POST"])
+@delete_required
+@admin_required
+def savings_entry_delete(entry_id):
+    entry = get_db().execute("SELECT account_id FROM savings_entries WHERE id = ?", (entry_id,)).fetchone()
+    ok, msg = trash_item("savings_entry", entry_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("savings_account_detail", account_id=entry["account_id"]) if entry else url_for("savings_page"))
+
+
+@app.route("/savings/entries/<int:entry_id>/statement")
+@admin_required
+def download_savings_statement(entry_id):
+    entry = get_db().execute(
+        "SELECT statement_filename FROM savings_entries WHERE id = ?", (entry_id,)).fetchone()
+    if entry is None or not entry["statement_filename"]:
+        abort(404)
+    return send_from_directory(household_upload_dir(), entry["statement_filename"])
 
 
 def read_project_form():
@@ -5349,6 +5818,32 @@ def project_billing(db, project_id, contract_amount=0.0):
         "net_accrual": (collected + outstanding) - expense,
         "docs": docs,
     }
+
+
+def loan_balance(db, account_id, original_amount=0.0):
+    """Piece 54: running balance for a loan account, computed live from its
+    entry ledger -- same reasoning as project_billing()."""
+    entries = db.execute(
+        "SELECT * FROM loan_entries WHERE account_id = ? ORDER BY entry_date, id",
+        (account_id,)).fetchall()
+    def total(kind):
+        return sum(e["amount"] or 0 for e in entries if e["kind"] == kind)
+    paid, charged = total("Payment"), total("Charge")
+    original = _to_float(original_amount) or 0.0
+    return {"entries": entries, "original": original, "paid": paid,
+            "charged": charged, "balance": original + charged - paid}
+
+
+def savings_balance(db, account_id):
+    """Piece 54: running balance for a savings account, computed live."""
+    entries = db.execute(
+        "SELECT * FROM savings_entries WHERE account_id = ? ORDER BY entry_date, id",
+        (account_id,)).fetchall()
+    def total(kind):
+        return sum(e["amount"] or 0 for e in entries if e["kind"] == kind)
+    deposited, withdrawn = total("Deposit"), total("Withdrawal")
+    return {"entries": entries, "deposited": deposited, "withdrawn": withdrawn,
+            "balance": deposited - withdrawn}
 
 
 def _status_from_title(title):
@@ -6726,6 +7221,29 @@ DRAFT_KINDS = {
         "label": "Budget category edit", "capture": _capture_household_budget,
         "apply": _apply_household_budget,
         "summarize": lambda p: f"{p['category']}: ${p['monthly_amount']:,.2f}/mo"},
+    "household_txn.toggle_paid": {
+        "label": "Toggle Budget transaction paid/outstanding", "capture": lambda **_: ({}, []),
+        "apply": _apply_household_txn_toggle_paid, "summarize": lambda p: "Toggle paid/outstanding"},
+    "loan_account.new": {
+        "label": "New loan account", "capture": _capture_loan_account,
+        "apply": _apply_loan_account, "summarize": lambda p: p["values"]["name"]},
+    "loan_account.edit": {
+        "label": "Loan account edit", "capture": _capture_loan_account,
+        "apply": _apply_loan_account, "summarize": lambda p: p["values"]["name"]},
+    "loan_entry.new": {
+        "label": "New loan entry", "capture": _capture_loan_entry,
+        "apply": _apply_loan_entry, "save_file": lambda: _save_draft_file("statement"),
+        "summarize": lambda p: f"{p['values']['kind']}: ${p['values']['amount']:,.2f}"},
+    "savings_account.new": {
+        "label": "New savings account", "capture": _capture_savings_account,
+        "apply": _apply_savings_account, "summarize": lambda p: p["values"]["name"]},
+    "savings_account.edit": {
+        "label": "Savings account edit", "capture": _capture_savings_account,
+        "apply": _apply_savings_account, "summarize": lambda p: p["values"]["name"]},
+    "savings_entry.new": {
+        "label": "New savings entry", "capture": _capture_savings_entry,
+        "apply": _apply_savings_entry, "save_file": lambda: _save_draft_file("statement"),
+        "summarize": lambda p: f"{p['values']['kind']}: ${p['values']['amount']:,.2f}"},
     "project_txn.add": {
         "label": "New project transaction", "capture": _capture_project_transaction,
         "apply": _apply_project_transaction, "save_file": lambda: _save_draft_file("document"),

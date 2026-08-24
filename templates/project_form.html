@@ -40,6 +40,11 @@ recordkeeping.</p>
              placeholder="e.g. the garage, or 123 County Rd 45"
              value="{{ values.get('site_location', '') }}">
     </div>
+    <div class="field">
+      <label for="estimated_cost">Estimated cost $ <span class="muted">(optional — a Planning-phase ballpark)</span></label>
+      <input id="estimated_cost" name="estimated_cost" type="number" step="0.01" min="0"
+             value="{{ values.get('estimated_cost', '') }}">
+    </div>
   </div>
   <div class="actions">
     <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create project{% endif %}</button>

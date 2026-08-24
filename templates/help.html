@@ -36,7 +36,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <a href="#appointments-help">5d. Appointments (dates &amp; scheduling)</a>
     <a href="#finance">6. Billing</a>
     <a href="#budget-help">6b. Household Budget</a>
-    <a href="#contacts-help">6c. Contacts (people &amp; organizations)</a>
+    <a href="#loans-help">6c. Loans</a>
+    <a href="#savings-help">6d. Savings</a>
+    <a href="#contacts-help">6e. Contacts (people &amp; organizations)</a>
     <a href="#inventory">7. Inventory &amp; Wishlist</a>
     <a href="#people">8. People, roles &amp; permissions</a>
     <a href="#notifications">9. Notifications</a>
@@ -273,8 +275,50 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 </div>
 
 <!-- 6c -->
+<div class="card" id="loans-help">
+  <h2>6c. Loans</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('loans-help') %}
+  <p class="muted" style="margin-top:0;"><strong>💳 Loans</strong> tracks named loan accounts (a car loan, a
+  mortgage) — each has its own running balance, computed from its entry ledger rather than typed in as a single
+  number.</p>
+  <h3>Tutorial — set up a loan and record a payment</h3>
+  <ol class="steps">
+    <li>Open <strong>🏠 Household → 💳 Loans</strong> and add an account — name, lender, original amount, and
+    interest rate are all optional except the name.</li>
+    <li>Open the account and record entries as they happen: a <strong>Payment</strong> reduces the balance, a
+    <strong>Charge</strong> increases it (a fee, or an additional draw). A statement photo/PDF is optional.</li>
+    <li>The balance updates automatically — it's always original amount + charges − payments, computed live.</li>
+  </ol>
+  <details><summary>Can I attach a statement to a payment?</summary>
+    <p>Yes — each entry has an optional photo/PDF attachment, same as a Budget receipt.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers Loans, which you don't have access to.</p>
+  {% endif %}
+</div>
+
+<!-- 6d -->
+<div class="card" id="savings-help">
+  <h2>6d. Savings</h2>
+  <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('savings-help') %}
+  <p class="muted" style="margin-top:0;"><strong>🐷 Savings</strong> works the same way as Loans, above — named
+  accounts (an emergency fund, a vacation fund), each with its own running balance from an entry ledger.</p>
+  <h3>Tutorial — set up a savings account</h3>
+  <ol class="steps">
+    <li>Open <strong>🏠 Household → 🐷 Savings</strong> and add an account — an optional goal amount is purely
+    informational.</li>
+    <li>Record <strong>Deposits</strong> and <strong>Withdrawals</strong> as they happen; the balance updates
+    automatically.</li>
+  </ol>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers Savings, which you don't have access to.</p>
+  {% endif %}
+</div>
+
+<!-- 6e -->
 <div class="card" id="contacts-help">
-  <h2>6c. Contacts — people &amp; organizations outside the household</h2>
+  <h2>6e. Contacts — people &amp; organizations outside the household</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
   <p class="muted" style="margin-top:0;"><strong>🧰 Contacts</strong> (under 🗄 Databases) covers both individual
   helpers (a plumber, a babysitter) and <strong>organizations</strong> you deal with (a subscription service, a

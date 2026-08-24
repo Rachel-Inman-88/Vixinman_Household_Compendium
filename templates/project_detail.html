@@ -133,6 +133,9 @@
     <dd>{{ project["project_category"] or "—" }}{% if project["project_type"] %} · {{ project["project_type"] }}{% endif %}</dd>
     {% endif %}
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
+    {% if can('finances.manage') %}
+    <dt>Estimated cost</dt><dd>{% if project["estimated_cost"] %}${{ (project["estimated_cost"])|money0 }}{% else %}—{% endif %}</dd>
+    {% endif %}
     <dt>Created</dt><dd>{{ project["created_at"][:10] }}</dd>
   </dl>
 </div>

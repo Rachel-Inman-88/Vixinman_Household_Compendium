@@ -470,6 +470,7 @@ CREATE TABLE IF NOT EXISTS household_transactions (
     description         TEXT DEFAULT '',
     amount              REAL NOT NULL DEFAULT 0,
     txn_date            TEXT DEFAULT '',                  -- YYYY-MM-DD
+    status              TEXT NOT NULL DEFAULT 'Paid',      -- Piece 54: Outstanding / Paid
     party               TEXT DEFAULT '',                  -- who paid / was paid
     external_helper_id  INTEGER REFERENCES external_helpers(id),  -- NULL = no Contact link
     reference           TEXT DEFAULT '',
@@ -485,6 +486,62 @@ CREATE TABLE IF NOT EXISTS household_budgets (
     category       TEXT NOT NULL,
     monthly_amount REAL NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 54: named loan accounts with a running balance computed live from
+-- their entry ledger -- mirrors project_transactions/project_billing()
+-- deliberately (the only existing "ledger drives a computed total"
+-- precedent in this schema). No stored/cached balance column.
+CREATE TABLE IF NOT EXISTS loan_accounts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    lender          TEXT DEFAULT '',
+    original_amount REAL NOT NULL DEFAULT 0,
+    interest_rate   REAL DEFAULT 0,            -- APR %, informational only
+    opened_date     TEXT DEFAULT '',
+    notes           TEXT DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by      TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS loan_entries (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id         INTEGER NOT NULL REFERENCES loan_accounts(id),
+    kind               TEXT NOT NULL DEFAULT 'Payment',  -- Payment (reduces balance) / Charge (increases -- fees, draws, accrued interest)
+    amount             REAL NOT NULL DEFAULT 0,
+    entry_date         TEXT DEFAULT '',
+    description        TEXT DEFAULT '',
+    method             TEXT DEFAULT '',
+    reference          TEXT DEFAULT '',
+    statement_filename TEXT DEFAULT '',        -- optional photo/PDF, household_upload_dir()
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by         TEXT DEFAULT ''
+);
+
+-- Piece 54: named savings accounts, same shape as loan_accounts above.
+CREATE TABLE IF NOT EXISTS savings_accounts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    institution TEXT DEFAULT '',
+    goal_amount REAL DEFAULT 0,                -- optional target, informational only
+    opened_date TEXT DEFAULT '',
+    notes       TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by  TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS savings_entries (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id         INTEGER NOT NULL REFERENCES savings_accounts(id),
+    kind               TEXT NOT NULL DEFAULT 'Deposit',  -- Deposit / Withdrawal
+    amount             REAL NOT NULL DEFAULT 0,
+    entry_date         TEXT DEFAULT '',
+    description        TEXT DEFAULT '',
+    method             TEXT DEFAULT '',
+    reference          TEXT DEFAULT '',
+    statement_filename TEXT DEFAULT '',
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by         TEXT DEFAULT ''
 );
 
 -- Piece 23.2 (rehauled Piece 41): household inventory. Category is free text

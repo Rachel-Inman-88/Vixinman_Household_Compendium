@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Loans{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>💳 Loans <span class="muted" style="font-size:0.95rem; font-weight:400;">— named loan accounts with a running balance</span></h1>
+</div>
+<p class="muted" style="margin-top:0;">Each account's balance is computed from its own entry ledger — record a
+<strong>Payment</strong> when you pay it down, or a <strong>Charge</strong> for a fee or additional draw.</p>
+
+<div class="card">
+  {% if accounts %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Name</th><th>Lender</th><th style="text-align:right;">Balance</th><th></th></tr></thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr>
+        <td><a href="{{ url_for('loan_account_detail', account_id=a.row['id']) }}">{{ a.row["name"] }}</a></td>
+        <td class="muted">{{ a.row["lender"] or "—" }}</td>
+        <td style="text-align:right; font-weight:700;">${{ (a.balance)|money0 }}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('loans_page', edit=a.row['id']) }}#account-form" class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+          {% if can('delete') %}
+          <form method="post" action="{{ url_for('loan_account_delete', account_id=a.row['id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Send this loan account to the trash?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No loan accounts yet — add one below.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="account-form">
+  {% set ea = edit_account %}
+  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit loan account" if ea else "＋ New loan account" }}</h2>
+  <form method="post" action="{{ url_for('loan_account_edit', account_id=ea['id']) if ea else url_for('loan_account_new') }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="name">Name *</label>
+        <input id="name" name="name" required value="{{ ea['name'] if ea else '' }}" placeholder="e.g. Car loan, Mortgage"></div>
+      <div class="field"><label for="lender">Lender</label>
+        <input id="lender" name="lender" value="{{ ea['lender'] if ea else '' }}"></div>
+      <div class="field"><label for="original_amount">Original amount $</label>
+        <input id="original_amount" name="original_amount" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ea['original_amount']) if ea else '' }}"></div>
+      <div class="field"><label for="interest_rate">Interest rate %</label>
+        <input id="interest_rate" name="interest_rate" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ea['interest_rate']) if ea else '' }}"></div>
+      <div class="field"><label for="opened_date">Opened</label>
+        <input id="opened_date" name="opened_date" type="date" value="{{ ea['opened_date'] if ea else '' }}"></div>
+      <div class="field wide"><label for="notes">Notes</label>
+        <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ea else "＋ Add loan account" }}</button>
+      {% if ea %}<a href="{{ url_for('loans_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
