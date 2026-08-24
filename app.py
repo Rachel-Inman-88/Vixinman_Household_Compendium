@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.40"
+VERSION = "0.41"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3543,9 +3543,19 @@ def dashboard():
               " WHERE status = 'Pending'").fetchone()[0],
           "overdue": overdue, "stalled": stalled, "closing": closing_jobs}
 
-    # Payments/Finance table across every active project (all in-flight
-    # money — deposits, invoices, expenses).
-    payments, pay_totals = _payments_summary(db)
+    # Piece 63: Upcoming payments -- Outstanding project expenses due (or
+    # overdue) within the next month, for the Household overview card.
+    # Replaces the full Payments table (moved to the dedicated /money
+    # page, Piece 62) with a short, actionable near-term list.
+    upcoming_cutoff = (today_d + timedelta(days=30)).strftime("%Y-%m-%d")
+    upcoming_payments = db.execute(
+        "SELECT t.id, t.amount, t.txn_date, t.description, t.category,"
+        " j.id AS project_id, j.job_name"
+        " FROM project_transactions t JOIN projects j ON j.id = t.project_id"
+        " WHERE t.kind = 'Expense' AND t.status = 'Outstanding'"
+        " AND t.txn_date != '' AND t.txn_date <= ?"
+        " AND j.status NOT IN ('Abandoned', 'Done')"
+        " ORDER BY t.txn_date, j.id", (upcoming_cutoff,)).fetchall()
 
     backlog_worklist = db.execute(
         "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
@@ -3558,7 +3568,7 @@ def dashboard():
         task_groups=task_groups, my_chores=my_chores,
         my_requirements=my_requirements, my_appointments=my_appointments,
         sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
-        payments=payments, pay_totals=pay_totals,
+        upcoming_payments=upcoming_payments,
         today=today_s,
         progress_by_job=progress_by_job,
         permits_by_job=permits_by_job,
