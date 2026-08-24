@@ -1489,13 +1489,92 @@ disappearing from the list.
   DOM/`getBoundingClientRect()` inspection was the working substitute
   again, same established fallback as Pieces 49/55/57.
 
-**Requested next, not yet started**: mid-Piece-61, the user asked for a
-follow-up — under the 🏠 Household nav dropdown, collapse the separate
-Savings/Loans/Budget links into one "💰 Money" button that opens a new
-financial dashboard page. Not scoped yet (what the new financial
-dashboard page should actually contain beyond being a landing/hub for the
-three existing pages hasn't been discussed) — needs its own scoping pass
-before starting, same as Piece 60 did.
+**v0.39: moved the Productivity Overview card — done.** Immediate
+follow-up feedback right after Piece 61 shipped: "place the Productivity
+Overview card directly beneath the Household overview card" (was further
+down the page, after Backlog). Pure template reorder in
+`dashboard.html` — cut the whole card block and reinserted it right after
+Household overview's closing `{% endif %}`, before the Child "🗓 My
+schedule" branch. No Python/logic change. Verified via the existing
+Piece 61 test suite (unaffected) plus a position check
+(`body.index('🏠 Household overview') < body.index('🗂 Productivity
+Overview') < body.index('💵 Payments')`, scoped to `<main>` to avoid a
+false match against the nav bar's own "🗂 Backlog" quick-link, which
+uses the same emoji and comes earlier in the page — a false alarm caught
+and fixed in the verification script itself, not a real bug) and the
+standard 40-route sweep.
+
+**Piece 62 (v0.40): "💰 Money" nav consolidation + a financial overview
+page — done.** Mid-Piece-61, the user asked for a follow-up: under the
+🏠 Household nav dropdown, collapse the separate Savings/Loans/Budget
+links into one "💰 Money" button opening a new financial dashboard page.
+Scoped via 2 AskUserQuestion rounds (multiSelect + a custom addition):
+the page should look like this session's other overview cards — summary
+tiles, Budget's existing charts, a needs-attention row, and (the user's
+own addition) the dashboard's Payments table too, not just a page of
+links out to the 3 existing pages. Nav routing: a new `/money` route,
+not a repurposed `/budget`.
+- **Two small extractions from `dashboard()`**, so the new page can reuse
+  the exact same numbers with zero duplication risk:
+  `_household_money_snapshot(db)` (the "Money in flight" tile
+  computation — unpaid expenses/loans/income/savings/money-in-projects/
+  estimate-vs-actual, Piece 54) and `_payments_summary(db)` (the
+  Payments table/totals loop, Piece 22.3). `dashboard()` calls both
+  instead of inlining the loops — same behavior, confirmed via a
+  before/after regression check comparing rendered tile values.
+- New `/money` route, gated exactly like `/budget`
+  (`@admin_required` + `VIEW_PERMISSION["money_page"] = "finances.manage"`
+  — viewing is gated too, not just editing, same Child-can't-see-finances
+  rule as Budget/Loans/Savings). New `templates/money.html`: the same
+  Household-overview tile/panel markup fed by `_household_money_snapshot()`;
+  a combined savings-goal progress bar (`total_savings_balance` /
+  `total_savings_goal` summed across every account with a goal set, same
+  clamped-both-directions bar as Piece 60's per-account one); a
+  needs-attention row (over-budget categories this month, a count of
+  Outstanding household transactions); Budget's expense-pie and
+  cash-flow-projection charts (Piece 55's exact geometry functions
+  reused, fixed 3-month horizon here — no `<select>`, the full adjustable
+  controls stay on the dedicated Budget page); and the Payments table,
+  reusing `_payments_summary()`. Toolbar links out to the full
+  Budget/Loans/Savings pages — none of those three pages changed,
+  moved, or lost any functionality; `/money` sits in front of them.
+- **Interpretation flagged for the user to correct if wrong**: "Payments
+  should also be included" was read as *duplicated* onto `/money`, not
+  moved off the dashboard — the dashboard's own Payments card stays
+  exactly where it is. If the intent was actually to move it, that's a
+  one-line deletion from `dashboard.html`, not a re-plan.
+- `templates/base.html`'s 🏠 Household dropdown: the 3 separate
+  `<a href="...">💵 Budget</a>` / `💳 Loans` / `🐷 Savings` links became
+  one `{% if can('finances.manage') %}<a href="{{ url_for('money_page')
+  }}">💰 Money</a>{% endif %}`. `help.html`'s 3 existing Budget/Loans/
+  Savings tutorials had their nav-path instructions updated (now
+  "🏠 Household → 💰 Money → 💵 Budget" etc.) plus a new FAQ item
+  explaining what the Money page is.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  regression check that the extraction changed nothing about the
+  dashboard's own rendered numbers, a test-client cycle (`/money` renders
+  for a `finances.manage` user and is denied for a Child with the exact
+  same flash `/budget` already uses; seeded a loan account, a savings
+  account with a goal, an over-spent budget category, an Outstanding
+  transaction, and a billed project — confirmed loan/savings totals match
+  a hand sum, the goal bar and its percentage/"reached" text are correct,
+  the over-budget badge and unpaid-bills count both appear, and the
+  Payments table matches the dashboard's own numbers exactly; the nav
+  shows exactly one "💰 Money" link with no leftover Budget/Loans/Savings
+  entries), the standard 40-route sweep (now including `/money`), and a
+  boot + render check against a **copy** of the real household database
+  (never the original) confirming both `/money` and the dashboard still
+  render 200 with the money tiles/Payments table intact. **A live
+  browser check was attempted but abandoned as inconclusive**: a scratch
+  dev server on a throwaway port returned a bare 500 with zero matching
+  request-log lines in the process's own output for either page load —
+  the exact same code and seeded data confirmed working via the Flask
+  test client moments earlier, so this reads as a local port/proxy
+  environment glitch in this session, not a real app bug; not worth
+  chasing further given the test-client suite already covers the same
+  ground. Worth a real manual phone/browser check next time the app is
+  actually being used, if anyone wants extra confidence on the visual
+  layout specifically.
 
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
