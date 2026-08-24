@@ -1371,6 +1371,53 @@ lives on the dashboard's per-stage project-listing cards.
   existing table, and the toggle route round-trips cleanly against a real
   project and a real household member with no residue left behind.
 
+**Piece 60 (v0.37): Loans/Savings/Budget UI polish — done.** The 4th of
+the 4 finance workstreams queued since Piece 54, with no specific
+complaints — scoped via AskUserQuestion into 3 concrete gaps found by
+direct inspection: `savings_accounts.goal_amount` was captured on the form
+but never compared against the running balance anywhere; Loan/Savings
+account detail pages had 3-4 flat stat tiles and a plain entry table, no
+trend visibility (unlike Budget's 4 Piece-55 charts); the Loans/Savings
+list pages had no aggregate total, unlike Budget's Income/Expenses/Net
+summary.
+- New `_balance_history_geometry(entries, starting_balance, deltas)` (near
+  `_bar_series_geometry()`) — a hand-rolled SVG line-chart geometry
+  function, same "no charting library anywhere in this app" convention as
+  Piece 55's pie/bar helpers. One function serves both Loans (`deltas =
+  {"Charge": 1, "Payment": -1}`) and Savings (`{"Deposit": 1, "Withdrawal":
+  -1}`) since `loan_balance()`/`savings_balance()` already return
+  `entries` sorted oldest-first — only the sign convention differs.
+  Deliberately always folds `0` into the value range so a loan payoff or
+  a savings account going negative is visible on the chart's axis, not
+  just an off-screen edge case.
+- `loan_account_detail()`/`savings_account_detail()` each gained one
+  `history` computation, rendered as a new chart card (polyline + dots +
+  a dashed zero-line) between the stat tiles and the entries table.
+- Savings account detail: the goal tile became a real progress bar
+  (mirrors Budget's category progress-bar markup exactly) — clamped both
+  directions (a withdrawal-heavy account can show a negative balance) and
+  intentionally **not** colored as a warning past 100%, since exceeding a
+  savings goal is a good outcome, unlike Budget's over-budget red.
+- `loans_page()`/`savings_page()` each gained a `total_balance` (Savings
+  also `total_goal`) summary card above the accounts table — omitted
+  entirely on an empty account list rather than showing a $0 tile.
+- No schema changes, no new routes — purely additive read-side rendering
+  over data that already existed.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, unit
+  checks on `_balance_history_geometry()` against hand-computed running
+  balances (including an exact payoff landing precisely on the zero-line
+  and a 0/1-entry account not crashing on the geometry's span/step math),
+  a test-client cycle (list-page summary tiles match a hand-summed total;
+  the goal progress bar reads 50%/"reached"/clamped-at-0% correctly across
+  three balance scenarios; an account with no goal renders no progress
+  bar at all — a real regression check against the prior unconditional-
+  looking `{% if %}`), the standard 40-route sweep, and a boot + render
+  check against a **copy** of the real household database (never the
+  original) — confirmed the real db currently has 0 loan/savings accounts
+  (so this piece is zero-risk there either way), then added scratch
+  accounts/entries to the copy to confirm the new chart and progress-bar
+  UI actually render against real-shaped data, not just synthetic tests.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -1395,9 +1442,6 @@ lives on the dashboard's per-stage project-listing cards.
   app's original solar-installation-business origins and don't really fit a
   household project. Not touched yet by design; a future piece should
   reconsider/rename/replace it using the inventory already gathered.
-- **Loans/Savings/Budget UI polish** — queued (4th of the 4 finance
-  workstreams), no specific complaints identified yet; needs its own
-  scoping pass before starting.
 - **Pixel 9a beta-test readiness** — (2) of the 3 original blockers is
   done (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`). Still
   open: (1) a mobile-responsive UI pass — this app has never had a real

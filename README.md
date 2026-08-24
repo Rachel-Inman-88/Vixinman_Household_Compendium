@@ -446,11 +446,19 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   (increases it — a fee, or an additional draw), each with an optional
   photo/PDF statement attachment. An account with entries can't be deleted
   until they're removed first (same in-use safety rail as everywhere else).
+  The account detail page shows a **balance-history chart** (running
+  balance over every entry); the list page totals the balance across every
+  account.
 
 ### Savings
 - **🐷 Savings**: named savings accounts (an emergency fund, a vacation
   fund), same shape as Loans — a running balance from **Deposit**/
-  **Withdrawal** entries, an optional goal amount (informational only).
+  **Withdrawal** entries, an optional goal amount. When a goal is set, the
+  account detail page shows a **progress bar** toward it (caps visually at
+  100% — going over a savings goal is a good thing, not flagged like an
+  over-budget category); it also gets the same balance-history chart as
+  Loans, and the list page totals both the balance and the goal across
+  every account.
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
@@ -554,6 +562,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.37** — **Loans/Savings/Budget UI polish.** Loan and Savings account
+  detail pages now show a **balance-history chart** (a hand-rolled SVG line
+  chart of the running balance over every entry, matching Piece 55's
+  chart style) — the same pattern serves both, since a loan's Payment/
+  Charge ledger and a savings account's Deposit/Withdrawal ledger only
+  differ in which direction each entry moves the balance. Savings accounts
+  with a **goal amount** now show a **progress bar** toward it (was
+  captured on the form since Piece 54 but never compared against the
+  balance anywhere). The Loans and Savings **list pages** each gained a
+  small summary strip (account count + total balance; Savings also totals
+  every account's goal) — Budget already had an equivalent Income/
+  Expenses/Net summary.
 - **v0.36** — **"Load Bag" — pull a project into your Work Bag without
   waiting for a task assignment.** Each active project's dashboard card now
   has a 🎒 toggle (add/remove yourself from the project's Work Bag
