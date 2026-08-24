@@ -182,6 +182,14 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   bag (name, install date, open-task count); tapping a project opens
   its **own page** with that project's tasks, plus hours, receipts, and notes pinned
   to it.
+- **"Load Bag"**: every active project's dashboard card carries a **🎒 toggle**
+  (add/remove yourself from that project's Work Bag directly, independent of
+  whether you have a task assigned on it) and a **⬇ Load tasks** button (claims
+  every currently *unassigned* task on the project for you; tasks already
+  assigned to someone else are left untouched). A bagged project's other
+  people's tasks appear in your Work Bag too, but read-only — no Submit/Mark-
+  done controls, since the field-sync endpoint only ever accepts changes to
+  your own tasks.
 - **Submit-as-done with a single hours total**: instead of a status dropdown, each
   task has a single **✓ Submit as done** (and a **⚠ Can't finish** → Blocked).
   Submitting captures **the time it took** as one number, held for **whoever has
@@ -546,6 +554,17 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.36** — **"Load Bag" — pull a project into your Work Bag without
+  waiting for a task assignment.** Each active project's dashboard card now
+  has a 🎒 toggle (add/remove yourself from the project's Work Bag
+  directly — a new `work_bag_members` table, independent of task
+  assignment) and a "⬇ Load tasks" button (claims every currently
+  *unassigned* task on that project for you; tasks already assigned to
+  someone else are left untouched). A bagged project's other-people's
+  tasks now show up in your Work Bag too, but as **view-only reference**
+  cards (no Submit/Mark-done controls) — the field-sync endpoint only ever
+  accepted changes to your own tasks, so this avoids a silent-failure trap
+  rather than relaxing that check.
 - **v0.35** — **Boards get collaborators and a due time.** Beyond the
   single "sent to" assignee, any number of household members can now be
   added as **collaborators** on a board — notified when added, counted

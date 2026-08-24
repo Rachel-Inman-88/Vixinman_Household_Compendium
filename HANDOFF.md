@@ -1299,6 +1299,78 @@ due *time* ("Tuesday, 4pm"), not just a date.
   second boot, and both `/boards` and a real board's detail page render
   200 against the actual data.
 
+**Piece 59 (v0.36): "Load Bag" — Work Bag membership independent of task
+assignment — done.** User: "I've noticed there's no easy way to load tasks
+and projects into the Work Bag feature from any UI point... a 'load bag'
+button (a toggle so we can see if it's in there)... load all member-specific
+tasks and unassigned tasks from that project to the user's Work Bag."
+Confirmed via 3 rounds of AskUserQuestion (all "Recommended"): (1) the
+toggle is a genuinely new, explicit per-person "project is in my bag"
+membership record, independent of task assignment — a task not owned by the
+bag-holder still shows up but keeps its real assignee; (2) the bulk-load
+action only reassigns currently-*unassigned* tasks to the loading user —
+tasks already assigned to someone else are left untouched; (3) the button
+lives on the dashboard's per-stage project-listing cards.
+- **A real risk found during research, driving the design**:
+  `api_work_bag_submit`'s per-task ownership check
+  (`WHERE id = ? AND household_member_id = ?`) **silently drops** any queued
+  submission for a task not assigned to the submitter — no error surfaced.
+  Making a bagged project's other-people's-tasks look actionable in the Work
+  Bag UI would mean tapping Submit/Mark-done on them silently did nothing.
+  **Resolved by making those tasks read-only/reference-only client-side**
+  (title, status, "Assigned to `<name>` — view only") rather than touching
+  `api_work_bag_submit`'s authorization — zero server-side risk introduced,
+  and the endpoint's existing own-tasks-only behavior stays exactly as it
+  was for every other caller.
+- New `work_bag_members` table (`project_id`, `household_member_id`,
+  `added_at`) — plain many-to-many, no `UNIQUE` constraint, same
+  app-level-dedup convention as `permission_grants`/`board_collaborators`.
+  New `_work_bag_task_rows()` (a strict superset of the existing
+  `_my_tasks_rows()`, which stays untouched — it still powers the
+  dashboard's own assignment-only "My tasks" card) LEFT JOINs
+  `household_members` for the assignee's name and adds an `OR project_id IN
+  (SELECT ... FROM work_bag_members ...)` branch to the WHERE clause; for
+  a member with zero bagged projects the two functions return identical
+  results. `/api/my-tasks` now serves `_work_bag_task_rows()` and adds two
+  new per-task fields, `assigned_to_me` (bool) and `assignee_name`.
+- Two new POST routes: `/work-bag/<id>/toggle` (add/remove bag membership)
+  and `/work-bag/<id>/load-tasks` (ensures membership, then claims every
+  currently-`NULL`-assignee task on the project for the caller — a plain
+  `UPDATE ... WHERE household_member_id IS NULL`, so an already-assigned
+  task is structurally untouchable by this route regardless of who it's
+  assigned to). Both redirect back to `request.referrer` so they work the
+  same from the dashboard today or from `work_bag_job.html` later.
+  `dashboard()` gained a `my_bag_project_ids` set (mirrors the existing
+  `child_project_ids` pattern) so the per-stage project table can render
+  the 🎒 toggle in the right on/off state; `delete_household_member()`
+  gained a `work_bag_members` cleanup line alongside its existing
+  `permission_grants`/`password_requests`/`security_answers` deletes.
+- `templates/work_bag_job.html`'s `taskCard()` gates on `assigned_to_me`:
+  `=== false` (an explicit check, not a truthy/falsy one) renders the
+  read-only reference card; a task from an older cached copy predating this
+  field (`assigned_to_me` undefined) is treated as actionable, matching the
+  API's pre-Piece-59 own-tasks-only behavior. `work_bag.html`'s project
+  grouping needed **no code change** — since `_work_bag_task_rows()` is a
+  strict superset, a bagged project with only unassigned/other-people's
+  tasks simply appears in the existing grouped list.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, an
+  11-step test-client script (`piece59_workbag_test.py` — with zero bagged
+  projects `/api/my-tasks` exactly matches the old `_my_tasks_rows()`
+  output; toggle add/remove round-trips with no duplicate row; a bagged
+  project's unassigned/other-person's/own tasks all report the correct
+  `assigned_to_me`/`assignee_name`; `api_work_bag_submit` still silently
+  rejects a change to a non-owned task, confirming the read-only-UI
+  decision needed no matching server change; bulk-load claims only the
+  unassigned task and leaves the other person's assignment untouched;
+  the claimed task becomes actionable afterward; the dashboard renders the
+  bag column; deleting a household member leaves no orphaned
+  `work_bag_members` rows), the standard 40-route sweep, and — since this
+  piece adds a real schema migration — a boot against a **copy** of the
+  real household database (never the original), confirming
+  `work_bag_members` lands cleanly with zero row-count drift across every
+  existing table, and the toggle route round-trips cleanly against a real
+  project and a real household member with no residue left behind.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
