@@ -455,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.30"
+VERSION = "0.31"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3911,6 +3911,200 @@ def _household_month_bounds(month_str=None):
     return month_str, label
 
 
+# -------------------------------------------------- Piece 55: Budget reporting
+def _recent_months(n, ending=None):
+    """The last n calendar months (oldest first) as [(month_str, label), ...],
+    'YYYY-MM' ending at `ending` (default: current month). Hand-rolled month
+    walk -- no dateutil/relativedelta anywhere in this app, stdlib only."""
+    end_dt = datetime.strptime(ending, "%Y-%m") if ending else datetime.now()
+    y, m = end_dt.year, end_dt.month
+    months = []
+    for _ in range(n):
+        months.append((f"{y:04d}-{m:02d}", datetime(y, m, 1).strftime("%B %Y")))
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    months.reverse()
+    return months
+
+
+def _forward_months(n, starting=None):
+    """Mirror of _recent_months, walking forward (soonest first)."""
+    start_dt = datetime.strptime(starting, "%Y-%m") if starting else datetime.now()
+    y, m = start_dt.year, start_dt.month
+    months = []
+    for _ in range(n):
+        months.append((f"{y:04d}-{m:02d}", datetime(y, m, 1).strftime("%B %Y")))
+        m += 1
+        if m == 13:
+            m, y = 1, y + 1
+    return months
+
+
+def _combined_month_totals(db, month_str):
+    """Combined household + project income/expense totals and expense-by-
+    category breakdown for ONE month, across BOTH ledgers, all statuses
+    (matches household_budget_page()'s own existing unfiltered 'totals'
+    block). Backs the pie chart and both trend charts -- one shared query
+    shape instead of 4 hand-duplicated versions. `table` is interpolated
+    from a fixed 2-item internal tuple, never request data."""
+    totals = {"Income": 0.0, "Expense": 0.0}
+    by_category = {}
+    for table in ("household_transactions", "project_transactions"):
+        for r in db.execute(
+                f"SELECT kind, category, COALESCE(SUM(amount), 0) AS total"
+                f" FROM {table} WHERE substr(txn_date, 1, 7) = ?"
+                f" GROUP BY kind, category", (month_str,)).fetchall():
+            if r["kind"] in totals:
+                totals[r["kind"]] += r["total"]
+            if r["kind"] == "Expense":
+                cat = r["category"] or "Uncategorized"
+                by_category[cat] = by_category.get(cat, 0.0) + r["total"]
+    return {"income": totals["Income"], "expense": totals["Expense"],
+            "net": totals["Income"] - totals["Expense"], "by_category": by_category}
+
+
+def _category_breakdown_series(month_data, top_n=5):
+    """Per-month expense-by-category series from month_data (a list of
+    (month_str, label, _combined_month_totals()-dict)), capped to the top_n
+    categories by total spend across the whole window + an 'Other' bucket.
+    Pure function, no db access."""
+    grand_totals = {}
+    for _, _, mt in month_data:
+        for cat, amt in mt["by_category"].items():
+            grand_totals[cat] = grand_totals.get(cat, 0.0) + amt
+    top_cats = [c for c, _ in sorted(grand_totals.items(), key=lambda kv: -kv[1])[:top_n]]
+    series = {cat: [] for cat in top_cats}
+    other_vals, has_other = [], False
+    for _, _, mt in month_data:
+        for cat in top_cats:
+            series[cat].append(mt["by_category"].get(cat, 0.0))
+        other = sum(a for c, a in mt["by_category"].items() if c not in top_cats)
+        other_vals.append(other)
+        has_other = has_other or other > 0
+    if has_other:
+        series["Other"] = other_vals
+    return {"labels": [lbl for _, lbl, _ in month_data], "series": series}
+
+
+def _cash_flow_projection(db, horizon_months=3):
+    """Forward-looking net cash flow -- project + household Outstanding
+    transactions plus household_budgets recurring targets, bucketed by
+    calendar month. NOT a running account balance (no starting-balance
+    concept exists anywhere in this app) -- nets expected-in vs.
+    expected-out per future bucket only.
+
+    Bucket 0 = the rest of the current month; an Outstanding row with a
+    blank txn_date or one on/before today lands in bucket 0 regardless of
+    how overdue (there's no earlier bucket, and it's actionable today). A
+    txn_date beyond the horizon clamps into the last bucket instead of
+    being dropped. household_budgets rows project a recurring Expense into
+    every bucket: bucket 0 gets only the REMAINING target (monthly_amount
+    minus what's already recorded this month in that category); future
+    whole months get the full monthly_amount."""
+    today_s = datetime.now().strftime("%Y-%m-%d")
+    months = _forward_months(horizon_months)
+    month_strs = [ms for ms, _ in months]
+    idx = {ms: i for i, ms in enumerate(month_strs)}
+    last_idx = len(months) - 1
+    buckets = [{"month": ms, "label": lbl, "income": 0.0, "expense": 0.0,
+                "budget_expense": 0.0} for ms, lbl in months]
+
+    def _bucket_for(txn_date):
+        if not txn_date or txn_date <= today_s:
+            return 0
+        ms = txn_date[:7]
+        return idx.get(ms, last_idx if ms > month_strs[-1] else 0)
+
+    for table in ("project_transactions", "household_transactions"):
+        for r in db.execute(
+                f"SELECT kind, amount, txn_date FROM {table}"
+                f" WHERE status = 'Outstanding'").fetchall():
+            b = buckets[_bucket_for(r["txn_date"])]
+            if r["kind"] == "Income":
+                b["income"] += r["amount"] or 0.0
+            elif r["kind"] == "Expense":
+                b["expense"] += r["amount"] or 0.0
+
+    budgets = db.execute("SELECT category, monthly_amount FROM household_budgets").fetchall()
+    if budgets:
+        spent_this_month = {r["category"]: r["total"] for r in db.execute(
+            "SELECT category, COALESCE(SUM(amount), 0) AS total"
+            " FROM household_transactions WHERE kind = 'Expense'"
+            " AND substr(txn_date, 1, 7) = ? GROUP BY category", (month_strs[0],)).fetchall()}
+        for row in budgets:
+            target = row["monthly_amount"] or 0.0
+            remaining = max(target - spent_this_month.get(row["category"], 0.0), 0.0)
+            buckets[0]["budget_expense"] += remaining
+            for b in buckets[1:]:
+                b["budget_expense"] += target
+
+    for b in buckets:
+        b["total_expense"] = b["expense"] + b["budget_expense"]
+        b["net"] = b["income"] - b["total_expense"]
+    return {"buckets": buckets, "horizon_months": horizon_months}
+
+
+CATEGORY_PALETTE = ["#1a6e3c", "#8a5a00", "#b02a2a", "#4a6fa5", "#7a4fa5", "#12522c"]
+
+
+def _assign_category_colors(names):
+    """Deterministic category -> color (alphabetical over CATEGORY_PALETTE)
+    so the same category is the same color in the pie AND category trend.
+    'Other' is always neutral gray."""
+    colors = {}
+    for i, n in enumerate(sorted(n for n in names if n != "Other")):
+        colors[n] = CATEGORY_PALETTE[i % len(CATEGORY_PALETTE)]
+    if "Other" in names:
+        colors["Other"] = "#9ca3af"
+    return colors
+
+
+def _pie_geometry(by_category, color_map, size=160, stroke=28):
+    """Donut-chart slice geometry (category->amount, already capped to
+    top-N+Other) -- the classic multi-<circle> stroke-dasharray/
+    stroke-dashoffset technique, computed server-side."""
+    r = (size - stroke) / 2
+    circumference = 2 * math.pi * r
+    total = sum(by_category.values())
+    if total <= 0:
+        return {"slices": [], "total": 0.0, "size": size, "r": r, "stroke": stroke}
+    slices, offset = [], 0.0
+    for cat, amt in sorted(by_category.items(), key=lambda kv: -kv[1]):
+        pct = amt / total
+        dash = pct * circumference
+        slices.append({"category": cat, "amount": amt, "pct": round(pct * 100, 1),
+                       "color": color_map.get(cat, "#9ca3af"),
+                       "dasharray": f"{dash:.2f} {circumference - dash:.2f}",
+                       "dashoffset": f"{-offset:.2f}"})
+        offset += dash
+    return {"slices": slices, "total": total, "size": size, "r": r, "stroke": stroke}
+
+
+def _bar_series_geometry(labels, series, color_map, height=120, bar_width=16,
+                         gap=4, group_gap=20):
+    """Generic grouped-bar geometry, shared by all 3 bar charts. `series` is
+    name->list-of-non-negative-floats, all the same length as `labels` --
+    signed values (net flow) are shown as text, not bar height. Guards
+    against an all-zero dataset (max_val-or-1.0)."""
+    names = list(series.keys())
+    max_val = max((v for vals in series.values() for v in vals), default=0.0) or 1.0
+    group_width = len(names) * bar_width + max(len(names) - 1, 0) * gap
+    groups, x = [], 0
+    for gi, label in enumerate(labels):
+        bars = []
+        for bi, name in enumerate(names):
+            val = series[name][gi]
+            h = (val / max_val) * height
+            bars.append({"name": name, "value": val, "x": x + bi * (bar_width + gap),
+                        "y": height - h, "width": bar_width, "height": h,
+                        "color": color_map.get(name, "#9ca3af")})
+        groups.append({"label": label, "x_center": x + group_width / 2, "bars": bars})
+        x += group_width + group_gap
+    return {"groups": groups, "width": x - group_gap if groups else 0, "height": height,
+            "names": names, "colors": {n: color_map.get(n, "#9ca3af") for n in names}}
+
+
 @app.route("/budget")
 @admin_required
 def household_budget_page():
@@ -3958,6 +4152,38 @@ def household_budget_page():
     ).fetchone() if edit_budget_id else None
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+
+    # Piece 55: at-a-glance reporting -- pie chart of expenses, a forward
+    # cash-flow projection, and two historical trend charts, all combining
+    # both the household and project ledgers.
+    trend_months = min(max(request.args.get("trend_months", type=int) or 6, 3), 24)
+    horizon_months = min(max(request.args.get("horizon_months", type=int) or 3, 1), 12)
+
+    months = _recent_months(trend_months, ending=month_str)
+    month_data = [(ms, lbl, _combined_month_totals(db, ms)) for ms, lbl in months]
+    cat_series = _category_breakdown_series(month_data, top_n=5)
+    cash_flow = _cash_flow_projection(db, horizon_months=horizon_months)
+
+    color_names = set(cat_series["series"]) | set(month_data[-1][2]["by_category"])
+    color_map = _assign_category_colors(color_names)
+    expense_pie = _pie_geometry(month_data[-1][2]["by_category"], color_map)
+
+    short_labels = [datetime.strptime(ms, "%Y-%m").strftime("%b '%y") for ms, _, _ in month_data]
+    income_expense_trend = _bar_series_geometry(
+        short_labels,
+        {"Income": [d["income"] for _, _, d in month_data],
+         "Expense": [d["expense"] for _, _, d in month_data]},
+        {"Income": "#1a6e3c", "Expense": "#b02a2a"})
+    category_trend = _bar_series_geometry(short_labels, cat_series["series"], color_map)
+
+    cf_labels = [datetime.strptime(b["month"], "%Y-%m").strftime("%b '%y")
+                for b in cash_flow["buckets"]]
+    cash_flow_bars = _bar_series_geometry(
+        cf_labels,
+        {"Income": [b["income"] for b in cash_flow["buckets"]],
+         "Expense": [b["total_expense"] for b in cash_flow["buckets"]]},
+        {"Income": "#1a6e3c", "Expense": "#b02a2a"})
+
     return render_template(
         "household_budget.html", budget_rows=budget_rows,
         transactions=transactions, totals=totals, contacts=contacts,
@@ -3965,6 +4191,9 @@ def household_budget_page():
         edit_txn=edit_txn, edit_budget=edit_budget,
         payment_methods=PAYMENT_METHODS, txn_statuses=TXN_STATUSES,
         household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES,
+        trend_months=trend_months, horizon_months=horizon_months,
+        expense_pie=expense_pie, cash_flow=cash_flow, cash_flow_bars=cash_flow_bars,
+        income_expense_trend=income_expense_trend, category_trend=category_trend,
         today=datetime.now().strftime("%Y-%m-%d"))
 
 

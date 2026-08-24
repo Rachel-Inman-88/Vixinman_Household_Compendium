@@ -265,6 +265,12 @@
     .jobprog-next .jobprog-lostlbl { color: #b02a2a; font-weight: 700; }
     .jobprog--compact .jobprog-seg { height: 9px; padding: 0; }
     .jobprog--compact .jobprog-next { margin-top: 0.25rem; font-size: 0.8rem; }
+    /* Piece 55: hand-rolled SVG charts on the Household Budget page (pie,
+       cash-flow, trend bars) -- no charting library anywhere in this app. */
+    .chart-svg { display: block; max-width: 100%; height: auto; }
+    .chart-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 0.4rem; margin-right: 0.9rem; }
+    .swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; }
     /* Rules display: verification callout chips + compact instance bullets. */
     .flag {
       display: inline-block;

@@ -15,6 +15,84 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   <input type="hidden" name="show" value="{{ show }}">
 </form>
 
+{# ---- Piece 55: Expenses by category (pie), this month -- household + project combined ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Expenses by category — {{ month_label }}</h2>
+  {% if expense_pie.slices %}
+  <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center;">
+    <svg class="chart-svg" viewBox="0 0 {{ expense_pie.size }} {{ expense_pie.size }}"
+         style="max-width:{{ expense_pie.size }}px;" role="img"
+         aria-label="Expense breakdown by category for {{ month_label }}: {% for s in expense_pie.slices %}{{ s.category }} {{ s.pct }} percent{% if not loop.last %}, {% endif %}{% endfor %}. Total ${{ expense_pie.total|money0 }}.">
+      <g transform="rotate(-90 {{ expense_pie.size / 2 }} {{ expense_pie.size / 2 }})">
+        {% for s in expense_pie.slices %}
+        <circle cx="{{ expense_pie.size / 2 }}" cy="{{ expense_pie.size / 2 }}" r="{{ expense_pie.r }}"
+                fill="none" stroke="{{ s.color }}" stroke-width="{{ expense_pie.stroke }}"
+                stroke-dasharray="{{ s.dasharray }}" stroke-dashoffset="{{ s.dashoffset }}"></circle>
+        {% endfor %}
+      </g>
+    </svg>
+    <ul class="chart-legend">
+      {% for s in expense_pie.slices %}
+      <li><span class="swatch" style="background:{{ s.color }};"></span> {{ s.category }} — ${{ s.amount|money0 }} ({{ s.pct }}%)</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p class="empty">No expenses recorded for {{ month_label }}.</p>
+  {% endif %}
+</div>
+
+{# ---- Piece 55: Anticipated cash flow -- forward projection, household + project combined ---- #}
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.1rem;">Anticipated cash flow</h2>
+    <form method="get" style="display:flex; gap:0.4rem; align-items:center;">
+      <input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="show" value="{{ show }}">
+      <input type="hidden" name="trend_months" value="{{ trend_months }}">
+      <label class="muted" style="font-size:0.8rem;">Horizon:</label>
+      <select name="horizon_months" onchange="this.form.submit()" style="padding:0.25rem;">
+        {% for n in [1, 2, 3, 6, 12] %}
+        <option value="{{ n }}" {{ 'selected' if n == horizon_months }}>{{ n }} month{{ 's' if n != 1 }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Outstanding income/expenses (both ledgers) plus
+    projected household budget targets, netted per month. Expected cash flow, not a running account balance —
+    this app doesn't track a starting bank balance.</p>
+  <div style="overflow-x:auto;">
+    <svg class="chart-svg" viewBox="0 0 {{ cash_flow_bars.width + 20 }} {{ cash_flow_bars.height + 34 }}"
+         style="height:{{ cash_flow_bars.height + 34 }}px;" role="img"
+         aria-label="Anticipated cash flow: {% for b in cash_flow.buckets %}{{ b.label }}: ${{ b.income|money0 }} in, ${{ b.total_expense|money0 }} out, net ${{ b.net|money0 }}{% if not loop.last %}; {% endif %}{% endfor %}.">
+      <g transform="translate(10,10)">
+        {% for grp in cash_flow_bars.groups %}
+          {% for bar in grp.bars %}
+          <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" fill="{{ bar.color }}"></rect>
+          {% endfor %}
+          <text x="{{ grp.x_center }}" y="{{ cash_flow_bars.height + 14 }}" text-anchor="middle" font-size="10" fill="var(--muted)">{{ grp.label }}</text>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  <div class="chart-legend" style="margin-top:0.4rem; flex-direction:row;">
+    <span><span class="swatch" style="background:#1a6e3c;"></span> Income</span>
+    <span><span class="swatch" style="background:#b02a2a;"></span> Expense</span>
+  </div>
+  <table style="margin-top:0.6rem;">
+    <thead><tr><th>Month</th><th style="text-align:right;">In</th><th style="text-align:right;">Out</th><th style="text-align:right;">Net</th></tr></thead>
+    <tbody>
+      {% for b in cash_flow.buckets %}
+      <tr>
+        <td>{{ b.label }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ b.income|money0 }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ b.total_expense|money0 }}</td>
+        <td style="text-align:right; font-weight:600; {{ 'color:#b02a2a;' if b.net < 0 }}">${{ b.net|money0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
 {# ---- Budget vs. actual, this month ---- #}
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">{{ month_label }}</h2>
@@ -109,6 +187,69 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   </div>
   {% else %}
   <p class="empty">No transactions {{ "this month" if show == "month" else "" }} — add one below.</p>
+  {% endif %}
+</div>
+
+{# ---- Piece 55: Income vs. expense trend, household + project combined ---- #}
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.1rem;">Income vs. expense trend</h2>
+    <form method="get" style="display:flex; gap:0.4rem; align-items:center;">
+      <input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="show" value="{{ show }}">
+      <input type="hidden" name="horizon_months" value="{{ horizon_months }}">
+      <label class="muted" style="font-size:0.8rem;">Last:</label>
+      <select name="trend_months" onchange="this.form.submit()" style="padding:0.25rem;">
+        {% for n in [3, 6, 12, 18, 24] %}
+        <option value="{{ n }}" {{ 'selected' if n == trend_months }}>{{ n }} months</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  <div style="overflow-x:auto;">
+    <svg class="chart-svg" viewBox="0 0 {{ income_expense_trend.width + 20 }} {{ income_expense_trend.height + 34 }}"
+         style="height:{{ income_expense_trend.height + 34 }}px;" role="img"
+         aria-label="Income vs. expense by month, last {{ trend_months }} months: {% for grp in income_expense_trend.groups %}{{ grp.label }}: {% for bar in grp.bars %}{{ bar.name }} ${{ bar.value|money0 }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.">
+      <g transform="translate(10,10)">
+        {% for grp in income_expense_trend.groups %}
+          {% for bar in grp.bars %}
+          <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" fill="{{ bar.color }}"></rect>
+          {% endfor %}
+          <text x="{{ grp.x_center }}" y="{{ income_expense_trend.height + 14 }}" text-anchor="middle" font-size="10" fill="var(--muted)">{{ grp.label }}</text>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  <div class="chart-legend" style="margin-top:0.4rem; flex-direction:row;">
+    <span><span class="swatch" style="background:#1a6e3c;"></span> Income</span>
+    <span><span class="swatch" style="background:#b02a2a;"></span> Expense</span>
+  </div>
+</div>
+
+{# ---- Piece 55: Category spending trend, household + project combined ---- #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Spending by category over time</h2>
+  {% if category_trend.names %}
+  <div style="overflow-x:auto;">
+    <svg class="chart-svg" viewBox="0 0 {{ category_trend.width + 20 }} {{ category_trend.height + 34 }}"
+         style="height:{{ category_trend.height + 34 }}px;" role="img"
+         aria-label="Spending by category by month, last {{ trend_months }} months: {% for grp in category_trend.groups %}{{ grp.label }}: {% for bar in grp.bars %}{{ bar.name }} ${{ bar.value|money0 }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.">
+      <g transform="translate(10,10)">
+        {% for grp in category_trend.groups %}
+          {% for bar in grp.bars %}
+          <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" fill="{{ bar.color }}"></rect>
+          {% endfor %}
+          <text x="{{ grp.x_center }}" y="{{ category_trend.height + 14 }}" text-anchor="middle" font-size="10" fill="var(--muted)">{{ grp.label }}</text>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  <div class="chart-legend" style="margin-top:0.4rem; flex-direction:row; flex-wrap:wrap;">
+    {% for name, color in category_trend.colors.items() %}
+    <span><span class="swatch" style="background:{{ color }};"></span> {{ name }}</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">No expenses recorded in the last {{ trend_months }} months.</p>
   {% endif %}
 </div>
 
