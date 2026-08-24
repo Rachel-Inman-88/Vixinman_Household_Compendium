@@ -1201,6 +1201,23 @@ id, reassigning an existing task persists correctly, the rendered
 dropdown shows the right person `selected`, and unassigning (blank
 selection) correctly nulls it out — plus the standard 40-route sweep.
 
+**Piece 56 (v0.33): LAN-reachable dev server, for Pixel 9a beta-testing —
+done.** First half of "getting the app reachable from the phone" (one of
+the 3 beta-test-readiness blockers noted below). `python app.py`'s
+`if __name__ == "__main__":` block now reads `COMPENDIUM_HOST`/
+`COMPENDIUM_PORT` env vars (default `127.0.0.1`/`5000`, unchanged from
+before — plain `python app.py` behaves identically). Setting
+`COMPENDIUM_HOST=0.0.0.0` binds to the machine's LAN address so a phone on
+the same WiFi can reach it. Werkzeug's interactive debugger (`debug=True`)
+now only turns on when `host == "127.0.0.1"` — leaving it on while
+reachable from other devices on the network is a real remote-code-execution
+risk (the debugger's console can execute arbitrary Python from anyone who
+can reach the error page). Verified live: connected a real
+Pixel 9a to `http://192.168.1.25:5000` over home WiFi and successfully
+logged in — the phone browser's first attempt failed with "can't provide a
+secure connection" (it tried `https://` automatically for the bare IP),
+resolved by typing `http://` explicitly.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -1228,17 +1245,22 @@ selection) correctly nulls it out — plus the standard 40-route sweep.
 - **Loans/Savings/Budget UI polish** — queued (4th of the 4 finance
   workstreams), no specific complaints identified yet; needs its own
   scoping pass before starting.
-- **Pixel 9a beta-test readiness**, queued right after finance work
-  wraps: (1) a mobile-responsive UI pass — this app has never had a
-  real small-screen-phone check, only desktop dev-server click-throughs
-  (Piece 49) plus automated Flask test-client work; (2) getting the app
-  actually reachable from the phone — no deployment story exists anywhere
-  in this project (local-network IP? a tunnel? cloud hosting?), needs its
-  own conversation; (3) a real-data readiness check on `job_creator.db`
-  itself before starting an actual project in it. Note: this app already
-  has some PWA/offline infrastructure (`/sw.js`, `/offline`, Work Bag's
-  offline support since Piece 26) — check what already works there before
-  assuming a phone deployment needs offline support built from scratch.
+- **Pixel 9a beta-test readiness** — (2) of the 3 original blockers is
+  done (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`). Still
+  open: (1) a mobile-responsive UI pass — this app has never had a real
+  small-screen-phone check, only desktop dev-server click-throughs
+  (Piece 49) plus automated Flask test-client work — now that a real
+  phone can actually reach the app, this can happen for real instead of
+  simulated via a resized browser viewport; (3) a real-data readiness
+  check on `job_creator.db` itself before starting an actual project in
+  it. Note: this app already has some PWA/offline infrastructure
+  (`/sw.js`, `/offline`, Work Bag's offline support since Piece 26) —
+  check what already works there before assuming more offline support
+  needs building from scratch. **Also still open**: Jacob (household
+  roster, no login credentials yet) needs a username + password set
+  before he can actually sign in and beta-test — an admin (household.manage)
+  sets this via Family → his profile → edit; not something to set on his
+  behalf without him choosing the password directly.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate

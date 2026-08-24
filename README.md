@@ -40,6 +40,13 @@ folder together** — the documents on disk are referenced from the database.
 The build number shows plainly in the page footer ("Version N") so beta testers
 can confirm a pull/update took effect.
 
+**To let a phone on the same WiFi reach it** (for beta-testing), set
+`COMPENDIUM_HOST=0.0.0.0` before starting it instead of running `python app.py`
+plain — then open `http://<this-computer's-LAN-IP>:5000` on the phone (find the
+LAN IP with `ipconfig` on Windows, look for the WiFi adapter's IPv4 address).
+Type the `http://` explicitly — some phone browsers try `https://` automatically
+for a bare IP address and fail with a "can't provide a secure connection" error.
+
 ---
 
 ## Features & capabilities
@@ -528,6 +535,13 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.33** — **the app can now be reached from a phone on the same WiFi**,
+  for beta-testing. `python app.py` behaves exactly as before by default
+  (localhost-only, debug mode on); set `COMPENDIUM_HOST=0.0.0.0` (and
+  optionally `COMPENDIUM_PORT`) to bind to the machine's LAN address
+  instead — debug mode (the interactive Werkzeug debugger) automatically
+  turns itself off whenever the app isn't localhost-only, since leaving it
+  on while reachable from other devices is a real code-execution risk.
 - **v0.32** — **bug fix: assigning a project task to a household member
   never actually saved.** The "Assigned to" dropdown (both on an existing
   task's row and the "add a task" form) posted a form field named
