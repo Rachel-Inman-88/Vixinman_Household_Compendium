@@ -439,7 +439,8 @@
     </div>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">📊 My Dashboard</a>{% endif %}
     {# Order (left→right): To-do (Tasks/Boards/Chores/Notifications/Appointments) ·
-       Household (Budget/Work Bag/Approvals/Family) · Databases (incl. Inventory/Wishlist) · Admin #}
+       Work Bag (standalone) · Household (Budget/Approvals/Drafts/Family) ·
+       Databases (incl. Inventory/Wishlist) · Admin #}
     <details class="navdrop"{% if not current_user %} style="margin-left:auto;"{% endif %}>
       <summary>✅ To-do{% if unread_notifications %} ({{ unread_notifications if unread_notifications < 100 else '99+' }}){% endif %}</summary>
       <div class="navdrop-menu">
@@ -450,14 +451,14 @@
         <a href="{{ url_for('appointments_page') }}">📅 Appointments</a>
       </div>
     </details>
+    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     <details class="navdrop">
       <summary>🏠 Household{% if can('approvals') and (pending_submissions + pending_drafts) %} ({{ pending_submissions + pending_drafts }}){% endif %}</summary>
       <div class="navdrop-menu">
         {% if can('finances.manage') %}<a href="{{ url_for('household_budget_page') }}">💵 Budget</a>{% endif %}
-        <a href="/work-bag">🎒 Work Bag</a>
         {% if can('approvals') %}<a href="/submissions">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>
         <a href="{{ url_for('drafts_page') }}">🗒 Drafts{% if pending_drafts %} ({{ pending_drafts }}){% endif %}</a>{% endif %}
-        <a href="/household-members">👨‍👩‍👧 Family</a>
+        {% if can('household.manage') %}<a href="/household-members">👨‍👩‍👧 Family</a>{% endif %}
       </div>
     </details>
     <details class="navdrop">
@@ -465,9 +466,9 @@
       <div class="navdrop-menu">
         <a href="{{ url_for('projects_list') }}">🗂 Projects</a>
         <a href="{{ url_for('backlog_page') }}">🗂 Backlog</a>
-        <a href="{{ url_for('household_files_page') }}">📁 Household Files</a>
+        {% if can('household.manage') %}<a href="{{ url_for('household_files_page') }}">📁 Household Files</a>{% endif %}
         <a href="{{ url_for('external_helpers_page') }}">🧰 Contacts</a>
-        <a href="/rules">⚙️ Requirements Editor</a>
+        {% if can('rules.manage') %}<a href="/rules">⚙️ Requirements Editor</a>{% endif %}
         <a href="/directory">📖 Requirements Library</a>
         <a href="/inventory">📦 Inventory</a>
         <a href="{{ url_for('wishlist_page') }}">🎁 Wishlist</a>

@@ -235,6 +235,7 @@ PERMISSIONS = {
     "audit.view": "View the audit log",
     "finances.manage": "Manage household & project finances (Budget, project billing) — hidden entirely without it",
     "projects.manage": "Create, edit, cancel, and reopen projects",
+    "help.full_access": "See every Help/FAQ section, including ones about tools you don't have access to",
     "delete": "Delete data (sends it to the trash)",
 }
 PASSWORD_MIN_LEN = 6
@@ -285,11 +286,16 @@ HOUSEHOLD_ROLES = ["Parent", "Child", "Assistant"]
 # any of these 7 permissions is intercepted by @draftable and becomes a
 # Pending row in `drafts` instead of a real write; a Parent/Admin approves
 # (applies for real) or discards it from /drafts. See DRAFT_KINDS below.
+# Piece 53: help.full_access added -- Parent/Assistant get it by default
+# (they already have the underlying permission each locked FAQ section
+# documents anyway); Child does not. See HELP_SECTION_PERMISSION below.
 ROLE_DEFAULT_PERMISSIONS = {
     "Parent": ["rules.manage", "inventory.manage", "household.manage",
-               "approvals", "audit.view", "finances.manage", "projects.manage"],
+               "approvals", "audit.view", "finances.manage", "projects.manage",
+               "help.full_access"],
     "Assistant": ["rules.manage", "inventory.manage", "household.manage",
-                  "approvals", "audit.view", "finances.manage", "projects.manage"],
+                  "approvals", "audit.view", "finances.manage", "projects.manage",
+                  "help.full_access"],
     "Child": [],
 }
 
@@ -441,7 +447,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.28"
+VERSION = "0.29"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -842,6 +848,62 @@ def has_permission(perm):
     return _has_grant(user, perm)
 
 
+def _can_see_project_files(project_id, user=None):
+    """Piece 53: a Child needs >=1 task assigned on THIS project to see its
+    filed documents; everyone else (open mode, admin, Parent, Assistant)
+    always can. A Child still sees everything else about the project
+    regardless of assignment -- only filed documents are hidden."""
+    if not accounts_exist() or _is_admin():
+        return True
+    if user is None:
+        user = current_user()
+    if user is None:
+        return False
+    if user["role"] != "Child":
+        return True
+    return get_db().execute(
+        "SELECT 1 FROM project_tasks WHERE project_id = ?"
+        " AND household_member_id = ? LIMIT 1", (project_id, user["id"])
+    ).fetchone() is not None
+
+
+def _file_route_allowed(project_id, record=None):
+    """Piece 53: gate for upload_file/download_file/view_file. A field
+    photo (task_id set) or billing receipt (txn_id set) is exempt -- those
+    are already scoped to whoever legitimately filed them and shouldn't be
+    re-gated by project-wide task assignment (e.g. a Child's own already-
+    filed photo shouldn't vanish just because their task was reassigned)."""
+    if record is not None and (record["task_id"] or record["txn_id"]):
+        return True
+    return _can_see_project_files(project_id)
+
+
+# Piece 53: which permission (if any) each Help/FAQ section documents. None
+# = no gate, always shown. "admin" is a sentinel for the generic admin gate
+# (used only by #managers, which has no PERMISSIONS key of its own).
+HELP_SECTION_PERMISSION = {
+    "rules": "rules.manage",
+    "finance": "finances.manage",
+    "budget-help": "finances.manage",
+    "people": "household.manage",
+    "managers": "admin",
+}
+
+
+def help_section_unlocked(section_id):
+    """Jinja global: True if the signed-in user should see this Help
+    section's real content rather than a locked placeholder. help.full_access
+    always unlocks everything; a section absent from HELP_SECTION_PERMISSION
+    is always open; otherwise it's open to anyone who already holds (or is
+    admin for) the permission it documents -- never MORE restrictive than
+    the feature itself, just hides the explanation of something you can't
+    use anyway."""
+    required = HELP_SECTION_PERMISSION.get(section_id)
+    if required is None or has_permission("help.full_access"):
+        return True
+    return _is_admin() if required == "admin" else has_permission(required)
+
+
 # Which permission each admin-gated view needs (Piece 17). Views not listed
 # fall back to the generic admin gate (perm=None).
 VIEW_PERMISSION = {
@@ -853,12 +915,26 @@ VIEW_PERMISSION = {
     "add_rule": "rules.manage",
     "update_rule": "rules.manage",
     "delete_rule": "rules.manage",
+    # Piece 53: the Requirements Editor's own view was ungated -- a Child
+    # could reach it directly even though the write routes above already
+    # required rules.manage.
+    "rules_page": "rules.manage",
     "accounts_page": "household.manage",
     "approve_password_change": "household.manage",
     "reject_password_change": "household.manage",
     "new_household_member": "household.manage",
     "edit_household_member": "household.manage",
     "delete_household_member": "household.manage",
+    # Piece 53: Family (the household-members roster) and Household Files
+    # were both fully open to any signed-in user -- neither viewing nor the
+    # write routes were gated. household.manage is the closest existing fit
+    # ("manage household members & accounts"); reused here rather than
+    # inventing a permission for one shared-document page.
+    "household_members_page": "household.manage",
+    "household_member_detail": "household.manage",
+    "household_files_page": "household.manage",
+    "upload_household_file": "household.manage",
+    "download_household_file": "household.manage",
     "add_credential": "household.manage",
     "update_credential": "household.manage",
     "delete_credential": "household.manage",
@@ -989,6 +1065,7 @@ def inject_auth():
             pending_drafts = 0
     return {"current_user": user, "login_active": accounts_exist(),
             "is_admin": _is_admin(), "can": has_permission,
+            "help_unlocked": help_section_unlocked,  # Piece 53
             "unread_notifications": unread_notification_count(user),  # Piece 29.3
             "pending_submissions": pending, "pending_drafts": pending_drafts}
 
@@ -1775,6 +1852,32 @@ def init_db():
         db.execute("INSERT INTO meta (key, value) VALUES ('household_reorg_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
+    # Piece 53: help.full_access is new to ROLE_DEFAULT_PERMISSIONS --
+    # _seed_role_default_grants only fires at member-creation/role-change
+    # time, so an already-existing Parent/Assistant needs a one-time
+    # backfill. Additive-only, like _seed_role_default_grants itself; a
+    # no-op on a fresh database (no members yet).
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'help_full_access_v1'").fetchone():
+        # init_db()'s connection is a plain sqlite3.connect() with no
+        # row_factory (unlike get_db()'s per-request connection) -- rows
+        # here are bare tuples, not Row objects (see legacy_tables/row[0]
+        # above), so _seed_role_default_grants (which expects Row-style
+        # access) can't be called directly; its additive-only logic is
+        # duplicated here in tuple-safe form instead.
+        for member_id, role in db.execute(
+                "SELECT id, role FROM household_members"
+                " WHERE role IN ('Parent', 'Assistant')").fetchall():
+            existing = {row[0] for row in db.execute(
+                "SELECT permission FROM permission_grants"
+                " WHERE household_member_id = ?", (member_id,)).fetchall()}
+            for perm in ROLE_DEFAULT_PERMISSIONS.get(role, []):
+                if perm not in existing:
+                    db.execute(
+                        "INSERT INTO permission_grants (household_member_id, permission,"
+                        " granted_by) VALUES (?, ?, ?)", (member_id, perm, "role default"))
+        db.execute("INSERT INTO meta (key, value) VALUES ('help_full_access_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     # Piece 26.9: verbatim source text for a rule (esp. a prerequisite) — the exact
@@ -2965,6 +3068,45 @@ def _closing_worklist(db):
 STAGE_ICON = {"Planning": "💬", "Prep": "📦", "In Progress": "🔧", "Wrap-up": "🏁"}
 
 
+def _bucket_schedule(my_tasks, my_chores, my_appointments, today_d):
+    """Piece 53: Child-dashboard widget. Merges this signed-in member's own
+    open tasks, chores, and appointments (already fetched + already
+    filtered to them by dashboard()'s existing queries) into Today /
+    Tomorrow / Next 2 weeks buckets by due/next-due/when date. Undated
+    items and anything outside that 14-day window are dropped -- this is a
+    glance, not a worklist; the My tasks/My chores/My appointments cards
+    below still show everything, including overdue."""
+    tomorrow_d = today_d + timedelta(days=1)
+    horizon_d = today_d + timedelta(days=14)
+    buckets = {"today": [], "tomorrow": [], "soon": []}
+
+    def _add(date_str, icon, kind, title, href, subtitle=""):
+        if not date_str:
+            return
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return
+        if d < today_d or d > horizon_d:
+            return
+        bucket = "today" if d == today_d else "tomorrow" if d == tomorrow_d else "soon"
+        buckets[bucket].append({"date": date_str, "icon": icon, "kind": kind,
+                                 "title": title, "href": href, "subtitle": subtitle})
+
+    for t in my_tasks:
+        _add(t["due_date"], "✅", "Task", t["title"],
+             url_for("project_detail", project_id=t["project_id"], _anchor="tasks"),
+             t["job_name"] or "")
+    for c in my_chores:
+        _add(c["next_due"], "🔁", "Chore", c["title"], url_for("chores_page"))
+    for a in my_appointments:
+        _add(a["when_date"], "📅", "Appointment", a["title"],
+             url_for("appointments_page"), a["location"] or "")
+    for key in buckets:
+        buckets[key].sort(key=lambda i: i["date"])
+    return buckets
+
+
 @app.route("/dashboard")
 @app.route("/", endpoint="home")
 def dashboard():
@@ -2975,6 +3117,8 @@ def dashboard():
     yet) user is None — the personal sections just render empty."""
     user = current_user()
     db = get_db()
+    today_d = datetime.now().date()
+    today_s = today_d.strftime("%Y-%m-%d")
     ensure_backlog_reminders(db)
     ensure_routine_task_reminders(db)
     ensure_requirement_reminders(db)
@@ -3024,6 +3168,10 @@ def dashboard():
             " AND (household_member_id = ? OR household_member_id IS NULL)"
             " ORDER BY (when_date = ''), when_date, when_time", (user["id"],)).fetchall()
 
+    # Piece 53: Child-only day-by-day schedule widget, replacing the
+    # household-wide overview on their dashboard.
+    schedule_buckets = _bucket_schedule(my_tasks, my_chores, my_appointments, today_d)
+
     # Active-projects overview: every non-terminal project, grouped by stage
     # (replaces the old per-department project lists).
     active_projects = db.execute(
@@ -3036,6 +3184,14 @@ def dashboard():
     sections = [{"name": stage, "icon": STAGE_ICON.get(stage, "📋"),
                  "projects": by_stage[stage]}
                 for stage in STAGE_ORDER[:-1] if stage in by_stage]
+    # Piece 53: a Child only sees stage-listing cards for projects they
+    # actually have a task on -- everyone else sees every active project.
+    if user is not None and user["role"] == "Child":
+        child_project_ids = {r["project_id"] for r in db.execute(
+            "SELECT DISTINCT project_id FROM project_tasks"
+            " WHERE household_member_id = ?", (user["id"],)).fetchall()}
+        for s in sections:
+            s["projects"] = [j for j in s["projects"] if j["id"] in child_project_ids]
 
     # Progress for every active project.
     progress_by_job = {}
@@ -3072,8 +3228,6 @@ def dashboard():
     # Piece 22.3 (revised Piece 35, de-install-ified Piece 41): whole-household
     # snapshot — pipeline counts, money in flight, what needs attention, and a
     # Wrap-up worklist. Shown to every signed-in member, not admin-gated.
-    today_d = datetime.now().date()
-    today_s = today_d.strftime("%Y-%m-%d")
     exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
     counts = {s: 0 for s in exec_stages}
     money = {"contract": 0.0, "collected": 0.0,
@@ -3138,6 +3292,7 @@ def dashboard():
         permits_by_job=permits_by_job,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
         gm=gm, closing_jobs=closing_jobs,
+        schedule_buckets=schedule_buckets,
         job_status_class=PROJECT_STATUS_CLASS)
 
 
@@ -3594,6 +3749,7 @@ def _discard_draft_file(stored_name):
 
 
 @app.route("/household-files")
+@admin_required
 def household_files_page():
     files = get_db().execute(
         "SELECT * FROM household_files ORDER BY id DESC").fetchall()
@@ -3602,6 +3758,7 @@ def household_files_page():
 
 
 @app.route("/household-files/upload", methods=["POST"])
+@admin_required
 def upload_household_file():
     upload = request.files.get("document")
     if upload is None or not upload.filename:
@@ -3631,6 +3788,7 @@ def upload_household_file():
 
 
 @app.route("/household-files/<int:file_id>/download")
+@admin_required
 def download_household_file(file_id):
     record = get_db().execute(
         "SELECT * FROM household_files WHERE id = ?", (file_id,)).fetchone()
@@ -4048,6 +4206,9 @@ def project_detail(project_id):
             " AND link = ?", (me["id"], url_for("project_detail", project_id=project_id)))
         if cleared.rowcount:
             db.commit()
+    # Piece 53: a Child only sees this project's filed documents if they
+    # have a task assigned on it -- everything else on the page stays open.
+    can_see_files = _can_see_project_files(project_id, me)
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     groups = group_rules(match_rules(project, rules))
     versions = db.execute(
@@ -4134,7 +4295,7 @@ def project_detail(project_id):
 
     return render_template(
         "project_detail.html", project=project, groups=groups, versions=versions,
-        project_notes=project_notes,
+        project_notes=project_notes, can_see_files=can_see_files,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
@@ -5636,6 +5797,8 @@ def project_upload_dir(project_id):
 @app.route("/projects/<int:project_id>/files/upload", methods=["POST"])
 def upload_file(project_id):
     fetch_project(project_id)
+    if not _file_route_allowed(project_id):
+        abort(403)
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
@@ -5677,6 +5840,8 @@ def download_file(project_id, file_id):
     ).fetchone()
     if record is None:
         abort(404)
+    if not _file_route_allowed(project_id, record):
+        abort(403)
     return send_from_directory(
         project_upload_dir(project_id), record["stored_name"], as_attachment=True,
         download_name=record["original_name"],
@@ -5700,6 +5865,8 @@ def view_file(project_id, file_id):
         (file_id, project_id)).fetchone()
     if record is None:
         abort(404)
+    if not _file_route_allowed(project_id, record):
+        abort(403)
     return send_from_directory(
         project_upload_dir(project_id), record["stored_name"], as_attachment=False,
         download_name=record["original_name"])
@@ -5893,6 +6060,7 @@ def project_report(project_id):
 
 
 @app.route("/rules")
+@admin_required
 def rules_page():
     db = get_db()
     rules = db.execute(
@@ -6188,6 +6356,7 @@ def render_household_member_form(values, household_member_id=None, username="",
 
 
 @app.route("/household-members")
+@admin_required
 def household_members_page():
     db = get_db()
     members = db.execute("SELECT * FROM household_members ORDER BY name").fetchall()
@@ -6394,6 +6563,7 @@ def new_household_member():
 
 
 @app.route("/household-members/<int:household_member_id>")
+@admin_required
 def household_member_detail(household_member_id):
     db = get_db()
     member = db.execute(

@@ -120,7 +120,7 @@
   <button class="tab-btn" data-tab="plan" title="Brainstorm this project with AI">🧠 Plan</button>
   <button class="tab-btn" data-tab="requirements" title="Certifications / Permits / Prerequisites">Requirements ({{ req_total }})</button>
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
-  <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
+  {% if can_see_files %}<button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>{% endif %}
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
   {% if can('finances.manage') %}<button class="tab-btn" data-tab="billing" title="Payments &amp; expenses">💵 Billing</button>{% endif %}
 </div>
@@ -241,7 +241,7 @@
     {% set bottom = ["Certifications", "Prerequisites"] %}
     {# Top: Permits (with inline filing) + portals/phones — open. #}
     {% for heading, items in groups if heading not in bottom %}
-    {% set can_file = heading == "Permits" %}
+    {% set can_file = heading == "Permits" and can_see_files %}
     <details class="req-group" open>
       <summary>
         <span>{{ heading }}</span>
@@ -395,6 +395,7 @@
 </div>
 </div>
 
+{% if can_see_files %}
 <div class="tab-panel" id="tab-documents">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Documents</h2>
@@ -469,6 +470,7 @@
   </details>
 </div>
 </div>
+{% endif %}
 
 <div class="tab-panel" id="tab-tasks">
 <div class="card">

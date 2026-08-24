@@ -136,6 +136,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="rules">
   <h2>4. Requirements engine (certs, permits &amp; recurring paperwork)</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('rules') %}
   <h3>Tutorial — add or edit a rule</h3>
   <ol class="steps">
     <li>Go to <strong>🗄 Databases → Requirements Editor</strong>.</li>
@@ -148,6 +149,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
   <details><summary>What does the ⚠ Verify chip mean?</summary>
     <p>It's a reminder to confirm that item before relying on it (Unverified = couldn't confirm online). It's an
     editable field per rule now, not automatic.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers the Requirements Editor, which you don't have access to. Ask an admin if you need it.</p>
+  {% endif %}
 </div>
 
 <!-- 5 -->
@@ -156,7 +160,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
   <a class="backtop muted" href="#top">↑ contents</a>
   <h3>Tutorial — do field work from the Work Bag</h3>
   <ol class="steps">
-    <li>Open <strong>🏠 Household → 🎒 Work Bag</strong> (works offline). Tap a project to see its field tasks, hours, receipts, and notes.</li>
+    <li>Open <strong>🎒 Work Bag</strong> (works offline). Tap a project to see its field tasks, hours, receipts, and notes.</li>
     <li>Finish a task with <strong>✓ Submit as done</strong> and enter the time it took.</li>
     <li>Photo steps open a <strong>take / review / submit</strong> screen — at least one photo is required.</li>
     <li>An admin approves the submission on the Approvals page.</li>
@@ -227,6 +231,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="finance">
   <h2>6. Billing</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('finance') %}
   <h3>Tutorial — track a project's budget</h3>
   <ol class="steps">
     <li>On the project's <strong>💵 Billing</strong> tab, set the contract total (a plain dollar figure — no pricing/margin calculator behind it).</li>
@@ -234,14 +239,18 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <li>The Billing tab totals up contract, collected, outstanding, and expenses so you can see where the budget stands.</li>
   </ol>
   <details><summary>Can everyone see a project's contract total?</summary>
-    <p>Yes — money-in-flight figures show on the shared dashboard for every signed-in household member, the same
-    as everything else.</p></details>
+    <p>No — money-in-flight figures and the Billing tab need the <strong>Manage finances</strong> permission
+    (Parent by default). A Child doesn't see them at all, not even a locked/read-only view.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers project Billing, which you don't have access to.</p>
+  {% endif %}
 </div>
 
 <!-- 6b -->
 <div class="card" id="budget-help">
   <h2>6b. Household Budget — expenses, income &amp; receipts</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('budget-help') %}
   <p class="muted" style="margin-top:0;"><strong>💵 Budget</strong> tracks whole-household money — groceries,
   utilities, subscriptions — separate from a project's own <strong>Billing</strong> tab, which stays project-only.
   Both need the <strong>Manage finances</strong> permission (Parent by default) — a Child doesn't see either at
@@ -258,6 +267,9 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <p>No — a project's contract, deposits, and expenses stay exactly as they were on its own <strong>Billing</strong>
     tab. Household Budget is a separate, whole-house ledger for everyday spending that isn't tied to any one
     project.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers the household Budget, which you don't have access to.</p>
+  {% endif %}
 </div>
 
 <!-- 6c -->
@@ -315,6 +327,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="people">
   <h2>8. People, roles &amp; permissions</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('people') %}
   <h3>Tutorial — add a household member</h3>
   <ol class="steps">
     <li>Add them under <strong>🏠 Household → 👨‍👩‍👧 Family</strong> (role, and a login if they need one).</li>
@@ -349,6 +362,15 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     Budget page, the Billing tab, the dashboard's money tiles, and the 💬 Assistant/🧠 Plan chat's answers about
     contract totals are all unavailable to them. An admin can grant it individually on the Access page if
     wanted.</p></details>
+  <details><summary>Why does this Help page show 🔒 locked sections for some people?</summary>
+    <p>A Help section about a tool you don't have access to (Requirements Editor, Billing, Household Budget,
+    this section, and the Admin section) shows a locked placeholder instead of its tutorial. The
+    <strong>See full FAQ</strong> permission (<code>help.full_access</code>) bypasses this and shows everything —
+    Parent and Assistant get it by default, Child doesn't; an admin can grant it individually on the Access
+    page.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section covers managing household members &amp; permissions, which you don't have access to.</p>
+  {% endif %}
 </div>
 
 <!-- 9 -->
@@ -368,18 +390,23 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 <div class="card" id="managers">
   <h2>10. For admins</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
+  {% if help_unlocked('managers') %}
   <ul class="steps">
     <li><strong>🔧 Admin → Log</strong>: the audit log of every change (who/what/when), with passwords redacted.</li>
     <li><strong>🔧 Admin → Trash</strong>: deleted items (an admin restores or purges). Deletes are blocked if data is in use.</li>
     <li><strong>🔧 Admin → Access</strong>: grant per-person tool access.</li>
     <li><strong>🗄 Databases → Closed projects</strong>: review cancelled + completed projects; reopen a cancelled project.</li>
     <li><strong>Household overview</strong> (on the dashboard): pipeline counts, attention row, and the
-      Wrap-up worklist are visible to everyone; the money-in-flight tiles and Payments table need the
-      <strong>Manage finances</strong> permission.</li>
+      Wrap-up worklist are visible to Parent/Assistant; the money-in-flight tiles and Payments table need the
+      <strong>Manage finances</strong> permission. A Child gets a personal <strong>🗓 My schedule</strong>
+      widget instead of the household overview.</li>
   </ul>
   <details><summary>How do we back up the data?</summary>
     <p>Everything lives in <code>job_creator.db</code> with uploaded files in the <code>uploads/</code> folder —
     back up both together. In the desktop app that's your personal <code>Compendium</code> folder.</p></details>
+  {% else %}
+  <p class="muted" style="margin-top:0.5rem;">🔒 This section is for admins only.</p>
+  {% endif %}
 </div>
 
 <p class="muted" style="font-size:0.85rem;">This is a first draft — tell us what's unclear or missing and we'll expand it.</p>
