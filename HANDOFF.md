@@ -1245,6 +1245,60 @@ duplicate "You" bubble, error cleared, answer rendered correctly.
   just a copy of the assistant.html fix. Pick this up if Jacob (or anyone)
   hits the same complaint on the Plan tab specifically.
 
+**Piece 58 (v0.35): Board collaborators + a due time — done.** User:
+"Moving to Boards, I want to add a collaborator option along with the
+family member to assign it to... not as robust of a feature as Projects,
+just a more detailed version of a to-do checkmark." Confirmed via
+AskUserQuestion: multiple collaborators (not just one), notified the same
+way an assignee is. Mid-review, the user added a second ask: an optional
+due *time* ("Tuesday, 4pm"), not just a date.
+- **Real finding that shaped the design**: none of `boards_page`/
+  `board_new`/`board_detail`/`board_edit`/`board_status`/`board_assign`
+  have any permission gate — any signed-in member can already view/edit/
+  status-change any board regardless of assignee (`board_delete` is the
+  one exception, an inline creator/assignee/admin check, left untouched —
+  a collaborator does not get delete rights this piece). So "collaborate
+  together" was a **visibility and notification** gap, not an access-
+  control one: a collaborator just needed to show up under "Mine," get
+  notified, and be visible on the card — the ability to actually check a
+  board off was already there for anyone.
+- New `board_collaborators` join table (`board_id`, `household_member_id`,
+  `added_by`/`added_at`) — a plain many-to-many, no `UNIQUE` constraint
+  (app-level dedup, matching `permission_grants`' own precedent). New
+  `_notify_board_collaborator()` mirrors `_notify_board_assignee()`
+  exactly (skip-self, skip login-less). Two new routes
+  (`board_collaborator_add`/`_remove`); `boards_page()`'s "Mine" filter and
+  its specific-person filter (`who=<id>`) both extended to match a board
+  where the person is the assignee **or** a collaborator; `board_detail()`
+  fetches and renders the list; `board_delete` now also cleans up
+  `board_collaborators` rows alongside its existing `board_notes`/
+  `board_time` cleanup.
+- **`due_time`**: added by mirroring `appointments.when_time` exactly —
+  optional `HH:MM`, `<input type="time">`, displayed as
+  `{{ due_date }} · {{ due_time }}`, sorted `due_date, due_time`. The
+  **overdue badge deliberately stays date-only** (verified against
+  `appointments.html`'s own overdue calc, which does the same) — a board
+  due today at a past time is not marked overdue, consistent with every
+  other due-date calculation in this app. New column added via
+  `ensure_columns(db, "boards", ["due_time"])` in `init_db()` — the first
+  time `boards` (stable since Piece 26/30.8) has ever needed a post-hoc
+  column migration.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  13-step test-client script (`piece58_boards_test.py` — due_time
+  round-trips through create and edit; overdue confirmed date-only in
+  both directions, a board due today at 00:01 stays clean while one due
+  yesterday at 23:59 still shows overdue; collaborator add/notify,
+  duplicate-add is a no-op not a second row, self-add doesn't self-notify,
+  both "Mine" and the specific-person filter include a collaborator-only
+  board, the detail page renders the list, remove works, and deleting a
+  board leaves no orphaned `board_collaborators` rows), the standard
+  40-route sweep, and — since this piece adds a real schema migration — a
+  boot against a **copy** of the real household database (never the
+  original), confirming `due_time`/`board_collaborators` both land cleanly
+  with zero row-count drift on the real 8 existing boards, idempotent on a
+  second boot, and both `/boards` and a real board's detail page render
+  200 against the actual data.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

@@ -214,7 +214,15 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   project** (clean the bathroom, call a vendor, …). Each can be **sent to a
   teammate** (who's notified), carries a **time log** (hours + notes, with a
   running total) and a **notes log** you add to over time, and has a
-  priority / due date / status. Filter by Mine / All / Unassigned.
+  priority / due date (with an **optional time**, e.g. "Tuesday, 4pm" —
+  the overdue badge still keys off the date alone, not the exact time) /
+  status. Filter by Mine / All / Unassigned.
+- **Board collaborators**: beyond the single "sent to" assignee, any number
+  of other household members can be added as **collaborators** on a board
+  — each is notified when added, shows up under their own "Mine" filter,
+  and can see and check off the same card. Lighter-weight than Projects'
+  task assignment — just a shared to-do, no separate collaborator
+  permissions.
 - **Offline cold-start (service worker)**: the app caches visited pages and
   serves them — or an offline page — without a signal, so the Work Bag works in
   the field even on a fresh load.
@@ -538,6 +546,15 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.35** — **Boards get collaborators and a due time.** Beyond the
+  single "sent to" assignee, any number of household members can now be
+  added as **collaborators** on a board — notified when added, counted
+  under their own "Mine" filter, and free to see/check off the same card
+  together (new `board_collaborators` join table; no new permission —
+  Boards routes were already open to any signed-in member). Due dates can
+  now carry an optional **time** ("Tuesday, 4pm"), mirroring Appointments'
+  existing date+time pattern exactly — the overdue badge deliberately
+  stays date-only, matching every other due-date calculation in this app.
 - **v0.34** — **the 💬 Assistant chat gets a Retry button.** Jacob's first
   beta-test feedback: if a question fails (dropped connection, provider
   error), a Retry button now appears next to the error message and resends
