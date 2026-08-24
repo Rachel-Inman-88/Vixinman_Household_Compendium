@@ -455,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.36"
+VERSION = "0.37"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -4184,6 +4184,38 @@ def _bar_series_geometry(labels, series, color_map, height=120, bar_width=16,
             "names": names, "colors": {n: color_map.get(n, "#9ca3af") for n in names}}
 
 
+def _balance_history_geometry(entries, starting_balance, deltas,
+                              width=420, height=120, pad_x=10, pad_y=10):
+    """Piece 60: cumulative-balance line-chart geometry for a Loan/Savings
+    account's entry ledger (entries already sorted oldest-first, per
+    loan_balance()/savings_balance()). `deltas` maps entry "kind" to +1/-1
+    so the same helper serves both Payment/Charge (loans) and Deposit/
+    Withdrawal (savings) ledgers without duplicating the walk. Always
+    includes 0 in the value range so a payoff or a zero-crossing is
+    visible on the axis."""
+    points = [{"date": "Start", "balance": starting_balance}]
+    running = starting_balance
+    for e in entries:
+        running += deltas.get(e["kind"], 0) * (e["amount"] or 0)
+        points.append({"date": e["entry_date"] or "", "balance": running})
+    if len(points) < 2:
+        return {"points": [], "path": "", "width": width, "height": height}
+    values = [p["balance"] for p in points] + [0]
+    lo, hi = min(values), max(values)
+    span = (hi - lo) or 1.0
+    step = (width - 2 * pad_x) / (len(points) - 1)
+    coords = []
+    for i, p in enumerate(points):
+        x = pad_x + i * step
+        y = pad_y + (hi - p["balance"]) / span * (height - 2 * pad_y)
+        coords.append({"x": round(x, 2), "y": round(y, 2),
+                       "date": p["date"], "balance": p["balance"]})
+    path = "M " + " L ".join(f"{c['x']},{c['y']}" for c in coords)
+    zero_y = pad_y + (hi - 0) / span * (height - 2 * pad_y)
+    return {"points": coords, "path": path, "width": width, "height": height,
+            "zero_y": round(zero_y, 2)}
+
+
 @app.route("/budget")
 @admin_required
 def household_budget_page():
@@ -4583,10 +4615,12 @@ def loans_page():
     db = get_db()
     accounts = [{"row": a, "balance": loan_balance(db, a["id"], a["original_amount"])["balance"]}
                 for a in db.execute("SELECT * FROM loan_accounts ORDER BY name").fetchall()]
+    total_balance = sum(a["balance"] for a in accounts)
     edit_id = request.args.get("edit", type=int)
     edit_account = db.execute(
         "SELECT * FROM loan_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
-    return render_template("loans.html", accounts=accounts, edit_account=edit_account)
+    return render_template("loans.html", accounts=accounts, edit_account=edit_account,
+                           total_balance=total_balance)
 
 
 @app.route("/loans/new", methods=["POST"])
@@ -4640,8 +4674,11 @@ def loan_account_detail(account_id):
     if account is None:
         abort(404)
     balance = loan_balance(db, account_id, account["original_amount"])
+    history = _balance_history_geometry(
+        balance["entries"], account["original_amount"],
+        {"Charge": 1, "Payment": -1})
     return render_template("loan_account_detail.html", account=account, balance=balance,
-                           today=datetime.now().strftime("%Y-%m-%d"))
+                           history=history, today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/loans/<int:account_id>/entries/new", methods=["POST"])
@@ -4754,10 +4791,13 @@ def savings_page():
     db = get_db()
     accounts = [{"row": a, "balance": savings_balance(db, a["id"])["balance"]}
                 for a in db.execute("SELECT * FROM savings_accounts ORDER BY name").fetchall()]
+    total_balance = sum(a["balance"] for a in accounts)
+    total_goal = sum(a["row"]["goal_amount"] for a in accounts if a["row"]["goal_amount"])
     edit_id = request.args.get("edit", type=int)
     edit_account = db.execute(
         "SELECT * FROM savings_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
-    return render_template("savings.html", accounts=accounts, edit_account=edit_account)
+    return render_template("savings.html", accounts=accounts, edit_account=edit_account,
+                           total_balance=total_balance, total_goal=total_goal)
 
 
 @app.route("/savings/new", methods=["POST"])
@@ -4811,8 +4851,10 @@ def savings_account_detail(account_id):
     if account is None:
         abort(404)
     balance = savings_balance(db, account_id)
+    history = _balance_history_geometry(
+        balance["entries"], 0.0, {"Deposit": 1, "Withdrawal": -1})
     return render_template("savings_account_detail.html", account=account, balance=balance,
-                           today=datetime.now().strftime("%Y-%m-%d"))
+                           history=history, today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/savings/<int:account_id>/entries/new", methods=["POST"])

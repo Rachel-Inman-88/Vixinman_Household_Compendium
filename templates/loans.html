@@ -7,6 +7,15 @@
 <p class="muted" style="margin-top:0;">Each account's balance is computed from its own entry ledger — record a
 <strong>Payment</strong> when you pay it down, or a <strong>Charge</strong> for a fee or additional draw.</p>
 
+{% if accounts %}
+<div class="card" style="display:flex; gap:1.5rem; flex-wrap:wrap; padding:0.6rem 0.9rem;">
+  <div><span class="muted" style="font-size:0.8rem;">Accounts</span><br>
+    <strong style="font-size:1.15rem;">{{ accounts|length }}</strong></div>
+  <div><span class="muted" style="font-size:0.8rem;">Total balance</span><br>
+    <strong style="font-size:1.15rem;">${{ total_balance|money0 }}</strong></div>
+</div>
+{% endif %}
+
 <div class="card">
   {% if accounts %}
   <div style="overflow-x:auto;">

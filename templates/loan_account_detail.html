@@ -16,6 +16,21 @@
     <div class="field"><label>Current balance</label><div style="font-weight:700; font-size:1.15rem;">${{ (balance.balance)|money }}</div></div>
   </div>
 
+  {% if history.points %}
+  <div style="margin:0.6rem 0 0.9rem;">
+    <svg class="chart-svg" viewBox="0 0 {{ history.width }} {{ history.height }}"
+         style="max-width:{{ history.width }}px;" role="img"
+         aria-label="Balance history: {% for p in history.points %}{{ p.date }} ${{ p.balance|money0 }}{% if not loop.last %}, {% endif %}{% endfor %}.">
+      <line x1="0" y1="{{ history.zero_y }}" x2="{{ history.width }}" y2="{{ history.zero_y }}"
+            stroke="var(--border)" stroke-dasharray="3 3"></line>
+      <path d="{{ history.path }}" fill="none" stroke="var(--brand)" stroke-width="2"></path>
+      {% for p in history.points %}
+      <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3" fill="var(--brand)"></circle>
+      {% endfor %}
+    </svg>
+  </div>
+  {% endif %}
+
   {% if balance.entries %}
   <div style="overflow-x:auto;">
   <table>
