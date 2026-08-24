@@ -1418,6 +1418,85 @@ summary.
   accounts/entries to the copy to confirm the new chart and progress-bar
   UI actually render against real-shaped data, not just synthetic tests.
 
+**Piece 61 (v0.38): Dashboard "Productivity Overview" card + a Month
+Calendar — done.** User supplied a mockup: consolidate the dashboard's
+Appointments/Chores/Tasks (previously 3 separate standalone cards) plus a
+new Boards section into one "Productivity Overview" card, alongside a
+Month Calendar. Confirmed via 2 AskUserQuestion rounds: (1) the
+appointment tiers reuse the exact Today/Tomorrow/Next-2-weeks split
+already built for the Child dashboard's `_bucket_schedule()` widget
+(`app.py`); (2) the Month Calendar is a real functional grid with markers,
+not a placeholder; (3) a board counts as "mine" if I'm the assignee **or**
+a collaborator, matching Boards' own existing "Mine" filter; (4) unlike
+`_bucket_schedule()`'s drop-overdue behavior (built for a brief glance),
+an overdue appointment here folds into "Today" with its badge instead of
+disappearing from the list.
+- New `_bucket_appointments_with_overdue()` (near `_bucket_schedule()`,
+  which stays completely unchanged — still used by the Child dashboard)
+  and `_build_month_calendar()` — a Sunday-start month grid using stdlib
+  `calendar.Calendar(firstweekday=6).monthdayscalendar()`, first `import
+  calendar` use in this codebase. `dashboard()` gained a `my_boards` query
+  that mirrors `boards_page()`'s "Mine" filter SQL exactly, an
+  `items_by_date` index built from tasks/chores/appointments/boards (any
+  item with a date, unwindowed — the full month, not just the 14-day
+  glance horizon), and `?cal=YYYY-MM` month navigation reusing
+  `_household_month_bounds()` (validation/default) and
+  `_recent_months()`/`_forward_months()` (Piece 55) for prev/next-month
+  arithmetic instead of hand-rolling year-rollover math a third time.
+- `templates/dashboard.html`: the old "✅ My tasks"/"🔁 My
+  chores"/"📅 Upcoming appointments" cards are gone, replaced by one
+  "🗂 Productivity Overview" card (gated to the non-Child dashboard, same
+  as Backlog/Procurement) with a two-pane flex layout — a compact list
+  pane (Appointments in 3 tiers, then flat Chores/Boards/Tasks lists) and
+  a calendar pane (prev/next nav, a "This month" jump-back link, a 7-
+  column week table with up to 3 item markers + a "+N more" overflow per
+  day, today's cell highlighted). `flex-wrap: wrap` drops the calendar
+  below the list on narrow viewports with no separate media query needed.
+  "📋 My requirements" keeps its own separate card, untouched, right after.
+- **Real bug caught during verification**: a dict cell's `"items"` key
+  collided with Python's `dict.items` **method** under Jinja's default
+  attribute-then-item lookup — `cell.items` in the template silently
+  resolved to the bound method (`TypeError: 'builtin_function_or_method'
+  object is not subscriptable` the moment `[:3]` was applied), not the
+  list. Fixed by using explicit `cell['items']` instead of `cell.items`
+  everywhere in the calendar cell markup. **Worth remembering for any
+  future template touching a plain dict with common-name keys** (`items`,
+  `keys`, `values`, `get`, `update` — any actual `dict` method name) —
+  Jinja's dot-attribute sugar isn't safe there; use bracket access.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, unit
+  checks (`_build_month_calendar()` against a known non-leap February —
+  correct day count, `is_today` on exactly one cell, an item landing on
+  its exact date; `_bucket_appointments_with_overdue()` — an overdue
+  appointment folds into "today" with its flag set, same-day/tomorrow/
+  10-days-out land in the right tiers, a 20-days-out one is dropped from
+  every bucket), a test-client cycle (old card headings gone/new card
+  present; a board assigned to me, one where I'm only a collaborator, and
+  one assigned to someone else with me uninvolved — confirmed the first
+  two show under Boards and the third doesn't; `?cal=` prev/next links
+  correctly cross a December→January year boundary; Child dashboard
+  unaffected — still shows its own "🗓 My schedule," no Productivity
+  Overview card; "📋 My requirements" still renders), the standard
+  40-route sweep, a boot + several `?cal=` variations against a **copy**
+  of the real household database (never the original), and — since this
+  was mockup-driven — a live manual browser check (seeded a scratch DB
+  with realistic tasks/chores/appointments/an overdue appointment/a
+  board, signed in, and inspected the actual rendered DOM: both panes lay
+  out side-by-side at desktop width and correctly stack on a 375px mobile
+  viewport, today's calendar cell gets its highlight, and every item type
+  shows up on its correct calendar date including the overdue one on its
+  real past date). `computer` screenshot still fails in this environment
+  ("Browser pane is not displayed") — `get_page_text()` + `javascript_tool`
+  DOM/`getBoundingClientRect()` inspection was the working substitute
+  again, same established fallback as Pieces 49/55/57.
+
+**Requested next, not yet started**: mid-Piece-61, the user asked for a
+follow-up — under the 🏠 Household nav dropdown, collapse the separate
+Savings/Loans/Budget links into one "💰 Money" button that opens a new
+financial dashboard page. Not scoped yet (what the new financial
+dashboard page should actually contain beyond being a landing/hub for the
+three existing pages hasn't been discussed) — needs its own scoping pass
+before starting, same as Piece 60 did.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

@@ -266,13 +266,18 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   Assistant see a household-wide **overview** (pipeline counts by stage,
   money-in-flight tiles, an attention row, a wrap-up worklist), plus
   **Payments**, **Procurement**, active projects grouped by stage, the
-  **Backlog**, and each member's own **My tasks**, **My chores**, **My
-  appointments**, and **My requirements**. **A Child gets a different
-  dashboard instead** (Piece 53): the household overview, Procurement, and
-  Backlog are replaced by a personal **🗓 My schedule** widget (Today /
-  Tomorrow / Next 2 weeks, merging their own tasks, chores, and
-  appointments), and the stage-listing cards only show projects they
-  actually have a task on. Every section is **collapsible**.
+  **Backlog**, a **🗂 Productivity Overview** card, and **My requirements**.
+  Productivity Overview (Piece 61) consolidates Appointments (split into
+  **Today / Tomorrow / Next 2 weeks** tiers — an overdue appointment folds
+  into Today with its badge instead of disappearing), Chores, Boards
+  (assignee or collaborator), and Tasks into one card, alongside a real
+  **Month Calendar** grid with markers for every due date and prev/next
+  navigation. **A Child gets a different dashboard instead** (Piece 53):
+  the household overview, Procurement, Backlog, and Productivity Overview
+  are replaced by a personal **🗓 My schedule** widget (Today / Tomorrow /
+  Next 2 weeks, merging their own tasks, chores, and appointments), and
+  the stage-listing cards only show projects they actually have a task
+  on. Every section is **collapsible**.
 - **Inventory database** (🗄 Databases → Inventory): ships **empty** on a fresh
   install — no pre-seeded solar catalog, vendor list, tool kit, or vehicle
   fleet; items get added as the household actually needs them. Per-category
@@ -562,6 +567,18 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.38** — **Dashboard "Productivity Overview" card + a real Month
+  Calendar.** Appointments, Chores, Boards (new — no dashboard summary
+  existed before), and Tasks are now consolidated into one card instead
+  of four separate ones, alongside a functional month-grid calendar with
+  markers for every due date, prev/next month navigation, and a "This
+  month" jump-back link. Appointments split into **Today / Tomorrow /
+  Next 2 weeks** tiers (an overdue appointment folds into "Today" with
+  its overdue badge, rather than disappearing) — everything beyond that
+  2-week glance window still shows up on the calendar once you navigate
+  to its month. Boards counts as "mine" the same way Boards' own "Mine"
+  filter does: assignee **or** collaborator. Non-Child dashboards only —
+  the Child dashboard's own "🗓 My schedule" widget is untouched.
 - **v0.37** — **Loans/Savings/Budget UI polish.** Loan and Savings account
   detail pages now show a **balance-history chart** (a hand-rolled SVG line
   chart of the running balance over every entry, matching Piece 55's
