@@ -1218,6 +1218,33 @@ logged in — the phone browser's first attempt failed with "can't provide a
 secure connection" (it tried `https://` automatically for the bare IP),
 resolved by typing `http://` explicitly.
 
+**Piece 57 (v0.34): 💬 Assistant retry button — done.** First real beta-test
+feedback, from Jacob: a failed AI question shouldn't require retyping or
+copy/pasting it back in. `templates/assistant.html`'s JS refactored so the
+actual send logic lives in one `send(q, provider, isRetry)` function; on
+failure, `showError()` renders the error message plus a "🔁 Retry" button
+that resends the last-attempted `{q, provider}` pair, tracked in a
+`lastAttempt` JS variable (cleared on success). `isRetry` suppresses
+re-adding a "You" chat bubble, so retrying doesn't duplicate the question
+in the visible transcript. Verified against a live scratch server: forced
+`fetch` to reject (simulating a dropped connection), confirmed the Retry
+button appears with no duplicate bubble; then mocked `fetch` to succeed and
+confirmed clicking Retry resent the *exact* original request body — no
+duplicate "You" bubble, error cleared, answer rendered correctly.
+- **Same gap exists in the 🧠 Plan tab's chat** (`project_plan_ask()` /
+  `templates/project_detail.html`'s inline Plan-tab JS) but was
+  deliberately **not** fixed this piece — the user's request named "the
+  assistant" specifically, and the Plan tab's backend persists the user's
+  message to `project_plan_messages` **before** calling the AI (a
+  deliberate Piece 48 choice, so a typed message survives a failed AI
+  call). A naive resend-on-retry there would insert a second, duplicate
+  user-turn row for the same question. The correct fix needs the backend
+  to distinguish "resend this already-saved message" from "save a new
+  one" (e.g. an optional `retry_of=<message id>` param that skips the
+  INSERT and reuses the existing row) — a small but real addition, not
+  just a copy of the assistant.html fix. Pick this up if Jacob (or anyone)
+  hits the same complaint on the Plan tab specifically.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

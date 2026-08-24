@@ -442,6 +442,9 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   it can explain and summarize but **never changes anything**.
 - **Claude and/or Gemini, selectable.** Add a key for either or both under **AI
   settings** (admin only); when both are set, staff pick the model per question.
+- **🔁 Retry on failure.** If a question fails (dropped connection, provider
+  hiccup), a Retry button appears next to the error and resends the exact
+  same question — no retyping or copy/pasting it back in.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
   stage/county/overdue/contract, drill into one project, list
@@ -535,6 +538,14 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.34** — **the 💬 Assistant chat gets a Retry button.** Jacob's first
+  beta-test feedback: if a question fails (dropped connection, provider
+  error), a Retry button now appears next to the error message and resends
+  the exact same question — previously you'd have had to retype it or
+  copy it back out of the chat bubble. The 🧠 Plan tab's chat has the same
+  gap but a different fix (it saves the user's message to the database
+  before calling the AI, so a naive resend would duplicate that row) — not
+  addressed this piece, tracked in `HANDOFF.md`.
 - **v0.33** — **the app can now be reached from a phone on the same WiFi**,
   for beta-testing. `python app.py` behaves exactly as before by default
   (localhost-only, debug mode on); set `COMPENDIUM_HOST=0.0.0.0` (and
