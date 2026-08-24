@@ -908,6 +908,105 @@ this one piece, not a phased subset.
   household database (0 `drafts` rows, real accounts' existing grants
   untouched).
 
+**Piece 53 (v0.29): Child-role dashboard & visibility restrictions — done.**
+Follow-up to Piece 51's permission system: a default Child could still see
+almost everything (household-wide dashboard, admin-adjacent nav, every
+project's documents, the full FAQ). Confirmed via two AskUserQuestion
+rounds (the second one surfacing that the user's initial ask was bigger
+than first scoped — a project-file "collaborator" concept, not just a
+dashboard reshuffle): dashboard shape = new combined Today/Tomorrow/Next-2-
+weeks widget; project-file restriction = task-assignment-based and hides
+only documents, not the whole project; Household Files/Requirements Editor
+= genuinely restricted; FAQ full-access = its own permission, Parent
+default.
+- **Dashboard** (`dashboard()`, `templates/dashboard.html`): new
+  `_bucket_schedule()` helper merges a signed-in member's already-fetched
+  `my_tasks`/`my_chores`/`my_appointments` into Today/Tomorrow/Next-2-weeks
+  buckets (no new queries). For a Child specifically, this replaces the
+  "🏠 Household overview" block entirely (Parent/Assistant unaffected); the
+  Procurement and Backlog cards are hidden outright; and the per-stage
+  project-listing cards are filtered server-side to only projects with a
+  `project_tasks.household_member_id` match for that Child.
+- **Nav** (`templates/base.html`): Work Bag pulled out of the 🏠 Household
+  dropdown to a standalone top-level link (a general layout change, not
+  Child-specific — it read oddly for it to be nested for some roles and not
+  others). Family, Household Files, and Requirements Editor links are now
+  wrapped in `{% if can(...) %}`, reusing `household.manage` for the first
+  two and `rules.manage` for the third.
+- **Real server-side gating to match**, not just hidden links: added
+  `@admin_required` + `VIEW_PERMISSION` entries for `rules_page`,
+  `household_members_page`, `household_member_detail`,
+  `household_files_page`, `upload_household_file`,
+  `download_household_file` — all six previously had **zero** gate of any
+  kind, reachable by direct URL regardless of role.
+- **Project file/document visibility, Child-only, task-assignment-based**:
+  new `_can_see_project_files(project_id, user)` (a Child needs ≥1 task on
+  that specific project; everyone else always can) and
+  `_file_route_allowed(project_id, record)` (exempts a `project_files` row
+  tied to a task — a field photo — or a transaction — a billing receipt —
+  from the check, since those are already scoped to whoever legitimately
+  filed them and shouldn't vanish if a task assignment changes later).
+  Applied to `upload_file`/`download_file`/`view_file` (previously
+  undecorated) and to `project_detail.html`'s Documents tab (hidden
+  entirely, same treatment as the existing Billing-tab gate) and the
+  Requirements tab's Permits-only inline file links (`can_file` now also
+  requires it). The rest of a project (general info, task list,
+  requirements list) stays visible to a Child regardless of assignment —
+  only the filed documents are hidden.
+- **Help/FAQ locking**: new `help.full_access` permission (Parent/Assistant
+  default, Child not) plus a `HELP_SECTION_PERMISSION` mapping + a
+  `help_section_unlocked()` Jinja global. Five of the twelve Help sections
+  (`#rules`, `#finance`, `#budget-help`, `#people`, `#managers`) show a
+  🔒 placeholder instead of their tutorial for anyone lacking both
+  `help.full_access` and the specific permission that section documents;
+  the other seven stay open to everyone, unchanged. A one-time
+  `meta`-gated migration (`help_full_access_v1`, same pattern as
+  `household_reorg_v1`) backfills the grant for every *existing*
+  Parent/Assistant, since `_seed_role_default_grants` only fires at
+  member-creation/role-change time.
+- **AI scoping — verified, no code change needed.**
+  `build_assistant_snapshot`/`build_assistant_tools`/
+  `build_project_plan_context` were re-confirmed to run per-request against
+  whoever is actually signed in (`current_user()`/`session["user_id"]`, no
+  caching), and none of the four assistant tools query `project_files` at
+  all — so a Child chatting with the 💬 Assistant/🧠 Plan tab already only
+  gets what they themselves can see, and there's no file-listing leak to
+  close (unlike Piece 51's real finances leak — this time the audit came up
+  clean).
+- **Two real bugs found and fixed along the way:**
+  1. `rules_page` (the Requirements Editor's own GET view) had no
+     permission check at all — only its write routes (`add_rule`/
+     `update_rule`) did, so a Child could already reach the editor UI
+     directly by URL even before this piece's nav change, just couldn't
+     submit anything from it.
+  2. The `help_full_access_v1` migration was originally written calling
+     `_seed_role_default_grants(db, m["id"], m["role"])` inside `init_db()`
+     — but `init_db()`'s connection is a plain `sqlite3.connect()` with no
+     `row_factory` set (unlike `get_db()`'s per-request connection), so
+     rows there are bare tuples, not dict-like `Row` objects. This crashed
+     immediately against the real household database (`m["id"]` →
+     `TypeError`) despite passing every fresh-DB test, because on a fresh
+     database `seed_org_team()` (which populates `household_members`) runs
+     *after* this migration point, so the loop was silently a no-op there
+     and the bug never got exercised. Fixed by duplicating
+     `_seed_role_default_grants`'s additive-only logic inline in
+     tuple-safe form rather than calling the Row-expecting function
+     directly. Caught by testing against the real household database
+     before pushing, not by the scratchpad fresh-DB suite alone — worth
+     remembering as a category of bug that fresh-DB tests can miss
+     entirely when a migration's effect depends on pre-existing rows.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, an
+  18-step test-client script (role-default grants, migration idempotence,
+  dashboard Child-vs-Parent content, nav Child-vs-Parent, server-side
+  gating on all six newly-gated routes, project-file access for an
+  assigned vs. unassigned Child, the field-photo/receipt exemption after
+  reassignment, Help locking including a partial-unlock-after-grant case),
+  the standard 40-route sweep (zero 500s), and a boot against the real
+  household database (confirmed the `help_full_access_v1` migration
+  correctly backfilled Jacob/Rachel Inman/Gremory and correctly left
+  Victor/Dmitri untouched, and a second boot confirmed no duplicate
+  grants).
+
 **NOT done yet:**
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is

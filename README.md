@@ -239,14 +239,17 @@ can confirm a pull/update took effect.
 - **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
   pipeline turnovers, project cancellations, chore/requirement reminders, and
   security notices; each notification **clears when the recipient accesses it**.
-- **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Every
-  section renders for every signed-in member, all the time; no per-role mode
-  switcher. Sections include a household-wide **overview** (pipeline counts by
-  stage, money-in-flight tiles, an attention row, this week's installs, a
-  wrap-up worklist), **Payments**, **Procurement**, **Installs**, active
-  projects grouped by stage, the **Backlog**, and each member's own **My
-  tasks**, **My chores**, and **My requirements**. Each section is
-  **collapsible**.
+- **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Parent and
+  Assistant see a household-wide **overview** (pipeline counts by stage,
+  money-in-flight tiles, an attention row, a wrap-up worklist), plus
+  **Payments**, **Procurement**, active projects grouped by stage, the
+  **Backlog**, and each member's own **My tasks**, **My chores**, **My
+  appointments**, and **My requirements**. **A Child gets a different
+  dashboard instead** (Piece 53): the household overview, Procurement, and
+  Backlog are replaced by a personal **🗓 My schedule** widget (Today /
+  Tomorrow / Next 2 weeks, merging their own tasks, chores, and
+  appointments), and the stage-listing cards only show projects they
+  actually have a task on. Every section is **collapsible**.
 - **Inventory database** (🗄 Databases → Inventory): ships **empty** on a fresh
   install — no pre-seeded solar catalog, vendor list, tool kit, or vehicle
   fleet; items get added as the household actually needs them. Per-category
@@ -263,31 +266,41 @@ can confirm a pull/update took effect.
 - **Nav grouping**: the top nav bar is organized into dropdowns rather than
   one link per feature — **✅ To-do** (Tasks, Boards, Chores, 🔔
   Notifications, Appointments — the unread-notification count shows right on
-  the dropdown itself), **🏠 Household** (Budget, Work Bag, Approvals, and
-  👨‍👩‍👧 Family — the household-member roster/roles/accounts page, relabeled
-  from "Household" to avoid colliding with this dropdown's own name; the
-  pending-approvals count shows on the dropdown for anyone who can approve),
-  **🗄 Databases** (Projects, Backlog, Household Files, Contacts,
-  Requirements Editor, Requirements Library, Inventory, Wishlist, plus
-  admin-only Closed projects), and **🔧 Admin** (Log / Trash / Access). Each
-  dropdown shows only the items the user may reach and collapses to a plain
-  link when only one applies.
+  the dropdown itself), a standalone **🎒 Work Bag** button (Piece 53: pulled
+  out of the Household dropdown so it's one click for everyone, not two),
+  **🏠 Household** (Budget, Approvals, Drafts, and 👨‍👩‍👧 Family — the
+  household-member roster/roles/accounts page; the pending-approvals count
+  shows on the dropdown for anyone who can approve), **🗄 Databases**
+  (Projects, Backlog, Household Files, Contacts, Requirements Editor,
+  Requirements Library, Inventory, Wishlist, plus admin-only Closed
+  projects), and **🔧 Admin** (Log / Trash / Access). Each dropdown shows
+  only the items the user may reach and collapses to a plain link when only
+  one applies. **Family, Household Files, and the Requirements Editor are
+  genuinely gated** (Piece 53), not just hidden links — a Child can't reach
+  them by direct URL either.
 - **Permissions**: a flat **`is_admin`** flag — admins get every tool except
   **Delete**, which always needs an explicit grant even for an admin.
   Non-admins get only what's individually checked off for them on the
   **🔐 Access** console (manage rules, manage the catalog, manage inventory,
   manage household members & accounts, approve field work, view the audit
-  log, manage finances, manage projects, or delete). **Roles pre-fill a
-  default bundle** (Piece 51): Parent and Assistant both get everything but
-  Delete, Child gets none of it by default — set once as real grants when a
-  person is added or their role changes, and always still editable per
-  person from there afterward (additive only: changing someone's role never
-  removes a grant they already had). **Assistant is meant for an AI agent's
-  own account** (Piece 52) — it can read everything a Parent can, but every
-  write it makes is captured as a **draft** on the new 🗒 Drafts page instead
-  of landing directly; a Parent/Admin reviews each one and Approves (applies
-  it for real) or Discards it. No tiers above
+  log, manage finances, manage projects, see the full FAQ, or delete).
+  **Roles pre-fill a default bundle** (Piece 51): Parent and Assistant both
+  get everything but Delete, Child gets none of it by default — set once as
+  real grants when a person is added or their role changes, and always
+  still editable per person from there afterward (additive only: changing
+  someone's role never removes a grant they already had). **Assistant is
+  meant for an AI agent's own account** (Piece 52) — it can read everything
+  a Parent can, but every write it makes is captured as a **draft** on the
+  🗒 Drafts page instead of landing directly; a Parent/Admin reviews each
+  one and Approves (applies it for real) or Discards it. No tiers above
   admin, and grants don't expire.
+- **Project documents follow task assignment, for a Child** (Piece 53): a
+  Child can still view any project's general info and tasks regardless of
+  assignment, but a project's filed **Documents** (and the Requirements
+  tab's inline permit filings) only show if they have a task on that
+  specific project — Parent/Admin/Assistant always see everything. A
+  Child's own already-filed field photos and billing receipts stay visible
+  to them even if their task assignment changes later.
 - **Deletion & trash**: deleting anything needs the explicit **Delete**
   permission (even an admin doesn't have it by default), prompts before
   deleting, and is **blocked with an error if the data is in use** elsewhere.
@@ -421,7 +434,12 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
 
 ### Help & records
 - **In-app Help** (❓ Help in the top bar): tutorials & FAQ for every feature,
-  grouped by area with a contents list and expandable questions.
+  grouped by area with a contents list and expandable questions. **Sections
+  about a tool you don't have access to show a locked placeholder instead**
+  (Piece 53) — Requirements Editor, Billing, Household Budget, People/roles,
+  and the Admin section. The **See full FAQ** permission
+  (`help.full_access`) bypasses this and always shows everything; Parent
+  and Assistant get it by default, Child doesn't.
 - **Audit log** of all changes (create/update/delete), with password fields
   redacted and never logged in plaintext.
 
@@ -470,6 +488,30 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.29** — **a Child's account gets an individually-focused experience**,
+  building on v0.27's permission system. Dashboard: Parent/Assistant keep
+  the household-wide overview; a Child gets a personal **🗓 My schedule**
+  widget instead (Today/Tomorrow/Next 2 weeks, merging their own tasks,
+  chores, and appointments), no Procurement or Backlog cards, and the
+  stage-listing cards scoped to only projects they have a task on. Nav:
+  **Work Bag** is a standalone top-level button again (was folded into the
+  Household dropdown in v0.24); **Family**, **Household Files**, and the
+  **Requirements Editor** are now genuinely gated — not just hidden links —
+  reusing `household.manage`/`rules.manage` (a real, if minor, pre-existing
+  gap: those routes carried no server-side check at all before this).
+  **Project documents follow task assignment** for a Child specifically — a
+  project's Documents tab and Requirements-tab file links only show if they
+  have a task on that project; everything else about the project (info,
+  task list) stays visible regardless. A Child's own already-filed field
+  photos/receipts are exempt, so a later reassignment can't orphan their own
+  uploads. **Help/FAQ** sections about a tool someone doesn't have access to
+  now show a locked placeholder instead of the tutorial; a new
+  `help.full_access` permission (Parent/Assistant by default) bypasses it.
+  Verified the AI Assistant/Plan chat's tools already scope to whoever's
+  actually signed in and don't expose any file listings, so no change was
+  needed there. Fixed a real pre-existing gap surfaced along the way: the
+  Requirements Editor's own page had no permission check at all (only its
+  write routes did).
 - **v0.28** — **the Assistant role becomes an AI agent's own account**,
   closing the loop v0.27 (below) deliberately left open. Assistant's
   permission bundle now matches Parent (everything but Delete), but every
