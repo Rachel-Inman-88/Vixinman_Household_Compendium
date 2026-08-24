@@ -1007,7 +1007,100 @@ default.
   Victor/Dmitri untouched, and a second boot confirmed no duplicate
   grants).
 
+**Piece 54 (v0.30): dashboard money-widget rework + Loans/Savings accounts
+— done.** User asked to rework the dashboard's 4-tile Money-in-flight
+widget (Contract/Collected/Outstanding/Expenses, project-only) into 6 tiles
+rolling up BOTH the project and household ledgers, plus asked for Loans and
+Savings as new named-account features. Mid-review, two more requests came
+in: a project's Planning-phase cost **estimate** vs. actual expenses
+(explicitly NOT vs. Contract — see the flag below), and a **Discretionary
+Spending** Budget category. Confirmed via 3 AskUserQuestion rounds.
+- **6 dashboard tiles**: unpaid expenses, loans, income, savings, money in
+  projects, anticipated spending (est. vs. actual) — `dashboard()`'s `money`
+  dict rebuilt to sum `project_billing()`'s `expense_out`/`collected`/
+  `contract` across projects, `household_transactions` grouped by
+  kind/status, and `loan_balance()`/`savings_balance()` across every
+  account. "Unpaid expenses" combining both ledgers required adding a real
+  `status` column to `household_transactions` (it had none — every logged
+  row was implicitly already-settled); added directly via `ALTER TABLE`
+  (not `ensure_columns()`, which always defaults to `''`) so every
+  pre-existing row defaults to `'Paid'`.
+- **Loans/Savings**: `loan_accounts`/`loan_entries` and
+  `savings_accounts`/`savings_entries` — new tables modeled directly on
+  `project_transactions`/`project_billing()` (the only existing "ledger
+  drives a computed total" precedent in this codebase), a running balance
+  computed live on every read, never cached. Two new dedicated
+  list+detail-page pairs (`loans.html`+`loan_account_detail.html`,
+  `savings.html`+`savings_account_detail.html`) — the first genuinely new
+  "roster + per-item ledger detail page" shape in this app (every other
+  roster entity stops at list+inline-edit). `finances.manage`-gated
+  throughout (no new permission — reused, matching how every other money
+  feature in this app is already all-or-nothing gated); every write route
+  is `@draftable`, same as Budget/project billing, so an Assistant-role
+  account's Loan/Savings writes go through Drafts like everything else it
+  touches. `_save_household_receipt()` generalized into
+  `_save_household_upload(field_name, ...)` so Loan/Savings entry
+  statements reuse the exact same optional-photo/PDF upload machinery as a
+  Budget receipt, no new upload code.
+- **`projects.estimated_cost`**: added to `PROJECT_FIELDS` (flows through
+  the existing generic create/edit-form machinery automatically, same as
+  `project_category`/`project_type` did in Piece 44 — zero special-casing
+  needed). Entered on the general project form (gated by `projects.manage`,
+  a Planning-phase detail, not a Billing-tab control); the number itself is
+  shown on the General-details tab wrapped in `{% if can('finances.manage') %}`
+  (Piece 51's "never show a dollar figure without finances.manage" rule).
+- **Discretionary Spending**: new `HOUSEHOLD_BUDGET_CATEGORIES` suggested-
+  values list, wired as an HTML5 `<datalist>` on Budget's category fields
+  (which were, and remain, plain free text — no backend change needed).
+- **Important flag from the user, not something this piece touched**: the
+  project **"Contract"** concept (`contract_amount`, `set_contract`, the
+  Billing tab's Contract/Not-yet-invoiced tiles, `project_billing()`'s
+  `contract`/`uninvoiced` keys) is a leftover from this app's original
+  solar-installation-business origins — there's no "customer signs a
+  contract" concept for a DIY household project. The user asked for it to
+  be flagged everywhere it appears rather than touched now. Full inventory
+  (research done via a dedicated Explore pass): 1 column (added via
+  `ensure_columns`, not in `schema.sql`'s `CREATE TABLE`), 1 dedicated
+  route/form (`set_contract`, `_capture_contract`/`_apply_set_contract`, 1
+  `DRAFT_KINDS` entry), `project_billing()`'s `contract`/`uninvoiced` keys
+  rippling into `_closing_worklist()` (Wrap-up balance-due),
+  the (now-former) dashboard money dict, the Payments table's `pay_totals`,
+  and the Billing tab's own tiles; UI labels in `dashboard.html`,
+  `closed_jobs.html`, `help.html` (5 FAQ mentions), `project_detail.html`;
+  AI-assistant exposure (`find_projects`'s `min_contract` filter,
+  `project_details`'s "Contract total" line, tool-schema descriptions); and
+  a `TITLE_STATUS_KEYWORDS` task-title auto-tagger keyed on the literal word
+  "contract". **This piece's new estimate feature was deliberately built
+  independent of all of this** — it compares estimate to actual expenses
+  logged, never to `contract_amount` — specifically so it wouldn't deepen
+  reliance on a concept flagged for future removal. Whoever picks up the
+  Contract-extraction piece should start from this inventory rather than
+  re-deriving it.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot (migration
+  idempotence confirmed via a second `init_db()` call), a 15-step
+  test-client script (`piece54_loans_savings_test.py` in the session
+  scratchpad — Budget status default + explicit-Outstanding round-trip, the
+  category datalist, Loan account CRUD including balance math across
+  Payment/Charge entries, delete blocked while entries exist then allowed
+  once cleared, entry soft-delete with statement-file cleanup, the Savings
+  mirror, 6-tile dashboard math against a hand-built scenario spanning both
+  ledgers plus a loan and a savings account, `estimated_cost`'s
+  `finances.manage`-gated visibility, `VIEW_PERMISSION` gating for every
+  new route, the Assistant-drafts-then-Parent-approves path), the standard
+  40-route sweep (zero 500s, `/loans`+`/savings` both clean), and — since
+  this piece adds a real schema migration — a boot against a **copy** of
+  the real household database (never the original) confirming
+  `household_transactions.status` and the 4 new tables create cleanly with
+  zero pre-existing-table row-count drift, run twice to confirm
+  idempotence.
+
 **NOT done yet:**
+- **The "Contract" legacy-code extraction**, flagged by the user this piece
+  (see the Piece 54 entry above for the full inventory) — `contract_amount`/
+  `set_contract`/the Billing tab's Contract tile are a leftover from this
+  app's original solar-installation-business origins and don't really fit a
+  household project. Not touched this piece by design; a future piece
+  should reconsider/rename/replace it using the inventory already gathered.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate

@@ -355,8 +355,13 @@ can confirm a pull/update took effect.
 - **Payments table** on the shared dashboard: every active project with Contract /
   Collected / Outstanding / Expenses / Net and a grand-total row. **Gated by the
   `finances.manage` permission (Piece 51)** — a Child has none of it by default,
-  so this table (and the dashboard's "Money in flight" tiles, and the project
-  page's whole Billing tab) don't render for them at all.
+  so this table (and the project page's whole Billing tab) don't render for
+  them at all.
+- **Estimated cost** (Piece 54): a Planning-phase ballpark figure, separate from
+  the (later, real) Contract total — set on the general project form, shown on
+  the General details tab (`finances.manage`-gated like every other dollar
+  figure). Compared against actual expenses logged so far on the dashboard's
+  "Anticipated spending" tile.
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
   (a comma appears for amounts ≥ $1,000).
 
@@ -388,6 +393,27 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   against actual spending for the selected month with a simple over/under
   progress bar. Filter transactions by This month / All; pick any month to
   review with the month selector.
+- **Paid/Outstanding status** (Piece 54): each transaction has a status,
+  toggleable with one click, matching the vocabulary the per-project Billing
+  ledger already uses — new transactions default to Paid. Feeds the
+  dashboard's "Unpaid expenses" tile, which now combines both ledgers.
+- **Category suggestions**: the category field is still free text, but now
+  offers suggestions (Groceries, Utilities, Subscriptions, **Discretionary
+  Spending**, Other) via a browser-native autocomplete list — type anything
+  else if none fit.
+
+### Loans
+- **💳 Loans**: named loan accounts (a car loan, a mortgage) — each has a
+  running balance computed live from its own entry ledger, not typed in as a
+  single number. Record a **Payment** (reduces the balance) or a **Charge**
+  (increases it — a fee, or an additional draw), each with an optional
+  photo/PDF statement attachment. An account with entries can't be deleted
+  until they're removed first (same in-use safety rail as everywhere else).
+
+### Savings
+- **🐷 Savings**: named savings accounts (an emergency fund, a vacation
+  fund), same shape as Loans — a running balance from **Deposit**/
+  **Withdrawal** entries, an optional goal amount (informational only).
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
@@ -488,6 +514,31 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.30** — **the dashboard money widget rolls up the whole household**,
+  and two new money features. The old 4-tile "Money in flight" (Contract/
+  Collected/Outstanding/Expenses) is now 6 tiles — **unpaid expenses,
+  loans, income, savings, money in projects, and anticipated spending
+  (est. vs. actual)** — combining the per-project ledger and the household
+  Budget ledger for the first time (they'd never been rolled up together
+  before). **Loans and Savings** are new: named accounts, each with a
+  running balance computed live from its own entry ledger (mirrors the
+  project Billing ledger's own design, not a single stored number) —
+  `finances.manage`-gated and draft-intercepted for an Assistant, same as
+  every other money feature. `household_transactions` gained a real
+  Outstanding/Paid **status** (it had none before — every logged expense
+  was implicitly already-settled), so the new "unpaid expenses" tile can
+  mean something on the household side too. Projects gained an
+  **estimated cost** field, set during Planning, compared against actual
+  expenses logged so far (not against the Contract total — see below) on
+  the new "Anticipated spending" tile. Household Budget's category field
+  gained suggestions, including a new **Discretionary Spending** category.
+  **Flagged, not fixed, this piece**: the project "Contract" concept
+  (`contract_amount`, the Billing tab's Contract tile, `set_contract`) is a
+  leftover from this app's original solar-installation-business origins —
+  the new estimate feature was deliberately built to compare against actual
+  expenses instead, specifically so it wouldn't deepen reliance on Contract
+  while it's still around; see `HANDOFF.md` for the full inventory of where
+  it lives, queued for a future piece to reconsider.
 - **v0.29** — **a Child's account gets an individually-focused experience**,
   building on v0.27's permission system. Dashboard: Parent/Assistant keep
   the household-wide overview; a Child gets a personal **🗓 My schedule**
