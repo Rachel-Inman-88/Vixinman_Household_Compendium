@@ -25,15 +25,16 @@ Assign one to a teammate, log time on it, and keep a running notes log.</p>
   {% if boards %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>To-do</th><th>Assigned to</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead>
+    <thead><tr><th>To-do</th><th>Assigned to</th><th>Collaborators</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead>
     <tbody>
       {% for b in boards %}
       {% set overdue = b["due_date"] and b["due_date"] < today and b["status"] != "Done" %}
       <tr{% if b["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
         <td><a href="{{ url_for('board_detail', board_id=b['id']) }}">{{ b["title"] }}</a></td>
         <td class="muted" style="font-size:0.85rem;">{{ b["assignee_name"] or "— unassigned —" }}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ b["collaborator_names"] or "—" }}</td>
         <td>{% if b["priority"] == "High" %}<span class="badge danger">High</span>{% elif b["priority"] %}<span class="badge neutral">{{ b["priority"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td style="white-space:nowrap;">{% if b["due_date"] %}{{ b["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="white-space:nowrap;">{% if b["due_date"] %}{{ b["due_date"] }}{% if b["due_time"] %} · {{ b["due_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}<span class="badge {{ sc.get(b['status'],'neutral') }}">{{ b["status"] }}</span></td>
       </tr>
       {% endfor %}
@@ -63,6 +64,8 @@ Assign one to a teammate, log time on it, and keep a running notes log.</p>
         </select></div>
       <div class="field"><label for="due_date">Due (optional)</label>
         <input id="due_date" name="due_date" type="date"></div>
+      <div class="field"><label for="due_time">Due time (optional)</label>
+        <input id="due_time" name="due_time" type="time"></div>
       <div class="field wide"><label for="details">Details (optional)</label>
         <input id="details" name="details" placeholder="anything else about the task"></div>
     </div>

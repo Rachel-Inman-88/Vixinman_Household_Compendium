@@ -264,6 +264,7 @@ CREATE TABLE IF NOT EXISTS boards (
     status       TEXT NOT NULL DEFAULT 'To do',       -- To do / In progress / Blocked / Done
     priority     TEXT DEFAULT '',                     -- '' / Low / Normal / High
     due_date     TEXT DEFAULT '',
+    due_time     TEXT DEFAULT '',                     -- Piece 58: HH:MM 24h, optional
     created_by   TEXT DEFAULT '',
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT DEFAULT '',
@@ -285,6 +286,17 @@ CREATE TABLE IF NOT EXISTS board_time (
     work_date   TEXT DEFAULT '',
     note        TEXT DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Piece 58: collaborators on a board -- additional people (beyond the
+-- single assigned_to) who can see and work a card together. Deliberately
+-- a plain many-to-many join, not a copy of Projects' task-assignment
+-- system -- Boards stays the lighter-weight to-do tool.
+CREATE TABLE IF NOT EXISTS board_collaborators (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id             INTEGER NOT NULL REFERENCES boards(id),
+    household_member_id  INTEGER NOT NULL REFERENCES household_members(id),
+    added_by             TEXT DEFAULT '',
+    added_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
 -- Piece 37: "Chores" — recurring household tasks, not tied to any project.
 -- A row is one recurring chore definition; completing it advances next_due

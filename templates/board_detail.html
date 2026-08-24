@@ -37,6 +37,37 @@
     <p class="muted" style="margin:0.4rem 0 0; font-size:0.82rem;">Currently: <strong>{{ board["assignee_name"] or "unassigned" }}</strong>. Sending it notifies them.</p>
   </div>
 
+  {# ---- Collaborators ---- #}
+  <div class="card">
+    <h2 style="margin-top:0; font-size:1.05rem;">🤝 Collaborators</h2>
+    {% if collaborators %}
+    <ul style="list-style:none; margin:0 0 0.6rem; padding:0;">
+      {% for c in collaborators %}
+      <li style="display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0; border-bottom:1px solid var(--border);">
+        <span>{{ c["name"] }}</span>
+        <form method="post" action="{{ url_for('board_collaborator_remove', board_id=board['id'], collab_id=c['id']) }}" style="margin:0;">
+          <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty" style="margin:0 0 0.6rem;">No collaborators yet.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('board_collaborator_add', board_id=board['id']) }}"
+          style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+      <div class="field" style="margin:0; flex:1; min-width:10rem;">
+        <label>Add a collaborator</label>
+        <select name="household_member_id">
+          <option value="">— choose —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn">Add</button>
+    </form>
+    <p class="muted" style="margin:0.4rem 0 0; font-size:0.82rem;">Adding someone notifies them, same as sending the to-do.</p>
+  </div>
+
   {# ---- Time log ---- #}
   <div class="card">
     <h2 style="margin-top:0; font-size:1.05rem;">⏱ Time <span class="muted" style="font-weight:400; font-size:0.9rem;">— {{ '%g'|format(total_hours) }} h total</span></h2>
@@ -73,6 +104,7 @@
       <div class="field"><label>Priority</label>
         <select name="priority">{% for p in priorities %}<option value="{{ p }}" {% if board['priority'] == p %}selected{% endif %}>{{ p or "— none —" }}</option>{% endfor %}</select></div>
       <div class="field"><label>Due</label><input name="due_date" type="date" value="{{ board['due_date'] or '' }}"></div>
+      <div class="field"><label>Due time</label><input name="due_time" type="time" value="{{ board['due_time'] or '' }}"></div>
       <div class="field wide"><label>Details</label><input name="details" value="{{ board['details'] or '' }}"></div>
     </div>
     <div class="actions"><button type="submit" class="btn">Save details</button>

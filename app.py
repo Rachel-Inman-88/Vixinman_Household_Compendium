@@ -455,7 +455,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.34"
+VERSION = "0.35"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1943,6 +1943,10 @@ def init_db():
                    " TEXT NOT NULL DEFAULT 'Paid'")
     except sqlite3.OperationalError:
         pass
+    # Piece 58: an optional due TIME alongside a board's existing due_date --
+    # mirrors appointments.when_time. A fresh install's schema.sql-created
+    # table already has this column, so ensure_columns() is a no-op there.
+    ensure_columns(db, "boards", ["due_time"])
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     # Piece 26.9: verbatim source text for a rule (esp. a prerequisite) — the exact
@@ -2419,6 +2423,22 @@ def _notify_board_assignee(db, board_id, title, assignee_id, actor):
         link=url_for("board_detail", board_id=board_id), kind="board")
 
 
+def _notify_board_collaborator(db, board_id, title, collaborator_id, actor):
+    """Tell a teammate they were added as a collaborator on a to-do (skip
+    self / login-less) -- mirrors _notify_board_assignee exactly."""
+    if not collaborator_id or (actor and actor["id"] == collaborator_id):
+        return
+    row = db.execute("SELECT COALESCE(username,'') AS u FROM household_members WHERE id = ?",
+                     (collaborator_id,)).fetchone()
+    if not row or not row["u"]:
+        return
+    notify_employees(
+        db, [collaborator_id],
+        f"🤝 Added as a collaborator on: “{title}”"
+        + (f" — by {actor['name']}" if actor else "") + ".",
+        link=url_for("board_detail", board_id=board_id), kind="board")
+
+
 @app.route("/boards")
 def boards_page():
     """The Boards list — standalone to-dos not tied to a project.
@@ -2427,20 +2447,25 @@ def boards_page():
     me = current_user()
     who = request.args.get("who", "mine" if me else "all")
     show = request.args.get("show", "open")
-    sql = ("SELECT b.*, e.name AS assignee_name FROM boards b"
-           " LEFT JOIN household_members e ON e.id = b.assigned_to WHERE 1 = 1")
+    sql = ("SELECT b.*, e.name AS assignee_name,"
+           " (SELECT GROUP_CONCAT(m.name, ', ') FROM board_collaborators bc"
+           "  JOIN household_members m ON m.id = bc.household_member_id"
+           "  WHERE bc.board_id = b.id) AS collaborator_names"
+           " FROM boards b LEFT JOIN household_members e ON e.id = b.assigned_to WHERE 1 = 1")
     params = []
     if who == "mine" and me:
-        sql += " AND b.assigned_to = ?"
-        params.append(me["id"])
+        sql += (" AND (b.assigned_to = ? OR b.id IN"
+                " (SELECT board_id FROM board_collaborators WHERE household_member_id = ?))")
+        params.extend([me["id"], me["id"]])
     elif who == "unassigned":
         sql += " AND b.assigned_to IS NULL"
     elif who.isdigit():
-        sql += " AND b.assigned_to = ?"
-        params.append(int(who))
+        sql += (" AND (b.assigned_to = ? OR b.id IN"
+                " (SELECT board_id FROM board_collaborators WHERE household_member_id = ?))")
+        params.extend([int(who), int(who)])
     if show == "open":
         sql += " AND b.status != 'Done'"
-    sql += (" ORDER BY (b.status = 'Done'), (b.due_date = ''), b.due_date,"
+    sql += (" ORDER BY (b.status = 'Done'), (b.due_date = ''), b.due_date, b.due_time,"
             " b.id DESC")
     boards = db.execute(sql, params).fetchall()
     employees = db.execute(
@@ -2467,9 +2492,10 @@ def board_new():
     priority = priority if priority in BOARD_PRIORITIES else ""
     cur = db.execute(
         "INSERT INTO boards (title, details, assigned_to, priority, due_date,"
-        " created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        " due_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (title, request.form.get("details", "").strip(), assignee_id, priority,
-         request.form.get("due_date", "").strip(), me["name"] if me else ""))
+         request.form.get("due_date", "").strip(),
+         request.form.get("due_time", "").strip(), me["name"] if me else ""))
     _notify_board_assignee(db, cur.lastrowid, title, assignee_id, me)
     db.commit()
     flash(f"Board added: {title}"
@@ -2495,10 +2521,15 @@ def board_detail(board_id):
     total_hours = db.execute(
         "SELECT COALESCE(SUM(hours), 0) FROM board_time WHERE board_id = ?",
         (board_id,)).fetchone()[0]
+    collaborators = db.execute(
+        "SELECT bc.id, bc.household_member_id, m.name FROM board_collaborators bc"
+        " JOIN household_members m ON m.id = bc.household_member_id"
+        " WHERE bc.board_id = ? ORDER BY m.name", (board_id,)).fetchall()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("board_detail.html", board=board, notes=notes,
                            times=times, total_hours=total_hours,
+                           collaborators=collaborators,
                            employees=employees, task_statuses=TASK_STATUSES,
                            priorities=BOARD_PRIORITIES,
                            today=datetime.now().strftime("%Y-%m-%d"))
@@ -2516,10 +2547,11 @@ def board_edit(board_id):
     priority = request.form.get("priority", "")
     priority = priority if priority in BOARD_PRIORITIES else ""
     db.execute(
-        "UPDATE boards SET title = ?, details = ?, priority = ?, due_date = ?"
-        " WHERE id = ?",
+        "UPDATE boards SET title = ?, details = ?, priority = ?, due_date = ?,"
+        " due_time = ? WHERE id = ?",
         (title, request.form.get("details", "").strip(), priority,
-         request.form.get("due_date", "").strip(), board_id))
+         request.form.get("due_date", "").strip(),
+         request.form.get("due_time", "").strip(), board_id))
     db.commit()
     flash("Board updated.")
     return redirect(url_for("board_detail", board_id=board_id))
@@ -2563,6 +2595,43 @@ def board_assign(board_id):
         _notify_board_assignee(db, board_id, board["title"], assignee_id, me)
     db.commit()
     flash("To-do sent." if assignee_id else "Board unassigned.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/collaborators/add", methods=["POST"])
+def board_collaborator_add(board_id):
+    db = get_db()
+    board = db.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
+    if board is None:
+        abort(404)
+    member = request.form.get("household_member_id", "")
+    member_id = int(member) if member.isdigit() else None
+    if not member_id:
+        flash("Pick someone to add.", "error")
+        return redirect(url_for("board_detail", board_id=board_id))
+    existing = db.execute(
+        "SELECT 1 FROM board_collaborators WHERE board_id = ? AND household_member_id = ?",
+        (board_id, member_id)).fetchone()
+    me = current_user()
+    if existing:
+        flash("Already a collaborator.", "error")
+    else:
+        db.execute(
+            "INSERT INTO board_collaborators (board_id, household_member_id, added_by)"
+            " VALUES (?, ?, ?)", (board_id, member_id, me["name"] if me else ""))
+        _notify_board_collaborator(db, board_id, board["title"], member_id, me)
+        db.commit()
+        flash("Collaborator added.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/collaborators/<int:collab_id>/remove", methods=["POST"])
+def board_collaborator_remove(board_id, collab_id):
+    db = get_db()
+    db.execute("DELETE FROM board_collaborators WHERE id = ? AND board_id = ?",
+               (collab_id, board_id))
+    db.commit()
+    flash("Collaborator removed.")
     return redirect(url_for("board_detail", board_id=board_id))
 
 
@@ -2621,6 +2690,7 @@ def board_delete(board_id):
         return redirect(url_for("board_detail", board_id=board_id))
     db.execute("DELETE FROM board_notes WHERE board_id = ?", (board_id,))
     db.execute("DELETE FROM board_time WHERE board_id = ?", (board_id,))
+    db.execute("DELETE FROM board_collaborators WHERE board_id = ?", (board_id,))
     db.execute("DELETE FROM boards WHERE id = ?", (board_id,))
     db.commit()
     flash("Board deleted.")
