@@ -86,19 +86,37 @@
     wrap.scrollIntoView({ block: "nearest" });
     return wrap;
   }
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var q = box.value.trim();
-    if (!q) return;
-    if (!navigator.onLine) { msg("You're offline — the assistant needs an internet connection.", "error"); return; }
+  // A failed send's question/provider, kept so "Retry" can resend it
+  // without the user having to retype or copy/paste anything.
+  var lastAttempt = null;
+
+  function showError(text) {
+    status.textContent = "";
+    status.className = "flash error";
+    status.style.display = "block";
+    status.appendChild(document.createTextNode(text));
+    if (lastAttempt) {
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-secondary";
+      retry.style.cssText = "margin-left:0.6rem; padding:0.15rem 0.6rem; font-size:0.8rem;";
+      retry.textContent = "🔁 Retry";
+      retry.addEventListener("click", function () {
+        if (lastAttempt) send(lastAttempt.q, lastAttempt.provider, true);
+      });
+      status.appendChild(retry);
+    }
+  }
+
+  function send(q, provider, isRetry) {
     msg("", "");
-    bubble("You", q, "you");
-    box.value = "";
+    if (!isRetry) bubble("You", q, "you");
+    lastAttempt = { q: q, provider: provider };
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "ai");
     var data = new URLSearchParams();
     data.append("question", q);
-    data.append("provider", document.getElementById("provider").value);
+    data.append("provider", provider);
     fetch("{{ url_for('assistant_ask') }}", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
@@ -107,17 +125,27 @@
       .then(function (res) {
         if (!res.ok || res.d.error) {
           thinking.remove();
-          msg(res.d.error || "Something went wrong.", "error");
+          showError(res.d.error || "Something went wrong.");
         } else {
+          lastAttempt = null;
           thinking.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">' +
             esc(res.d.provider === "gemini" ? "Gemini" : "Claude") + '</div>' + esc(res.d.answer);
         }
       }).catch(function () {
         thinking.remove();
-        msg("Couldn't reach the assistant. Check your connection and try again.", "error");
+        showError("Couldn't reach the assistant. Check your connection and try again.");
       }).finally(function () {
         btn.disabled = false; btn.textContent = "Ask";
       });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var q = box.value.trim();
+    if (!q) return;
+    if (!navigator.onLine) { msg("You're offline — the assistant needs an internet connection.", "error"); return; }
+    box.value = "";
+    send(q, document.getElementById("provider").value, false);
   });
 })();
 </script>
