@@ -1174,6 +1174,33 @@ user mentioned.
   sweep, and an empty-database smoke test (fresh DB, `GET /budget` still
   200, every new card's empty state renders instead of throwing).
 
+**v0.32: bug fix — project task assignment never saved.** User-reported:
+"When I attempt to assign a person to it, the field doesn't fill in even
+though the due date and status stick." Root cause found in
+`templates/project_detail.html`: the Tasks tab's "Assigned to" `<select>`
+(both the per-row reassign dropdown and the "add a task" form) still
+posted a field named `employee_id` — a leftover from before the Piece 35
+`employees`→`household_members` rename — while `_task_assignee()`
+(`app.py`, reused by both `add_task()` and `set_task_assignee()`) reads
+`request.form.get("household_member_id", ...)`. The name mismatch meant
+`raw` was always empty, so every assignment attempt silently saved as
+unassigned (`NULL`), no error, no visible failure — exactly matching the
+report. **A second, compounding bug in the same block**: the dropdown's
+"who's currently selected" check compared against `t["employee_id"]`
+(the task row's actual column is `household_member_id`; Jinja's
+`foo["bar"]` silently degrades to Undefined on a missing key rather than
+raising, so this never crashed, it just never matched) — meaning even a
+correctly-saved assignment would never have rendered as selected. Due
+date/status are separate small per-field forms with correctly-named
+fields, which is exactly why only assignment looked broken. Fixed by
+renaming both `<select name="employee_id">` to `household_member_id` and
+the two `t["employee_id"]` comparisons to `t["household_member_id"]` —
+no backend change needed, `_task_assignee()` was already correct.
+Verified via test-client: add-task-with-assignee now persists the right
+id, reassigning an existing task persists correctly, the rendered
+dropdown shows the right person `selected`, and unassigning (blank
+selection) correctly nulls it out — plus the standard 40-route sweep.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

@@ -492,10 +492,10 @@
         <td><input form="{{ tf }}" name="title" value="{{ t['title'] }}" required style="padding:0.2rem; width:100%; min-width:12rem;"></td>
         <td>
           <form method="post" action="{{ url_for('set_task_assignee', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
-            <select name="employee_id" onchange="this.form.submit()" style="padding:0.2rem;">
-              <option value="" {% if not t["employee_id"] %}selected{% endif %}>— Unassigned —</option>
+            <select name="household_member_id" onchange="this.form.submit()" style="padding:0.2rem;">
+              <option value="" {% if not t["household_member_id"] %}selected{% endif %}>— Unassigned —</option>
               {% for e in employees %}
-              <option value="{{ e['id'] }}" {% if t["employee_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
+              <option value="{{ e['id'] }}" {% if t["household_member_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
               {% endfor %}
             </select>
           </form>
@@ -543,7 +543,7 @@
       <div class="field wide"><label>Task *</label><input name="title" required placeholder="e.g. Pull electrical permit"></div>
       <div class="field">
         <label>Assign to</label>
-        <select name="employee_id">
+        <select name="household_member_id">
           <option value="">— Unassigned —</option>
           {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
         </select>

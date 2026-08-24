@@ -528,6 +528,19 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.32** — **bug fix: assigning a project task to a household member
+  never actually saved.** The "Assigned to" dropdown (both on an existing
+  task's row and the "add a task" form) posted a form field named
+  `employee_id` — a leftover from before the Piece 35 employees→household-
+  members rename — while the backend's `_task_assignee()` helper (and the
+  dropdown's own "who's currently selected" check) read/compared against
+  `household_member_id`, the actual column name. The mismatch meant an
+  assignment silently never saved (always landed as unassigned) and the
+  dropdown could never show the correct person as selected even if it had.
+  Due date and status, on separate small per-field forms with correctly-
+  named fields, were never affected — which is exactly why only assignment
+  looked broken. Fixed by renaming both `<select>`'s form field to
+  `household_member_id` and the display-comparison to match.
 - **v0.31** — **the Household Budget page gets at-a-glance reporting**: a
   donut chart of expenses by category, a forward-looking anticipated
   cash-flow projection (Outstanding transactions from both ledgers +
