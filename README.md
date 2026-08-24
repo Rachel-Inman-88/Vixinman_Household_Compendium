@@ -264,9 +264,11 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   security notices; each notification **clears when the recipient accesses it**.
 - **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Parent and
   Assistant see a household-wide **overview** (pipeline counts by stage,
-  money-in-flight tiles, an attention row, a wrap-up worklist), plus
-  **Payments**, **Procurement**, active projects grouped by stage, the
-  **Backlog**, a **🗂 Productivity Overview** card, and **My requirements**.
+  money-in-flight tiles, **upcoming payments due within a month**, an
+  attention row, a wrap-up worklist), plus **Procurement**, active
+  projects grouped by stage, the **Backlog**, a **🗂 Productivity
+  Overview** card, and **My requirements**. (The full per-project
+  Payments table lives on the **💰 Money** page instead, Piece 62/63.)
   Productivity Overview (Piece 61) consolidates Appointments (split into
   **Today / Tomorrow / Next 2 weeks** tiers — an overdue appointment folds
   into Today with its badge instead of disappearing), Chores, Boards
@@ -381,11 +383,13 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   Income/Outstanding, Bill → Expense/Outstanding, Receipt → Expense/Paid, all
   still editable). The Billing tab shows a **paperwork-on-file** tally (count +
   total for each type).
-- **Payments table** on the shared dashboard: every active project with Contract /
-  Collected / Outstanding / Expenses / Net and a grand-total row. **Gated by the
-  `finances.manage` permission (Piece 51)** — a Child has none of it by default,
-  so this table (and the project page's whole Billing tab) don't render for
-  them at all.
+- **Payments table** on the **💰 Money** page (Piece 62): every active project
+  with Contract / Collected / Outstanding / Expenses / Net and a grand-total
+  row. **Gated by the `finances.manage` permission (Piece 51)** — a Child has
+  none of it by default, so this table (and the project page's whole Billing
+  tab) don't render for them at all. The dashboard's own Household overview
+  card shows a shorter **Upcoming payments** list instead (Piece 63) —
+  Outstanding project expenses due within a month, not the full table.
 - **Estimated cost** (Piece 54): a Planning-phase ballpark figure, separate from
   the (later, real) Contract total — set on the general project form, shown on
   the General details tab (`finances.manage`-gated like every other dollar
@@ -568,6 +572,12 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.41** — **Dashboard's Payments table replaced with "Upcoming
+  payments."** The full per-project Payments table on the Household
+  overview card is gone (it now lives on the 💰 Money page, Piece 62) —
+  in its place, a short, actionable list of Outstanding project expenses
+  due (or overdue) within the next month, so the dashboard stays focused
+  on what needs paying soon rather than a full billing table.
 - **v0.40** — **"💰 Money" — a financial overview page.** The 🏠 Household
   dropdown's three separate Budget/Loans/Savings links are now one "💰
   Money" link, opening a new `/money` page styled like the dashboard's

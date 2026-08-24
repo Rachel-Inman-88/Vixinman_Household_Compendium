@@ -1576,6 +1576,42 @@ not a repurposed `/budget`.
   actually being used, if anyone wants extra confidence on the visual
   layout specifically.
 
+**Piece 63 (v0.41): dashboard's Payments table replaced with "Upcoming
+payments" — done.** Immediate follow-up after Piece 62 shipped: "Remove
+payments from dash, but include any upcoming (one month out or less)
+payments for projects... that upcoming payment display should live in
+the household overview card." Confirmed via AskUserQuestion: "upcoming
+payment" means Outstanding **expenses** only (bills you owe), not
+Outstanding income too — the everyday sense of "payment due."
+- Removed the full "💵 Payments" `<details>` card from `dashboard.html`
+  entirely (it's still on the 💰 Money page, Piece 62, untouched there).
+  `dashboard()` no longer calls `_payments_summary()` or passes
+  `payments`/`pay_totals` to the template — that function stays, still
+  used by `money_page()`.
+- New query in `dashboard()`: `project_transactions` rows where
+  `kind = 'Expense' AND status = 'Outstanding'`, a non-blank `txn_date`
+  `<=` today+30 days, on a project not `Abandoned`/`Done` — no lower
+  bound, so an overdue bill is even more "upcoming" than one due later
+  this month, same overdue-folds-in-not-dropped precedent applied twice
+  already this session (Piece 61's appointment tiers). A blank `txn_date`
+  is excluded (no due date to sort/show meaningfully), unlike
+  `_cash_flow_projection()`'s own bucket-0 catch-all for blank dates —
+  a deliberate, narrower choice for a due-date-sorted list specifically.
+- New "Upcoming payments" panel inside the Household overview card
+  (`dashboard.html`), right after "Money in flight" and before "Needs
+  attention" — same `finances.manage` gate, same panel/table styling as
+  the rest of that card. Shows project, description/category, amount,
+  and due date with an overdue badge when past due.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle confirming the Payments card is gone and the new
+  panel exactly matches the filter spec across 7 seeded scenarios
+  (overdue-included, due-in-20-days-included, due-in-45-days-excluded,
+  Outstanding-Income-excluded, Paid-excluded, blank-date-excluded, and a
+  bill on an Abandoned project excluded), the overdue badge rendering
+  correctly, `/money`'s own Payments table confirmed unaffected, the
+  standard 40-route sweep, and a boot + render check against a **copy**
+  of the real household database (never the original).
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
