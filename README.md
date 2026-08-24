@@ -567,6 +567,10 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.39** — **Moved the Productivity Overview card** directly beneath
+  Household overview (was further down, after Backlog) per follow-up
+  feedback right after v0.38 shipped — pure layout reorder, no behavior
+  change.
 - **v0.38** — **Dashboard "Productivity Overview" card + a real Month
   Calendar.** Appointments, Chores, Boards (new — no dashboard summary
   existed before), and Tasks are now consolidated into one card instead
