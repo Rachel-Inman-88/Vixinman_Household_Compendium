@@ -22,17 +22,33 @@
   {% set panelh = "font-weight:700; margin:0 0 0.5rem; font-size:0.95rem;" %}
   {% set tile = "background:var(--card); border:1px solid var(--border); border-radius:8px;" %}
 
-  {# Pipeline counts by stage #}
+  {# Piece 64: projects by family member -- replaces the old whole-
+     household stage-count tiles with "who has what going on," one row
+     per person, their active projects shown as icon+color-coded chips. #}
   <section style="{{ panel }}">
-    <div style="{{ panelh }}">Pipeline</div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:0.5rem;">
-      {% for stage, n in gm.counts %}
-      <div style="{{ tile }} padding:0.5rem 0.6rem; text-align:center;">
-        <div style="font-size:1.5rem; font-weight:800; color:var(--brand-dark);">{{ n }}</div>
-        <div class="muted" style="font-size:0.78rem;">{{ stage }}</div>
+    <div style="{{ panelh }}">Projects by family member</div>
+    {% if gm.member_rows %}
+    {% for row in gm.member_rows %}
+    <div style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.4rem 0; {% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+      <div style="width:1.8rem; height:1.8rem; border-radius:50%; background:{{ row.color }}; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem; flex-shrink:0;">
+        {{ row.name[0] }}
       </div>
-      {% endfor %}
+      <div style="flex:1 1 auto; min-width:0;">
+        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.3rem;">{{ row.name }}</div>
+        <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+          {% for p in row.projects %}
+          <a href="{{ url_for('project_detail', project_id=p['id']) }}" class="badge {{ stage_class.get(p['status'], 'neutral') }}"
+             style="text-decoration:none;" title="{{ p['status'] }}">
+            {{ stage_icon.get(p['status'], '📋') }} {{ p['job_name'] or 'Project #' ~ p['id'] }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
     </div>
+    {% endfor %}
+    {% else %}
+    <p class="empty" style="margin:0;">No active projects with anyone assigned yet.</p>
+    {% endif %}
   </section>
 
   {# Money in flight -- finances.manage-gated, hidden entirely for a Child.

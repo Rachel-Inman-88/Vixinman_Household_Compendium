@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.41"
+VERSION = "0.42"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3511,15 +3511,44 @@ def dashboard():
                                 "outstanding": outstanding})
 
     # Piece 22.3 (revised Piece 35, de-install-ified Piece 41): whole-household
-    # snapshot — pipeline counts, money in flight, what needs attention, and a
-    # Wrap-up worklist. Shown to every signed-in member, not admin-gated.
-    exec_stages = STAGE_ORDER[:-1]           # Planning .. Wrap-up
-    counts = {s: 0 for s in exec_stages}
-    for j in db.execute(
-            "SELECT id, status FROM projects"
-            " WHERE status != 'Abandoned'").fetchall():
-        if j["status"] in counts:
-            counts[j["status"]] += 1
+    # snapshot — money in flight, what needs attention, and a Wrap-up
+    # worklist. Shown to every signed-in member, not admin-gated.
+    # Piece 64: per-family-member project breakdown for the Household
+    # overview card -- "who has what going on," replacing the old
+    # whole-household stage-count tiles. A project counts for someone if
+    # they have any task assigned on it (same rule as the Child-
+    # visibility filter just below); a project with no one assigned lands
+    # in its own "Unassigned" row so nothing silently disappears from the
+    # old all-active-projects total.
+    member_project_map = {}
+    assigned_project_ids = set()
+    for r in db.execute(
+            "SELECT DISTINCT t.household_member_id AS mid, j.id, j.job_name, j.status"
+            " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
+            " WHERE j.status NOT IN ('Abandoned', 'Done')"
+            " AND t.household_member_id IS NOT NULL"
+            " ORDER BY j.status, j.id").fetchall():
+        member_project_map.setdefault(r["mid"], []).append(
+            {"id": r["id"], "job_name": r["job_name"], "status": r["status"]})
+        assigned_project_ids.add(r["id"])
+    unassigned = [j for j in active_projects if j["id"] not in assigned_project_ids]
+
+    member_names = {m["id"]: m["name"] for m in db.execute(
+        "SELECT id, name FROM household_members").fetchall()}
+    row_names = [member_names[mid] for mid in member_project_map]
+    if unassigned:
+        row_names.append("Unassigned")
+    member_colors = _assign_category_colors(set(row_names))
+    member_colors["Unassigned"] = "#9ca3af"   # same neutral gray as "Other" elsewhere
+
+    member_rows = [{"name": member_names[mid], "color": member_colors[member_names[mid]],
+                    "projects": projs}
+                   for mid, projs in member_project_map.items()]
+    member_rows.sort(key=lambda r: r["name"])
+    if unassigned:
+        member_rows.append({"name": "Unassigned", "color": member_colors["Unassigned"],
+                            "projects": unassigned})
+
     money = _household_money_snapshot(db)
     overdue = db.execute(
         "SELECT COUNT(*) FROM project_tasks t JOIN projects j ON j.id = t.project_id"
@@ -3537,7 +3566,7 @@ def dashboard():
         " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
         " ORDER BY last", (cutoff,)).fetchall()
     closing_jobs = _closing_worklist(db)
-    gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
+    gm = {"member_rows": member_rows, "money": money,
           "approvals": db.execute(
               "SELECT COUNT(*) FROM field_submissions"
               " WHERE status = 'Pending'").fetchone()[0],
@@ -3579,7 +3608,8 @@ def dashboard():
         my_bag_project_ids=my_bag_project_ids,
         my_boards=my_boards, appt_buckets=appt_buckets,
         calendar_weeks=calendar_weeks, cal_month_str=cal_month_str,
-        cal_month_label=cal_month_label, cal_prev=cal_prev, cal_next=cal_next)
+        cal_month_label=cal_month_label, cal_prev=cal_prev, cal_next=cal_next,
+        stage_icon=STAGE_ICON, stage_class=PROJECT_STATUS_CLASS)
 
 
 # ---------------------------- Piece 20: calendar (.ics) export ------------
