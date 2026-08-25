@@ -392,9 +392,10 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   tab) don't render for them at all. The dashboard's own Household overview
   card shows a shorter **Upcoming payments** list instead (Piece 63) —
   Outstanding project expenses due within a month, not the full table.
-- **Estimated cost** (Piece 54): a Planning-phase ballpark figure, separate from
-  the (later, real) Contract total — set on the general project form, shown on
-  the General details tab (`finances.manage`-gated like every other dollar
+- **Money invested / budget** (Piece 54, relabeled Piece 65 — was "Estimated
+  cost"): a Planning-phase ballpark figure, separate from the (later, real)
+  Contract total — set on the general project form, shown on the General
+  details tab (`finances.manage`-gated like every other dollar
   figure). Compared against actual expenses logged so far on the dashboard's
   "Anticipated spending" tile.
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
@@ -574,6 +575,13 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.43** — **"Estimated cost" relabeled "Money invested / budget."** The
+  project field (originally named for its Piece 54 install-business
+  origins) now reads more naturally for a household project — the label
+  changed everywhere it appears (the Create/Edit Project form, a
+  project's General details tab, the Requirements Editor's field picker,
+  and version-history diffs), with no change to the underlying data or
+  behavior.
 - **v0.42** — **Household overview's Pipeline tiles replaced with a
   per-family-member project breakdown.** Instead of 6 tiles showing a
   whole-household count per pipeline stage, the card now shows one row

@@ -1654,6 +1654,25 @@ old whole-household stage-count tiles entirely, not sits alongside them.
   sweep, and a boot + render check against a **copy** of the real
   household database (never the original).
 
+**Piece 65 (v0.43): "Estimated cost" relabeled "Money invested / budget" —
+done.** User: "In the Create Project form, there's a field for a dollar
+amount estimating how much it will cost. I want to explicitly relabel it
+something along the line of 'money investment/budget.'" A simple, direct
+text change — no Plan Mode needed. Updated every place the label
+appears: `PROJECT_FIELD_LABELS["estimated_cost"]` (app.py — feeds the
+Requirements Editor's field picker and version-history diffs),
+`project_form.html`'s Create/Edit Project field label, and
+`project_detail.html`'s General details tab. Deliberately **not**
+touched: `wishlist_items.estimated_cost` (Wishlist's own "Estimated
+cost" field) and `resource_rules.est_cost` (Requirements Editor's
+descriptive cost note) — both coincidentally share the old label text but
+are unrelated fields on unrelated tables, not this one. No schema/data
+change — `projects.estimated_cost` itself is untouched, purely a display
+label. Verified via a full Jinja parse sweep, a test-client cycle (the
+new label renders on both the Create Project form and the saved
+project's detail page, the old text is gone from both, and the value
+itself round-trips correctly), and the standard 40-route sweep.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

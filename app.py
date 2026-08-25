@@ -215,7 +215,7 @@ PROJECT_FIELD_LABELS = {
     "project_category": "Project category",
     "project_type": "Subcategory",
     "site_location": "Site location",
-    "estimated_cost": "Estimated cost",
+    "estimated_cost": "Money invested / budget",
 }
 
 # Employee directory (Piece 8). The core fields on a person's record:
@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.42"
+VERSION = "0.43"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
