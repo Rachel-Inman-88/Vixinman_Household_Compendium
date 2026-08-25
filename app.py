@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.43"
+VERSION = "0.44"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -8665,11 +8665,18 @@ def assistant_ask():
 
 @app.route("/projects/<int:project_id>/plan/ask", methods=["POST"])
 def project_plan_ask(project_id):
-    """Piece 48: the "🧠 Plan" tab's brainstorm chat. Same read-only design as
-    /assistant/ask -- the model never writes anything; it may only suggest a
-    task via a "TASK: " line, which the tab's JS turns into an ➕ Add button
-    that a human has to click. The conversation itself is persisted per
-    project so it can be reopened/continued later."""
+    """Piece 48 (retry support: Piece 66): the "🧠 Plan" tab's brainstorm
+    chat. Same read-only design as /assistant/ask -- the model never writes
+    anything; it may only suggest a task via a "TASK: " line, which the
+    tab's JS turns into an ➕ Add button that a human has to click. The
+    conversation itself is persisted per project so it can be reopened/
+    continued later.
+
+    Unlike /assistant/ask, the user's turn is persisted *before* the AI
+    call, so a naive retry-after-failure would insert a duplicate row.
+    An optional retry_of=<project_plan_messages id> (returned as
+    "message_id" alongside any error) tells this route to reuse that
+    already-saved row's content instead of inserting a new one."""
     project = fetch_project(project_id)
     db = get_db()
     cfg = assistant_settings(db)
@@ -8677,18 +8684,36 @@ def project_plan_ask(project_id):
     provider = request.form.get("provider", cfg["default_provider"]) or "claude"
     if provider not in ("claude", "gemini"):
         provider = "claude"
-    if not message:
-        return jsonify({"error": "Type a message first."}), 400
-    if not _provider_configured(cfg, provider):
-        return jsonify({"error": f"No API key is set for {provider.title()}. "
-                        "An admin can add one under AI settings."}), 400
     user = current_user()
     author = user["name"] if user else ""
 
-    # Persist the user's turn immediately so it isn't lost if the AI call fails.
-    db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
-               " VALUES (?, 'user', ?, ?)", (project_id, author, message))
-    db.commit()
+    retry_of = request.form.get("retry_of", type=int)
+    existing = None
+    if retry_of:
+        existing = db.execute(
+            "SELECT * FROM project_plan_messages"
+            " WHERE id = ? AND project_id = ? AND role = 'user'",
+            (retry_of, project_id)).fetchone()
+
+    if existing is not None:
+        user_msg_id = existing["id"]
+        message = existing["content"]
+        author = existing["author"]
+        if not _provider_configured(cfg, provider):
+            return jsonify({"error": f"No API key is set for {provider.title()}. "
+                            "An admin can add one under AI settings.",
+                            "message_id": user_msg_id}), 400
+    else:
+        if not message:
+            return jsonify({"error": "Type a message first."}), 400
+        if not _provider_configured(cfg, provider):
+            return jsonify({"error": f"No API key is set for {provider.title()}. "
+                            "An admin can add one under AI settings."}), 400
+        # Persist the user's turn immediately so it isn't lost if the AI call fails.
+        cur = db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
+                         " VALUES (?, 'user', ?, ?)", (project_id, author, message))
+        db.commit()
+        user_msg_id = cur.lastrowid
 
     prior = db.execute(
         "SELECT role, author, content FROM project_plan_messages"
@@ -8710,7 +8735,7 @@ def project_plan_ask(project_id):
         answer = ai_assistant.run_agent(provider, key, model,
                                         PROJECT_PLAN_SYSTEM_PROMPT, prompt, tools)
     except ai_assistant.AssistantError as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": str(e), "message_id": user_msg_id}), 502
     db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
                " VALUES (?, 'assistant', '', ?)", (project_id, answer))
     db.commit()

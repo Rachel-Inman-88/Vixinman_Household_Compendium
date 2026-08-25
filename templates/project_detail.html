@@ -826,19 +826,40 @@
     if (textEl) addActions(wrap, "assistant", textEl.textContent);
   });
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var q = box.value.trim();
-    if (!q) return;
-    if (!navigator.onLine) { msg("You're offline — the planning chat needs an internet connection.", "error"); return; }
+  // A failed send's question/provider/saved-row-id, kept so "Retry" can
+  // resend it without the user having to retype anything -- and without
+  // re-inserting a duplicate user-turn row, since that row is already
+  // saved server-side (see project_plan_ask()'s retry_of handling).
+  var lastAttempt = null;
+
+  function showError(text) {
+    status.textContent = "";
+    status.className = "flash error";
+    status.style.display = "block";
+    status.appendChild(document.createTextNode(text));
+    if (lastAttempt) {
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-secondary";
+      retry.style.cssText = "margin-left:0.6rem; padding:0.15rem 0.6rem; font-size:0.8rem;";
+      retry.textContent = "🔁 Retry";
+      retry.addEventListener("click", function () {
+        if (lastAttempt) doSend(lastAttempt.q, lastAttempt.provider, true, lastAttempt.messageId);
+      });
+      status.appendChild(retry);
+    }
+  }
+
+  function doSend(q, provider, isRetry, retryMessageId) {
     msg("", "");
-    bubble("You", q, "user");
-    box.value = "";
+    if (!isRetry) bubble("You", q, "user");
+    lastAttempt = { q: q, provider: provider, messageId: retryMessageId || null };
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "assistant", true);
     var data = new URLSearchParams();
     data.append("message", q);
-    data.append("provider", providerEl.value);
+    data.append("provider", provider);
+    if (retryMessageId) data.append("retry_of", String(retryMessageId));
     fetch(askUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
@@ -847,16 +868,27 @@
       .then(function (res) {
         thinking.remove();
         if (!res.ok || res.d.error) {
-          msg(res.d.error || "Something went wrong.", "error");
+          if (res.d.message_id && lastAttempt) lastAttempt.messageId = res.d.message_id;
+          showError(res.d.error || "Something went wrong.");
         } else {
+          lastAttempt = null;
           bubble("Assistant", res.d.answer, "assistant");
         }
       }).catch(function () {
         thinking.remove();
-        msg("Couldn't reach the assistant. Check your connection and try again.", "error");
+        showError("Couldn't reach the assistant. Check your connection and try again.");
       }).finally(function () {
         btn.disabled = false; btn.textContent = "Send";
       });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var q = box.value.trim();
+    if (!q) return;
+    if (!navigator.onLine) { msg("You're offline — the planning chat needs an internet connection.", "error"); return; }
+    box.value = "";
+    doSend(q, providerEl.value, false);
   });
 })();
 </script>
