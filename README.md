@@ -481,7 +481,9 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   settings** (admin only); when both are set, staff pick the model per question.
 - **🔁 Retry on failure.** If a question fails (dropped connection, provider
   hiccup), a Retry button appears next to the error and resends the exact
-  same question — no retyping or copy/pasting it back in.
+  same question — no retyping or copy/pasting it back in. The per-project
+  **🧠 Plan** tab's chat has the same Retry button (Piece 66) — it reuses
+  the already-saved message on retry instead of inserting a duplicate.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
   stage/county/overdue/contract, drill into one project, list
@@ -575,6 +577,13 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.44** — **🧠 Plan tab gets the 🔁 Retry button too.** Piece 57 added
+  a retry button to the global 💬 Assistant chat but deliberately skipped
+  the per-project Plan tab, since that chat saves your message to the
+  database *before* calling the AI — a naive retry would have created a
+  duplicate entry. Fixed properly: a failed reply now shows the same
+  Retry button, and retrying reuses the already-saved message instead of
+  inserting a second copy.
 - **v0.43** — **"Estimated cost" relabeled "Money invested / budget."** The
   project field (originally named for its Piece 54 install-business
   origins) now reads more naturally for a household project — the label

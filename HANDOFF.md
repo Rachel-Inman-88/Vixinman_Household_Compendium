@@ -1673,6 +1673,52 @@ new label renders on both the Create Project form and the saved
 project's detail page, the old text is gone from both, and the value
 itself round-trips correctly), and the standard 40-route sweep.
 
+**Piece 66 (v0.44): the 🧠 Plan tab's chat gets the 🔁 Retry button too —
+done.** User: "Jake is talking to the assistant in a project, but we
+can't find the retry button." Confirmed the report was about the
+per-project **Plan** tab, not the global Assistant page — the exact gap
+flagged as future work at the end of Piece 57's entry above: that chat
+persists the user's turn to `project_plan_messages` *before* calling the
+AI (so a typed message survives a failed call), which means a naive
+resend-on-retry would insert a duplicate row.
+- `project_plan_ask()` now accepts an optional `retry_of=<project_plan_
+  messages id>` form field. When present and it resolves to a real
+  `role='user'` row belonging to *this* project, the route reuses that
+  row's saved `content`/`author` instead of inserting a new one — the
+  "type a message first" validation is skipped too, since a retry always
+  has content already. A `retry_of` for a different project (or a bogus
+  id) is silently ignored and falls back to the normal insert-a-new-row
+  path — never reuses another project's row. Both the "no API key
+  configured" error and the `AssistantError` (provider failure) response
+  now include the saved row's id as `"message_id"`, which the client
+  needs in order to retry correctly.
+- `project_detail.html`'s Plan-tab JS gained the same `lastAttempt`/
+  `showError()`/Retry-button pattern already used on `assistant.html`
+  (Piece 57) — factored the inline submit handler into a named
+  `doSend(q, provider, isRetry, retryMessageId)` so the Retry button's
+  click handler can call it directly. Retrying suppresses re-adding a
+  duplicate "You" bubble (matching the assistant.html pattern) and sends
+  `retry_of` in the POST body when a saved message id is known.
+- **One accepted, minor edge case, not worth solving**: if the *original*
+  `fetch()` itself fails before any HTTP response arrives (e.g. the
+  network drops mid-request), the client never learns whether the server
+  actually completed the INSERT before the connection broke. A bare retry
+  in that case has no `retry_of` to send and falls back to inserting a
+  fresh row — in the rare case the first insert *did* land, this could
+  leave one duplicate row. This mirrors the same category of uncertainty
+  already accepted for `assistant.html`'s own network-failure branch;
+  adding real request idempotency to solve it would be over-engineering
+  for how rarely it'd actually happen.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle against a stubbed `ai_assistant.run_agent` (fails
+  once then succeeds) — confirmed exactly one `project_plan_messages`
+  user row exists after the failure, retrying with the returned
+  `message_id` succeeds and still leaves exactly one user row (no
+  duplicate), a `retry_of` pointing at a different project's message is
+  correctly ignored and falls back to a normal fresh insert, and the
+  ordinary non-retry flow is unchanged — plus the standard 40-route
+  sweep.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
