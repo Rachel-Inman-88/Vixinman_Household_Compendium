@@ -263,9 +263,11 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   pipeline turnovers, project cancellations, chore/requirement reminders, and
   security notices; each notification **clears when the recipient accesses it**.
 - **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Parent and
-  Assistant see a household-wide **overview** (pipeline counts by stage,
-  money-in-flight tiles, **upcoming payments due within a month**, an
-  attention row, a wrap-up worklist), plus **Procurement**, active
+  Assistant see a household-wide **overview** (**projects by family
+  member** — one row per person, their active projects as icon/color-
+  coded chips by pipeline stage, Piece 64 — money-in-flight tiles,
+  **upcoming payments due within a month**, an attention row, a wrap-up
+  worklist), plus **Procurement**, active
   projects grouped by stage, the **Backlog**, a **🗂 Productivity
   Overview** card, and **My requirements**. (The full per-project
   Payments table lives on the **💰 Money** page instead, Piece 62/63.)
@@ -572,6 +574,16 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.42** — **Household overview's Pipeline tiles replaced with a
+  per-family-member project breakdown.** Instead of 6 tiles showing a
+  whole-household count per pipeline stage, the card now shows one row
+  per family member with their active projects as small chips — icon-
+  and color-coded by pipeline stage (reusing the same icons/colors
+  already used elsewhere on the dashboard), plus a consistent color per
+  person via a circular initial avatar. A project counts for someone if
+  they have any task assigned on it; a project with no one assigned gets
+  its own "Unassigned" row so nothing silently disappears. Members with
+  zero active projects don't get an empty row.
 - **v0.41** — **Dashboard's Payments table replaced with "Upcoming
   payments."** The full per-project Payments table on the Household
   overview card is gone (it now lives on the 💰 Money page, Piece 62) —

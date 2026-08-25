@@ -1612,6 +1612,48 @@ Outstanding income too — the everyday sense of "payment due."
   standard 40-route sweep, and a boot + render check against a **copy**
   of the real household database (never the original).
 
+**Piece 64 (v0.42): Household overview's Pipeline tiles → per-family-
+member project breakdown — done.** User: "As a parent I'd like to review
+the projects of everyone across the board at a glance... I'd prefer to
+have the top row of tables only split out by family member and more
+visually read out — perhaps color-coded or icon-coded." Confirmed via 3
+rounds of AskUserQuestion (all "Recommended"): (1) a project counts for
+someone if they have any task assigned on it — the exact same rule
+already used for the Child-visibility filter a few lines below in the
+same function; (2) one row per person, their active projects shown as
+small chips icon/color-coded by pipeline stage; (3) this **replaces** the
+old whole-household stage-count tiles entirely, not sits alongside them.
+- Removed `exec_stages`/`counts` (the loop building `gm["counts"]`,
+  confirmed via grep it fed nowhere else) and replaced it with a
+  `member_project_map` query — `project_tasks` joined to `projects`,
+  grouped by `household_member_id`, restricted to non-Abandoned/Done
+  projects. A project with zero assignees lands in its own "Unassigned"
+  row (colored neutral gray) instead of silently vanishing from what the
+  old aggregate tiles used to count.
+- **Color, reused rather than invented**: `_assign_category_colors()`
+  (Piece 55's deterministic name→color mapping, already used for the
+  Budget page's category pie/trend charts) assigns each member a
+  consistent color, shown as a circular initial avatar per row — the
+  same function, no new palette. **Icon+color per project chip, also
+  reused**: `STAGE_ICON`/`PROJECT_STATUS_CLASS` (both pre-existing
+  module-level dicts, previously used only for the per-stage project-
+  listing cards further down the same page) are now also passed into
+  `dashboard.html`, so a chip's icon/color language matches what's
+  already established elsewhere on the same page rather than introducing
+  a third visual vocabulary.
+- Members with zero active projects don't get an empty row — keeps the
+  section scannable rather than a wall of "nothing here" rows.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle (seeded 2 projects for one member + 1 for another +
+  1 unassigned + 1 Abandoned-with-an-assignee; confirmed exactly the
+  right rows appear, the Abandoned one appears nowhere, a member with
+  two projects gets two separate chips under one row not deduped away,
+  zero-project members get no row, stage icons render correctly, and the
+  rest of Household overview — Money in flight/Upcoming payments/Needs
+  attention/Wrap-up — is completely unchanged), the standard 40-route
+  sweep, and a boot + render check against a **copy** of the real
+  household database (never the original).
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
