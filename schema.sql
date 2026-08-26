@@ -207,10 +207,25 @@ CREATE TABLE IF NOT EXISTS resource_rules (
 -- dropped role-based auto-assignment); deleting a household member unassigns
 -- their tasks rather than removing the work. Drives the "Tasks" tab on a
 -- project and the "assigned to me" list on a household member.
+-- Piece 67: one level of task grouping ("Tow old tractor" -> its
+-- subtasks). Independent of pipeline_status -- purely an organizational
+-- label; each subtask keeps its own individual stage exactly as before.
+-- Deleting a section detaches its tasks (section_id -> NULL) rather than
+-- deleting them -- same non-destructive precedent as unassigning a
+-- household member's tasks on offboarding.
+CREATE TABLE IF NOT EXISTS project_task_sections (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title      TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS project_tasks (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id           INTEGER NOT NULL REFERENCES projects(id),
     household_member_id  INTEGER REFERENCES household_members(id),   -- NULL = unassigned
+    section_id   INTEGER REFERENCES project_task_sections(id),  -- Piece 67: NULL = ungrouped
     title        TEXT NOT NULL,
     status       TEXT NOT NULL DEFAULT 'To do',      -- To do/In progress/Blocked/Done
     due_date     TEXT DEFAULT '',                    -- YYYY-MM-DD; blank = none
@@ -218,6 +233,7 @@ CREATE TABLE IF NOT EXISTS project_tasks (
     sort_order   INTEGER NOT NULL DEFAULT 0,
     completed_at TEXT DEFAULT '',
     pipeline_status TEXT DEFAULT '',                    -- Piece 18.1: which stage this step belongs to
+    flagged_in_plan TEXT DEFAULT '',                    -- Piece 67: '1' = called out in the Plan tab's chat
     updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),  -- Piece 14: sync
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );

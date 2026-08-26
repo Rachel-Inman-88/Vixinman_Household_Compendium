@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.44"
+VERSION = "0.45"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1945,6 +1945,17 @@ def init_db():
                    " TEXT NOT NULL DEFAULT 'Paid'")
     except sqlite3.OperationalError:
         pass
+    # Piece 67: one level of task grouping. section_id is a real INTEGER FK
+    # (ensure_columns() always adds TEXT columns -- the Piece 41 lesson --
+    # so this needs an explicit typed ALTER TABLE, same pattern as
+    # household_transactions.status above). A fresh install's schema.sql-
+    # created table already has both columns, so this is a no-op there.
+    try:
+        db.execute("ALTER TABLE project_tasks ADD COLUMN section_id"
+                   " INTEGER REFERENCES project_task_sections(id)")
+    except sqlite3.OperationalError:
+        pass
+    ensure_columns(db, "project_tasks", ["flagged_in_plan"])
     # Piece 58: an optional due TIME alongside a board's existing due_date --
     # mirrors appointments.when_time. A fresh install's schema.sql-created
     # table already has this column, so ensure_columns() is a no-op there.
@@ -5264,6 +5275,20 @@ def project_detail(project_id):
         " WHERE t.project_id = ? ORDER BY t.sort_order, t.id", (project_id,)
     ).fetchall()
     employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
+    # Piece 67: group tasks under their section (one level deep) for the
+    # Tasks tab, same style as dashboard()'s by_stage grouping -- the
+    # template just loops, no grouping logic in Jinja.
+    sections = db.execute(
+        "SELECT * FROM project_task_sections WHERE project_id = ? ORDER BY sort_order, id",
+        (project_id,)).fetchall()
+    tasks_by_section = {}
+    ungrouped_tasks = []
+    for t in tasks:
+        if t["section_id"]:
+            tasks_by_section.setdefault(t["section_id"], []).append(t)
+        else:
+            ungrouped_tasks.append(t)
+    task_groups = [{"section": s, "tasks": tasks_by_section.get(s["id"], [])} for s in sections]
     stage = stage_info(db, project, groups, filed_labels)
     progress = build_project_progress(db, project)
 
@@ -5321,6 +5346,7 @@ def project_detail(project_id):
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        sections=sections, task_groups=task_groups, ungrouped_tasks=ungrouped_tasks,
         job_statuses=PROJECT_STATUSES, job_status_class=PROJECT_STATUS_CLASS,
         stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
         doc_sections=doc_sections,
@@ -6195,21 +6221,119 @@ def add_task(project_id):
     # suggestions counts toward stage_info()'s ready-count for that stage. The
     # generic Tasks-tab form never sends this, so its behavior is unchanged.
     pipeline_status = request.form.get("pipeline_status", "").strip()
+    # Piece 67: an optional section to group this task under -- blank/absent
+    # (the generic Tasks-tab form's default) leaves it ungrouped, unchanged
+    # from before this piece.
+    section_id = request.form.get("section_id", type=int)
     db = get_db()
+    if section_id is not None and db.execute(
+            "SELECT 1 FROM project_task_sections WHERE id = ? AND project_id = ?",
+            (section_id, project_id)).fetchone() is None:
+        section_id = None
     next_order = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_tasks WHERE project_id = ?",
         (project_id,)).fetchone()[0]
     db.execute(
         "INSERT INTO project_tasks"
-        " (project_id, household_member_id, title, status, due_date, notes, sort_order,"
+        " (project_id, household_member_id, section_id, title, status, due_date, notes, sort_order,"
         "  pipeline_status, completed_at, updated_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-        (project_id, _task_assignee(project_id), title, status,
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+        (project_id, _task_assignee(project_id), section_id, title, status,
          request.form.get("due_date", "").strip(),
          request.form.get("notes", "").strip(), next_order, pipeline_status,
          datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""),
     )
     db.commit()
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+
+
+@app.route("/projects/<int:project_id>/sections/new", methods=["POST"])
+def add_section(project_id):
+    """Piece 67: a major category of work ("Tow old tractor") that a
+    project's tasks can be grouped under, one level deep. Returns JSON
+    when the Plan tab's fetch() asks for it (Accept: application/json) so
+    the newly-created id is available for its subtask "Add" buttons to
+    attach to; the classic Tasks-tab form gets its usual flash+redirect."""
+    fetch_project(project_id)
+    title = request.form.get("title", "").strip()
+    wants_json = request.headers.get("Accept", "") == "application/json"
+    if not title:
+        if wants_json:
+            return jsonify({"error": "A section needs a title."}), 400
+        flash("A section needs a title.", "error")
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+    db = get_db()
+    next_order = db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_task_sections"
+        " WHERE project_id = ?", (project_id,)).fetchone()[0]
+    cur = db.execute(
+        "INSERT INTO project_task_sections (project_id, title, sort_order) VALUES (?, ?, ?)",
+        (project_id, title, next_order))
+    db.commit()
+    if wants_json:
+        return jsonify({"id": cur.lastrowid, "title": title})
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+
+
+@app.route("/projects/<int:project_id>/sections/<int:section_id>/edit", methods=["POST"])
+def edit_section(project_id, section_id):
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("A section needs a title.", "error")
+        return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+    db = get_db()
+    db.execute("UPDATE project_task_sections SET title = ? WHERE id = ? AND project_id = ?",
+               (title, section_id, project_id))
+    db.commit()
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+
+
+@app.route("/projects/<int:project_id>/sections/<int:section_id>/delete", methods=["POST"])
+@delete_required
+def delete_section(project_id, section_id):
+    """A section is a lightweight organizational label, not real content --
+    deleting it detaches its tasks (they go back to ungrouped) rather than
+    deleting them, and skips trash_item() entirely, matching the
+    board_collaborators precedent for a disposable join/grouping row."""
+    db = get_db()
+    db.execute("UPDATE project_tasks SET section_id = NULL WHERE section_id = ? AND project_id = ?",
+               (section_id, project_id))
+    db.execute("DELETE FROM project_task_sections WHERE id = ? AND project_id = ?",
+               (section_id, project_id))
+    db.commit()
+    flash("Section deleted — its tasks are ungrouped, not deleted.")
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+
+
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/section", methods=["POST"])
+def set_task_section(project_id, task_id):
+    section_id = request.form.get("section_id", type=int)
+    db = get_db()
+    if section_id is not None and db.execute(
+            "SELECT 1 FROM project_task_sections WHERE id = ? AND project_id = ?",
+            (section_id, project_id)).fetchone() is None:
+        section_id = None
+    db.execute("UPDATE project_tasks SET section_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+               " WHERE id = ? AND project_id = ?",
+               (section_id, task_id, project_id))
+    db.commit()
+    return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
+
+
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/flag", methods=["POST"])
+def toggle_task_flag(project_id, task_id):
+    """Piece 67: a real, persisted indicator that this task has been
+    discussed in the 🧠 Plan tab's chat -- set either by a human clicking
+    the Tasks-tab's own toggle, or by clicking the AI's inline "🚩 Flag"
+    suggestion (a FLAG: line, never set by the AI directly). Toggling
+    (not just setting) lets either surface clear a stale flag too."""
+    db = get_db()
+    row = db.execute("SELECT flagged_in_plan FROM project_tasks WHERE id = ? AND project_id = ?",
+                     (task_id, project_id)).fetchone()
+    if row is not None:
+        new_val = "" if row["flagged_in_plan"] == "1" else "1"
+        db.execute("UPDATE project_tasks SET flagged_in_plan = ? WHERE id = ?", (new_val, task_id))
+        db.commit()
     return redirect(url_for("project_detail", project_id=project_id, _anchor="tasks"))
 
 
@@ -8276,16 +8400,29 @@ PROJECT_PLAN_SYSTEM_PROMPT = (
     "THIS project — break down remaining work, surface risks or blockers, ask "
     "clarifying questions, and suggest a rough plan tailored to its category and "
     "subcategory.\n\n"
-    "You are given PROJECT CONTEXT (category/subcategory, stage, existing tasks, "
-    "recent field notes) plus the same read-only household tools as the general "
-    "assistant, for extra grounding if needed. You are read-only: you cannot save "
-    "anything yourself. If a concrete, addable next-step task occurs to you, put it "
-    "alone on its own line in EXACTLY this form (nothing else on that line):\n"
-    "TASK: <short task title>\n"
-    "Use this sparingly, only for genuinely actionable next steps — not for every "
-    "idea. Never use this line format for anything else. Everything else is normal "
-    "conversational prose. Be concise and specific to this project; don't repeat "
-    "tasks or notes that already exist."
+    "You are given PROJECT CONTEXT (category/subcategory, stage, existing sections "
+    "and tasks with their ids, recent field notes) plus the same read-only household "
+    "tools as the general assistant, for extra grounding if needed. You are "
+    "read-only: you cannot save anything yourself. Three special line formats let "
+    "the user turn a suggestion into something real with one click — use each "
+    "ALONE on its own line (nothing else on that line), sparingly, only for "
+    "genuinely useful suggestions, never for anything else:\n\n"
+    "1. A brand-new task not grouped under any section:\n"
+    "TASK: <short task title>\n\n"
+    "2. A major phase/category of work, made up of smaller steps — put the "
+    "SECTION line first, then each of its TASK lines directly after it (this "
+    "nesting is exactly one level deep — a section's tasks are never further "
+    "broken down):\n"
+    "SECTION: <short section title>\n"
+    "TASK: <short subtask title>\n"
+    "TASK: <short subtask title>\n\n"
+    "3. Calling out an EXISTING task from the context above that the conversation "
+    "is specifically discussing (only when the user asks you to flag something, or "
+    "it's clearly central to the point being made) — use its exact id from the "
+    "context, never a task you just suggested:\n"
+    "FLAG: <task id> | <that task's title>\n\n"
+    "Be concise and specific to this project; don't repeat tasks, sections, or "
+    "notes that already exist. Everything else is normal conversational prose."
 )
 
 
@@ -8403,18 +8540,42 @@ def build_project_plan_context(db, project):
         lines.append(f"Site/location: {project['site_location']}")
     lines.append(f"Target/completion date: {project['install_date'] or 'not set'}")
 
+    # Piece 67: task ids are included so the model can cite one precisely
+    # with a FLAG: line, and existing sections are listed with their
+    # subtasks nested beneath so the model doesn't re-suggest a section
+    # that already exists.
+    sections = db.execute(
+        "SELECT id, title FROM project_task_sections WHERE project_id = ?"
+        " ORDER BY sort_order, id", (project["id"],)).fetchall()
     tasks = db.execute(
-        "SELECT title, status, due_date, COALESCE(pipeline_status,'') AS ps"
-        " FROM project_tasks WHERE project_id = ? ORDER BY (status='Done'), sort_order LIMIT 40",
+        "SELECT id, title, status, due_date, section_id, COALESCE(pipeline_status,'') AS ps"
+        " FROM project_tasks WHERE project_id = ? ORDER BY (status='Done'), sort_order LIMIT 60",
         (project["id"],)).fetchall()
     open_tasks = [t for t in tasks if t["status"] != "Done"]
     done_count = sum(1 for t in tasks if t["status"] == "Done")
-    if open_tasks:
-        lines.append(f"Open tasks ({len(open_tasks)}, {done_count} done):")
-        for t in open_tasks:
-            lines.append(f"  • {t['title']} — due {t['due_date'] or 'no date'}"
-                         f" [{t['status']}{'/' + t['ps'] if t['ps'] else ''}]")
-    else:
+    tasks_by_section = {}
+    ungrouped = []
+    for t in open_tasks:
+        if t["section_id"]:
+            tasks_by_section.setdefault(t["section_id"], []).append(t)
+        else:
+            ungrouped.append(t)
+
+    def _task_line(t):
+        return (f"  • [{t['id']}] {t['title']} — due {t['due_date'] or 'no date'}"
+                f" [{t['status']}{'/' + t['ps'] if t['ps'] else ''}]")
+
+    if sections:
+        lines.append(f"Existing sections ({len(sections)}):")
+        for s in sections:
+            lines.append(f"  📁 {s['title']}:")
+            for t in tasks_by_section.get(s["id"], []):
+                lines.append("  " + _task_line(t))
+    if ungrouped:
+        lines.append(f"Ungrouped open tasks ({len(ungrouped)}, {done_count} done):")
+        for t in ungrouped:
+            lines.append(_task_line(t))
+    elif not sections:
         lines.append(f"No open tasks yet ({done_count} done).")
 
     notes = db.execute(
