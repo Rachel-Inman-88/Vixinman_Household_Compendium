@@ -20,6 +20,7 @@ import math
 import os
 import random
 import re
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -456,7 +457,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.44"
+VERSION = "0.45"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -586,9 +587,35 @@ TITLE_STATUS_KEYWORDS = [
 ]
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
-# Needed for flash messages; fine as a constant for an internal single-box tool.
-app.secret_key = "vixinman-home-compendium"
+# Piece 69: a real, per-install secret key -- Flask *signs* (not encrypts)
+# session cookies with this, so a hardcoded shared string here would let
+# anyone who can read the repo forge a valid session for any account.
+# COMPENDIUM_SECRET_KEY (set via the VPS's systemd EnvironmentFile) wins
+# if present; otherwise a value is generated once and persisted next to
+# the database (DATA_DIR, already gitignored) so it survives restarts
+# without invalidating every existing session each time.
+if os.environ.get("COMPENDIUM_SECRET_KEY"):
+    app.secret_key = os.environ["COMPENDIUM_SECRET_KEY"]
+else:
+    _secret_path = DATA_DIR / "secret_key.txt"
+    if not _secret_path.exists():
+        _secret_path.write_text(secrets.token_hex(32), encoding="utf-8")
+    app.secret_key = _secret_path.read_text(encoding="utf-8").strip()
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
+# Piece 69: session cookie hardening. SECURE is only forced once
+# COMPENDIUM_BEHIND_PROXY confirms a real HTTPS-terminating reverse proxy
+# (Caddy) is actually in front of this process -- forcing it unconditionally
+# would silently break login on the plain-HTTP LAN setup (Piece 56).
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+if os.environ.get("COMPENDIUM_BEHIND_PROXY"):
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    # Trusts X-Forwarded-For/X-Forwarded-Proto from exactly one proxy hop
+    # (Caddy) -- request.remote_addr becomes the real client IP (needed for
+    # login rate-limiting below) and Flask correctly sees the original
+    # request as HTTPS even though Caddy talks to gunicorn over plain HTTP.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    app.config["SESSION_COOKIE_SECURE"] = True
 # Piece 24.7 / 24.8: a sign-in lasts at most this many hours of INACTIVITY — the
 # window slides forward on every request, so an active user stays signed in and
 # an idle one is dropped 12 hours after their last activity. The cookie also
@@ -1427,11 +1454,34 @@ def require_login():
         return redirect(url_for("login", next=nxt))
 
 
+LOGIN_MAX_ATTEMPTS = 8
+LOGIN_WINDOW_MINUTES = 15
+
+
+def _recent_failed_logins(db, ip):
+    """Piece 69: login rate-limiting, built entirely on audit_log data
+    already being collected (app.py's audit() after_request hook logs
+    every /login POST with ip/status/ts, passwords already redacted) --
+    no new table needed. A failed login re-renders the form (200); a
+    success redirects (302), so counting recent 200s per IP is exactly
+    the failed-attempt count."""
+    cutoff = (datetime.now() - timedelta(minutes=LOGIN_WINDOW_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+    return db.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE endpoint = 'login' AND status = 200"
+        " AND ip = ? AND ts > ?", (ip or "", cutoff)).fetchone()[0]
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user() is not None:
         return redirect(url_for("home"))
     if request.method == "POST":
+        db = get_db()
+        if _recent_failed_logins(db, request.remote_addr) >= LOGIN_MAX_ATTEMPTS:
+            # 429, not 200 -- so the lockout response itself is never
+            # miscounted as another failed attempt on the next check.
+            flash(f"Too many failed attempts. Try again in {LOGIN_WINDOW_MINUTES} minutes.", "error")
+            return render_template("login.html", next=request.args.get("next", "")), 429
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         # Usernames are matched case-insensitively (passwords stay exact).
@@ -8772,8 +8822,17 @@ def assistant_settings_page():
         gemini_default=ai_assistant.GEMINI_DEFAULT_MODEL)
 
 
+# Piece 69: run at import time (not only under `if __name__ == "__main__"`)
+# so the database exists and is migrated under any WSGI server (gunicorn
+# imports this module and never executes that block) -- same reasoning as
+# _lazy_start_scheduler()'s own comment: "works under `python app.py`
+# (incl. the debug reloader -- only the serving child gets requests) and
+# any WSGI server." init_db() is fully idempotent, safe to call here. It's
+# placed at the bottom of the module (not right after its own def) because
+# it calls helpers (insert_seed_rules, tag_tasks_by_stage) defined later.
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     # Piece 56: COMPENDIUM_HOST lets a beta-test run bind to the machine's
     # LAN address (0.0.0.0) so a phone on the same WiFi can reach it --
     # default stays 127.0.0.1 (localhost-only) so plain `python app.py`

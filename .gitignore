@@ -220,6 +220,10 @@ __marimo__/
 # Local database
 job_creator.db
 
+# Piece 69: auto-generated Flask session-signing key (persists across
+# restarts on a machine that doesn't set COMPENDIUM_SECRET_KEY)
+secret_key.txt
+
 # Uploaded job documents (local storage)
 uploads/
 

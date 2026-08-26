@@ -1,0 +1,9 @@
+# Piece 69: minimal reverse proxy. Caddy handles automatic HTTPS
+# (Let's Encrypt) for the domain below with no extra config needed.
+#
+# Replace yourdomain.com with the real domain before installing --
+# Caddy will not be able to get a certificate for a placeholder.
+
+yourdomain.com {
+    reverse_proxy 127.0.0.1:8000
+}

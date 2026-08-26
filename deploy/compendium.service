@@ -1,0 +1,23 @@
+[Unit]
+Description=Vixinman Household Compendium (gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=compendium
+Group=compendium
+WorkingDirectory=/opt/compendium
+EnvironmentFile=/opt/compendium/.env
+ExecStart=/opt/compendium/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 app:app
+Restart=on-failure
+RestartSec=5
+
+# Basic hardening -- the service only needs to read/write its own
+# working directory (the SQLite DB and secret_key.txt live there).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/compendium
+
+[Install]
+WantedBy=multi-user.target

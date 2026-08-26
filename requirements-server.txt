@@ -1,0 +1,4 @@
+# Piece 69: production-only dependencies -- not installed for local/LAN
+# dev (gunicorn does not run on Windows at all). On the VPS:
+#   pip install -r requirements.txt -r requirements-server.txt
+gunicorn
