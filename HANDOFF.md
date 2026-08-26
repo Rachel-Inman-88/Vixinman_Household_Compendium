@@ -1719,7 +1719,107 @@ resend-on-retry would insert a duplicate row.
   ordinary non-retry flow is unchanged — plus the standard 40-route
   sweep.
 
+**Piece 69 (v0.45): production hosting scaffolding + security hardening —
+done, on branch `deploy/production-hosting-security` (off `main` at v0.44,
+independent of the still-unmerged `feature/plan-tab-and-task-sections`
+branch carrying Pieces 67-68).** User: "I want to begin detailing how we
+can get this app working live as intended... I need to keep it secure and
+running a machine all day locally should be considered a backup option."
+Confirmed via AskUserQuestion: a small VPS the household administers
+itself (not a managed platform), on a fresh branch off `main` (not the
+unmerged feature branch, not `main` directly).
+- **Real, pre-existing security gap found and fixed**: `app.secret_key`
+  was a hardcoded literal string committed to the repo — since Flask
+  signs (but doesn't encrypt) session cookies with this key, anyone who
+  could read the source could forge a valid login session for any
+  account, including an admin. Harmless while the LAN itself was the
+  trust boundary; a real problem once internet-facing. Now a real random
+  key, generated once via `secrets.token_hex(32)` and persisted to
+  `DATA_DIR/secret_key.txt` (already-gitignored, alongside the database)
+  so restarts don't invalidate every session — or set explicitly via a
+  `COMPENDIUM_SECRET_KEY` env var, which the VPS setup uses so a
+  redeploy/reclone doesn't need the file to survive.
+- **A second real gap: `init_db()` only ever ran inside `if __name__ ==
+  "__main__":`** — under `gunicorn app:app` (the planned production WSGI
+  server), that block never executes, so the database would never get
+  created or migrated at all. The codebase had already solved this exact
+  class of problem once, for the background maintenance scheduler
+  (`_lazy_start_scheduler()`'s own comment: "works under `python app.py`
+  ... and any WSGI server") — applied the same fix: `init_db()` now runs
+  unconditionally at module-import time. It has to sit at the *bottom* of
+  the module rather than right after its own `def`, since it calls
+  `insert_seed_rules`/`tag_tasks_by_stage`, both defined later in the
+  file — confirmed by an actual `NameError` on the first attempt when
+  placed too early, not assumed.
+- **Login rate-limiting, built on data already being collected.** The
+  existing `audit_log`'s `audit()` after_request hook already recorded
+  every `/login` POST with ip/status/ts, passwords already redacted. A
+  failed login re-renders the form (200); a success redirects (302) — so
+  counting recent 200s per IP *is* the failed-attempt count, needing zero
+  new schema. `LOGIN_MAX_ATTEMPTS = 8` / `LOGIN_WINDOW_MINUTES = 15`; the
+  9th failed attempt from the same IP within the window gets a **429**
+  (deliberately not 200, so the lockout response itself never counts as
+  another failure). Verified per-IP, not global: a different IP succeeds
+  normally during the same window.
+- **Reverse-proxy trust, gated behind a new env var.** A new
+  `COMPENDIUM_BEHIND_PROXY` setting (set only in the VPS's systemd
+  environment file, never on the LAN setup) applies
+  `werkzeug.middleware.proxy_fix.ProxyFix` so Flask sees the real client
+  IP and original protocol through Caddy, and flips
+  `SESSION_COOKIE_SECURE` on — unconditionally trusting
+  `X-Forwarded-For`/`X-Forwarded-Proto` without a real proxy in front
+  would let any LAN client spoof its own IP or protocol, so this stays
+  off by default. `SESSION_COOKIE_HTTPONLY=True` and
+  `SESSION_COOKIE_SAMESITE="Lax"` are set unconditionally.
+- **New `requirements-server.txt`** (`gunicorn` — doesn't run on Windows
+  at all, so it's kept out of the main, Windows-safe `requirements.txt`,
+  which now pins `flask==3.1.3`, the version actually installed/tested).
+- **New `deploy/` directory**: `compendium.service` (a systemd unit
+  running gunicorn, `Restart=on-failure`, reads secrets from an
+  `EnvironmentFile=`), `Caddyfile` (a minimal `reverse_proxy` block —
+  Caddy's automatic Let's-Encrypt HTTPS is why it was picked over
+  nginx), `backup_db.py` (uses SQLite's **online backup API**, not a raw
+  file copy, so a snapshot is never taken mid-write; timestamped
+  snapshots with keep-last-N retention). New `DEPLOY.md` walks through
+  the rest of a fresh VPS setup — explicitly scoped to start only once
+  already SSH'd into a provisioned box; provisioning the account,
+  payment, and domain/DNS are the household's own steps, not something
+  done on their behalf.
+- **Explicitly out of scope, flagged rather than silently decided**: this
+  app has no CSRF token protection anywhere (no Flask-WTF, no manual
+  tokens) across its ~100+ POST forms — a full retrofit is judged too
+  large for this piece. `SESSION_COOKIE_SAMESITE=Lax` is a partial
+  mitigation in the meantime (blocks the cookie riding along on most
+  cross-site requests in modern browsers) but isn't equivalent to real
+  CSRF tokens. Tracked below under "NOT done yet."
+- Verified via: a plain `import app` (no `__main__` execution) against
+  both the real database and a genuinely fresh scratch data dir,
+  confirming the WSGI-compatible boot creates all 43 tables and seed
+  data from nothing; secret-key persistence across two successive
+  imports (same key both times) plus env-var override; the login
+  rate-limiter's per-IP 8-then-429 behavior via a Flask test client;
+  `SESSION_COOKIE_SECURE`/`ProxyFix` on vs. off by env var; `backup_db.py`
+  run 3x with `--keep 2` against a scratch DB (confirmed exactly 2
+  snapshots survive and the newest one's data matches the source exactly,
+  not just that a file appeared); and the standard ~46-route sweep
+  (unchanged — this piece changes no request-handling behavior for a
+  normal signed-in user). Real deployment itself (VPS provisioning, DNS,
+  starting the systemd service) is **not** verified here — that happens
+  when the household works through `DEPLOY.md` on their own VPS.
+
 **NOT done yet:**
+- **Full CSRF token protection**, flagged in Piece 69 above — no CSRF
+  defense exists anywhere in this app's many POST forms. A real retrofit
+  (Flask-WTF or manual tokens, threaded through ~100+ forms) is a
+  separate, larger piece; `SESSION_COOKIE_SAMESITE=Lax` is a partial
+  mitigation in the meantime, not a replacement.
+- **Merging `feature/plan-tab-and-task-sections`** (Pieces 67-68: Plan-tab
+  repeat button, AI task-flagging, one-level project Sections, and a
+  per-project Owner concept) **and `deploy/production-hosting-security`**
+  (Piece 69, above) **into `main`** — both remain on their own branches,
+  unmerged, by explicit design (kept separate: household features vs.
+  security/infra). Merging either is a distinct, separately-confirmed
+  future step, not something to do proactively.
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
   no sample export on hand yet. Bank: **Navy Federal Credit Union**.

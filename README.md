@@ -47,6 +47,11 @@ LAN IP with `ipconfig` on Windows, look for the WiFi adapter's IPv4 address).
 Type the `http://` explicitly — some phone browsers try `https://` automatically
 for a bare IP address and fail with a "can't provide a secure connection" error.
 
+**Running it all day, reachable from anywhere** (not just the home WiFi) is a
+separate setup — a small VPS with its own domain and HTTPS — covered in
+[DEPLOY.md](DEPLOY.md). The local/LAN setup above still works and is meant to
+stay available as a backup even once a VPS is running.
+
 ---
 
 ## Features & capabilities
@@ -577,6 +582,32 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.45** — **production hosting scaffolding + security hardening**, on
+  branch `deploy/production-hosting-security`. The app's security posture
+  assumed a trusted home LAN; this piece makes it safe to run reachable
+  from the open internet, plus the scaffolding a `python app.py` dev
+  server doesn't have. Fixes: the Flask session-signing key was a
+  **hardcoded literal committed to the repo** — anyone who could read the
+  source could forge a valid login session for any account, including an
+  admin; it's now a real random key, generated once and persisted
+  alongside the database (or set explicitly via `COMPENDIUM_SECRET_KEY`
+  on a server). `init_db()` used to only run inside `python app.py`'s own
+  startup block — under a real WSGI server (gunicorn) that path is never
+  executed, so the database would never get created; it now runs at
+  import time instead, the same fix already used for the background
+  scheduler. **Login rate-limiting** (8 failed attempts per IP per 15
+  minutes, then a 429) reuses the audit log's existing per-login records
+  — no new table. A new `COMPENDIUM_BEHIND_PROXY` setting (VPS-only,
+  never for the LAN setup) tells Flask to trust a real reverse proxy in
+  front of it, correctly mark the session cookie `Secure`, and see the
+  real client IP instead of the proxy's. New `deploy/` folder (systemd
+  service, Caddy reverse-proxy config, a SQLite-safe backup script) and
+  [DEPLOY.md](DEPLOY.md) walk through the rest, starting from an
+  already-provisioned VPS (provisioning the box itself, paying for it,
+  and DNS are the household's own steps). **Known gap, flagged rather
+  than fixed**: no CSRF token protection exists anywhere in this app's
+  many POST forms — a real retrofit is a separate, larger piece; partially
+  mitigated for now by `SESSION_COOKIE_SAMESITE=Lax`.
 - **v0.44** — **🧠 Plan tab gets the 🔁 Retry button too.** Piece 57 added
   a retry button to the global 💬 Assistant chat but deliberately skipped
   the per-project Plan tab, since that chat saves your message to the
