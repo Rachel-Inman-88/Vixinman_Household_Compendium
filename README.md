@@ -154,6 +154,12 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
 - **Tasks are added manually** — there's no auto-generated process/pipeline chain.
   A **+ Add task** form on the project's Tasks tab is the only way tasks appear;
   assign one to a household member (or leave it unassigned) at any point.
+- **Sections (Piece 67)**: an optional, one-level-deep grouping for a
+  project's tasks — a major phase ("Tow old tractor") containing its own
+  smaller subtasks — independent of each task's own pipeline stage.
+  Deleting a section detaches its tasks (ungrouped, not deleted). A task
+  can also carry a 🚩 flag indicating it's been discussed in the 🧠 Plan
+  tab's chat.
 - **Default task deadlines**: a new task defaults to **7 days out**; when a task is
   marked Done, the next open task on the project is re-defaulted to 7 days after
   that completion. Hand-editable per task.
@@ -484,6 +490,17 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   same question — no retyping or copy/pasting it back in. The per-project
   **🧠 Plan** tab's chat has the same Retry button (Piece 66) — it reuses
   the already-saved message on retry instead of inserting a duplicate.
+- **🔁 Repeat last (Piece 67).** A second, always-available button
+  (not gated on a failure) re-asks your most recent question fresh — handy
+  after something else changed and you want an updated answer. Each repeat
+  is a genuinely new turn, not a resend of a failed one.
+- **🧠 Plan tab: sections + task-flagging (Piece 67).** The AI can suggest
+  a whole **section** of work — a major phase ("Tow old tractor") with its
+  own smaller subtasks nested one level deep — as a single bordered
+  suggestion block, alongside plain ungrouped task suggestions as before.
+  It can also **flag** an existing task the conversation is discussing; a
+  one-click confirm sets a real, persisted 🚩 indicator visible on that
+  task in the Tasks tab, even after leaving the Plan tab.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
   stage/county/overdue/contract, drill into one project, list
@@ -577,6 +594,21 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.45** — **(on branch `feature/plan-tab-and-task-sections`) 🔁 Repeat
+  last prompt, AI task-flagging, and a Section→Subtask task hierarchy.**
+  Three related additions to project planning:
+  - **🔁 Repeat last** — a persistent button (Assistant page and the Plan
+    tab) that re-asks your last question anytime, not just after a
+    failure — always a fresh turn, never a resend of a failed one.
+  - **AI task-flagging** — the Plan tab's AI can call out an *existing*
+    task it's discussing with a one-click "🚩 Flag" suggestion; confirming
+    it sets a real, persisted indicator on that task, visible on the
+    Tasks tab even after navigating away.
+  - **Sections** — a new one-level grouping for a project's tasks (a
+    major phase like "Tow old tractor" containing smaller subtasks),
+    independent of each task's own pipeline stage. The Plan tab's AI can
+    suggest a whole section with its subtasks in one visually distinct,
+    bordered block, or a plain ungrouped task as before.
 - **v0.44** — **🧠 Plan tab gets the 🔁 Retry button too.** Piece 57 added
   a retry button to the global 💬 Assistant chat but deliberately skipped
   the per-project Plan tab, since that chat saves your message to the
