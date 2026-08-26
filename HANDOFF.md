@@ -1810,6 +1810,63 @@ as separate verified commits.
   explicitly-confirmed step — don't merge or push `main` from this piece
   without asking first.
 
+**Piece 68 (v0.46, branch `feature/plan-tab-and-task-sections` — NOT yet
+merged to main): Projects get a real Owner — done, pending merge.** User:
+"Right now there doesn't seem to be a way to assign a person to a project
+if it was not assigned at creation. Let's fix that." Investigation found
+the actual gap was bigger than the phrasing suggested: `projects` had
+**no assignee-like field at all**, not even at creation — unlike Boards,
+which has had one since Piece 30.8. Confirmed via AskUserQuestion: a real
+**"Owner"** label (not "assigned to") — defaults to whoever creates the
+project, reassignable anytime — and it should feed into the Piece 64
+dashboard breakdown alongside (not instead of) task assignment, so a
+parent can "balance members who own a larger project vs. members on the
+team assigned to smaller tasks inside."
+- New `projects.owner_id` (nullable FK) — same explicit-typed-`ALTER
+  TABLE` pattern as Piece 67's `project_tasks.section_id` (a real INTEGER
+  FK needs this, not `ensure_columns()`, which always adds `TEXT`).
+  Existing real projects have no `created_by` field to backfill from, so
+  they land with `owner_id` NULL (no owner) after migration — correct,
+  not a bug; nothing is fabricated.
+- **Deliberately kept outside `PROJECT_FIELDS`/the generic edit-project
+  form and version-snapshot machinery** — same precedent as
+  `contract_amount`, which already gets its own dedicated route
+  (`set_contract`) rather than living in the shared field list. A new
+  `set_project_owner()` route (`projects.manage`-gated, matching
+  New/Edit/Cancel/Reopen project) handles reassignment as its own small
+  action.
+- `new_project()`: owner defaults to the current signed-in user when the
+  create form's Owner field is left blank; picking someone else (e.g. a
+  Parent creating a project on a Child's behalf) is honored as typed. The
+  Owner field only appears on the **create** form, not the edit form —
+  reassigning afterward happens via a dropdown on the project's General
+  tab instead (visible to everyone who can view the project; only
+  `projects.manage` can actually change it).
+- **Piece 64's dashboard breakdown updated to merge both signals**: a
+  project now counts for someone if they **own** it OR have a **task**
+  on it — the same project can appear under both its owner and a team
+  member working a piece of it (a project owned by one person with a
+  task assigned to someone else shows under both rows). An owned chip
+  gets a 👑 marker so ownership visually stands out from mere task
+  participation. The "Unassigned" bucket's definition tightened
+  accordingly: neither an owner nor any task-assignee.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle (create form shows the Owner field; blank defaults to
+  creator; an explicit different owner at creation is honored; the
+  dedicated reassign route works and can also clear the owner back to
+  none; the General tab shows the dropdown to a `projects.manage` user;
+  a project owned-but-taskless shows under its owner with the crown
+  marker; a project owned by one person with a task assigned to another
+  shows correctly under both; a project with neither shows in
+  Unassigned), regression runs of the Piece 64 and Piece 67 test suites
+  (zero breakage from either), the standard 40-route sweep, and a
+  migration + render check against a **copy** of the real household
+  database (never the original) — confirmed zero row-count drift on its
+  real 7 projects/53 tasks, `owner_id` lands correctly, and the
+  dashboard/project-detail/new-project pages all still render 200.
+- **Not yet done**: merging this branch into `main` — still a separate,
+  explicitly-confirmed step.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

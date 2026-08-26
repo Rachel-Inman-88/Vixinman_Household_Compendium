@@ -75,6 +75,12 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   Landscaping, Gardening, Maintenance & Repair; Personal Improvement: Education,
   Health, Habit, Relationship, Misc — a fixed vocabulary (not free text) so the
   Requirements Engine has something reliable to match rules against.
+- **Owner (Piece 68)**: every project has an Owner — defaults to whoever
+  creates it, reassignable anytime from the General tab (`projects.manage`
+  permission required to change it; everyone who can view the project can
+  see who it is). Distinct from task assignment — a project can be
+  "owned" by one person while other household members work individual
+  tasks on it.
 - **Requirements Engine** — project selections → the certifications, permits, and
   prerequisites that apply, across two pages:
   - **Requirements Editor** (`/rules`): the editable catalog of resources (links,
@@ -271,7 +277,9 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
 - **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Parent and
   Assistant see a household-wide **overview** (**projects by family
   member** — one row per person, their active projects as icon/color-
-  coded chips by pipeline stage, Piece 64 — money-in-flight tiles,
+  coded chips by pipeline stage, Piece 64; an owned project (Piece 68)
+  shows a 👑 marker so ownership stands out from just having a task on
+  it — money-in-flight tiles,
   **upcoming payments due within a month**, an attention row, a wrap-up
   worklist), plus **Procurement**, active
   projects grouped by stage, the **Backlog**, a **🗂 Productivity
@@ -594,6 +602,17 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.46** — **(on branch `feature/plan-tab-and-task-sections`) Projects
+  get a real Owner.** Previously the only way a person was connected to a
+  project was through individual task assignment — there was no way to
+  say "this whole project is mine" without also having a task on it (and
+  no way at all if the project was created with zero tasks). A project
+  now has an **Owner**, defaulting to whoever creates it, reassignable
+  anytime from its General tab. The dashboard's "Projects by family
+  member" card (Piece 64) now counts both signals — a project shows under
+  its owner (marked 👑) and under anyone with a task on it, so a parent
+  can tell at a glance who's overseeing something bigger vs. who's just
+  got a small piece of it.
 - **v0.45** — **(on branch `feature/plan-tab-and-task-sections`) 🔁 Repeat
   last prompt, AI task-flagging, and a Section→Subtask task hierarchy.**
   Three related additions to project planning:
