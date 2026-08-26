@@ -133,6 +133,21 @@
     <dd>{{ project["project_category"] or "—" }}{% if project["project_type"] %} · {{ project["project_type"] }}{% endif %}</dd>
     {% endif %}
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
+    <dt>Owner</dt>
+    <dd>
+      {% if can('projects.manage') %}
+      <form method="post" action="{{ url_for('set_project_owner', project_id=project['id']) }}" style="margin:0;">
+        <select name="owner_id" onchange="this.form.submit()" style="padding:0.2rem;">
+          <option value="" {% if not project["owner_id"] %}selected{% endif %}>— No owner —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if project["owner_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% else %}
+      {{ owner_name or "—" }}
+      {% endif %}
+    </dd>
     {% if can('finances.manage') %}
     <dt>Money invested / budget</dt><dd>{% if project["estimated_cost"] %}${{ (project["estimated_cost"])|money0 }}{% else %}—{% endif %}</dd>
     {% endif %}

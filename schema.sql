@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS projects (
     site_location    TEXT DEFAULT '',   -- optional -- where the project is happening
     status           TEXT NOT NULL DEFAULT 'Planning',  -- Piece 16 pipeline stage (renamed Piece 34)
     install_date     TEXT DEFAULT '',   -- Piece 18: optional target/completion date (de-gated Piece 41)
+    owner_id         INTEGER REFERENCES household_members(id),  -- Piece 68: defaults to the creator, reassignable
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

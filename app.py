@@ -456,7 +456,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.45"
+VERSION = "0.46"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1004,6 +1004,7 @@ VIEW_PERMISSION = {
     "set_project_status": "projects.manage",
     "cancel_project": "projects.manage",
     "reopen_project": "projects.manage",
+    "set_project_owner": "projects.manage",
     "set_install_date": "projects.manage",
     # Piece 52: the Drafts oversight page -- reuses "approvals" (the same
     # "parental oversight of pending stuff" concept as Wishlist/Work Bag).
@@ -1956,6 +1957,14 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     ensure_columns(db, "project_tasks", ["flagged_in_plan"])
+    # Piece 68: a project-level "owner" (defaults to the creator, reassignable
+    # anytime) -- a real INTEGER FK, so this needs the same explicit typed
+    # ALTER TABLE as project_tasks.section_id above, not ensure_columns().
+    try:
+        db.execute("ALTER TABLE projects ADD COLUMN owner_id"
+                   " INTEGER REFERENCES household_members(id)")
+    except sqlite3.OperationalError:
+        pass
     # Piece 58: an optional due TIME alongside a board's existing due_date --
     # mirrors appointments.when_time. A fresh install's schema.sql-created
     # table already has this column, so ensure_columns() is a no-op there.
@@ -3524,24 +3533,39 @@ def dashboard():
     # Piece 22.3 (revised Piece 35, de-install-ified Piece 41): whole-household
     # snapshot — money in flight, what needs attention, and a Wrap-up
     # worklist. Shown to every signed-in member, not admin-gated.
-    # Piece 64: per-family-member project breakdown for the Household
-    # overview card -- "who has what going on," replacing the old
-    # whole-household stage-count tiles. A project counts for someone if
-    # they have any task assigned on it (same rule as the Child-
-    # visibility filter just below); a project with no one assigned lands
-    # in its own "Unassigned" row so nothing silently disappears from the
-    # old all-active-projects total.
+    # Piece 64 (owner-aware, Piece 68): per-family-member project
+    # breakdown for the Household overview card -- "who has what going
+    # on," replacing the old whole-household stage-count tiles. A project
+    # counts for someone if they OWN it (projects.owner_id) or have any
+    # task assigned on it -- the same project can appear under both its
+    # owner and a team member working a piece of it, so a parent can tell
+    # at a glance who's overseeing something bigger vs. who's just got a
+    # task inside it (an owned chip is marked with 👑). A project with
+    # neither an owner nor any task-assignee lands in its own
+    # "Unassigned" row so nothing silently disappears from the old
+    # all-active-projects total.
     member_project_map = {}
     assigned_project_ids = set()
+
+    def _bag(mid, j_id, job_name, status, is_owner):
+        entry = member_project_map.setdefault(mid, {}).setdefault(
+            j_id, {"id": j_id, "job_name": job_name, "status": status, "is_owner": False})
+        if is_owner:
+            entry["is_owner"] = True
+        assigned_project_ids.add(j_id)
+
     for r in db.execute(
             "SELECT DISTINCT t.household_member_id AS mid, j.id, j.job_name, j.status"
             " FROM project_tasks t JOIN projects j ON j.id = t.project_id"
             " WHERE j.status NOT IN ('Abandoned', 'Done')"
             " AND t.household_member_id IS NOT NULL"
             " ORDER BY j.status, j.id").fetchall():
-        member_project_map.setdefault(r["mid"], []).append(
-            {"id": r["id"], "job_name": r["job_name"], "status": r["status"]})
-        assigned_project_ids.add(r["id"])
+        _bag(r["mid"], r["id"], r["job_name"], r["status"], False)
+    for r in db.execute(
+            "SELECT id, job_name, status, owner_id FROM projects"
+            " WHERE status NOT IN ('Abandoned', 'Done') AND owner_id IS NOT NULL").fetchall():
+        _bag(r["owner_id"], r["id"], r["job_name"], r["status"], True)
+
     unassigned = [j for j in active_projects if j["id"] not in assigned_project_ids]
 
     member_names = {m["id"]: m["name"] for m in db.execute(
@@ -3553,12 +3577,13 @@ def dashboard():
     member_colors["Unassigned"] = "#9ca3af"   # same neutral gray as "Other" elsewhere
 
     member_rows = [{"name": member_names[mid], "color": member_colors[member_names[mid]],
-                    "projects": projs}
+                    "projects": sorted(projs.values(), key=lambda p: (not p["is_owner"], p["id"]))}
                    for mid, projs in member_project_map.items()]
     member_rows.sort(key=lambda r: r["name"])
     if unassigned:
         member_rows.append({"name": "Unassigned", "color": member_colors["Unassigned"],
-                            "projects": unassigned})
+                            "projects": [{"id": j["id"], "job_name": j["job_name"],
+                                         "status": j["status"], "is_owner": False} for j in unassigned]})
 
     money = _household_money_snapshot(db)
     overdue = db.execute(
@@ -5124,15 +5149,20 @@ def render_project_form(values, editing_job_id=None):
         project_categories=PROJECT_CATEGORIES,
         project_subcategories=PROJECT_SUBCATEGORIES,
         editing_job_id=editing_job_id,
+        employees=get_db().execute("SELECT id, name FROM household_members ORDER BY name").fetchall(),
     )
 
 
 def _apply_new_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
     values = payload["values"]
+    # Piece 68: owner_id is handled outside PROJECT_FIELDS (like
+    # contract_amount's own dedicated route/field) -- absent for a drafted
+    # Assistant-role submission's payload, which is fine, .get() covers it.
+    owner_id = payload.get("owner_id")
     cur = db.execute(
-        f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)})"
-        f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))})",
-        [values[f] for f in PROJECT_FIELDS])
+        f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)}, owner_id)"
+        f" VALUES ({', '.join('?' * len(PROJECT_FIELDS))}, ?)",
+        [values[f] for f in PROJECT_FIELDS] + [owner_id])
     notify_stage_turnover(db, {"id": cur.lastrowid, "job_name": values["job_name"]},
                           DEFAULT_PROJECT_STATUS, exclude_id=exclude_id)
     return True, f"Project created: {values['job_name']}", cur.lastrowid
@@ -5164,16 +5194,25 @@ def new_project():
     if request.method == "POST":
         values, errors = read_project_form()
         if errors:
+            # Piece 68: owner_id isn't in PROJECT_FIELDS, so re-merge the
+            # submitted value here or a validation failure would silently
+            # reset the Owner field the user had picked.
+            values["owner_id"] = request.form.get("owner_id", "").strip()
             flash(" ".join(errors), "error")
             return render_project_form(values), 400
         actor = current_user()
+        # Piece 68: owner defaults to the creator when the form's Owner
+        # field is left blank -- explicitly picking someone else (e.g. a
+        # Parent creating a project on a Child's behalf) is honored as-is.
+        owner_id = request.form.get("owner_id", type=int) or (actor["id"] if actor else None)
         ok, message, new_id = _apply_new_project(
-            db, {"values": values}, None, actor["name"] if actor else "",
+            db, {"values": values, "owner_id": owner_id}, None, actor["name"] if actor else "",
             exclude_id=actor["id"] if actor else None)
         db.commit()
         flash(message, "" if ok else "error")
         return redirect(url_for("project_detail", project_id=new_id))
-    return render_project_form({})
+    actor = current_user()
+    return render_project_form({"owner_id": str(actor["id"])} if actor else {})
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
@@ -5275,6 +5314,9 @@ def project_detail(project_id):
         " WHERE t.project_id = ? ORDER BY t.sort_order, t.id", (project_id,)
     ).fetchall()
     employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
+    # Piece 68: this project's owner name, looked up from the employees
+    # list already fetched above rather than a second query.
+    owner_name = next((e["name"] for e in employees if e["id"] == project["owner_id"]), None)
     # Piece 67: group tasks under their section (one level deep) for the
     # Tasks tab, same style as dashboard()'s by_stage grouping -- the
     # template just loops, no grouping logic in Jinja.
@@ -5346,6 +5388,7 @@ def project_detail(project_id):
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        owner_name=owner_name,
         sections=sections, task_groups=task_groups, ungrouped_tasks=ungrouped_tasks,
         job_statuses=PROJECT_STATUSES, job_status_class=PROJECT_STATUS_CLASS,
         stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
@@ -5371,6 +5414,24 @@ def _apply_set_contract(db, payload, ref_id, actor_name, draft_file_stored_name=
     db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
                (payload["contract_amount"], ref_id))
     return True, "Billing details updated.", None
+
+
+@app.route("/projects/<int:project_id>/owner", methods=["POST"])
+@admin_required
+def set_project_owner(project_id):
+    """Piece 68: reassign a project's owner after creation -- kept as its
+    own small route rather than folded into the generic edit-project
+    form/version-snapshot flow, same precedent as set_contract() above."""
+    fetch_project(project_id)
+    db = get_db()
+    owner_id = request.form.get("owner_id", type=int)
+    if owner_id is not None and db.execute(
+            "SELECT 1 FROM household_members WHERE id = ?", (owner_id,)).fetchone() is None:
+        owner_id = None
+    db.execute("UPDATE projects SET owner_id = ? WHERE id = ?", (owner_id, project_id))
+    db.commit()
+    flash("Project owner updated.")
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/projects/<int:project_id>/contract", methods=["POST"])
