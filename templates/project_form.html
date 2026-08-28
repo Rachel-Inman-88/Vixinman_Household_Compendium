@@ -45,6 +45,17 @@ recordkeeping.</p>
       <input id="estimated_cost" name="estimated_cost" type="number" step="0.01" min="0"
              value="{{ values.get('estimated_cost', '') }}">
     </div>
+    {% if not editing_job_id %}
+    <div class="field">
+      <label for="owner_id">Owner <span class="muted">(defaults to you — reassign anytime after creation)</span></label>
+      <select id="owner_id" name="owner_id">
+        <option value="">— No owner —</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {% if values.get('owner_id')|string == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
   </div>
   <div class="actions">
     <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create project{% endif %}</button>

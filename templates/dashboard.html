@@ -38,8 +38,8 @@
         <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
           {% for p in row.projects %}
           <a href="{{ url_for('project_detail', project_id=p['id']) }}" class="badge {{ stage_class.get(p['status'], 'neutral') }}"
-             style="text-decoration:none;" title="{{ p['status'] }}">
-            {{ stage_icon.get(p['status'], '📋') }} {{ p['job_name'] or 'Project #' ~ p['id'] }}
+             style="text-decoration:none;" title="{{ 'Owner · ' if p['is_owner'] }}{{ p['status'] }}">
+            {{ '👑 ' if p['is_owner'] }}{{ stage_icon.get(p['status'], '📋') }} {{ p['job_name'] or 'Project #' ~ p['id'] }}
           </a>
           {% endfor %}
         </div>
