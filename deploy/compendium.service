@@ -8,6 +8,11 @@ User=compendium
 Group=compendium
 WorkingDirectory=/opt/compendium
 EnvironmentFile=/opt/compendium/.env
+# adduser --system (no --home given) sets this account's home directory
+# to the literal, nonexistent path "/nonexistent" -- gunicorn tries to
+# use $HOME as scratch space for an internal control socket and fails
+# with "Read-only file system: '/nonexistent'" without this override.
+Environment=HOME=/opt/compendium
 ExecStart=/opt/compendium/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 app:app
 Restart=on-failure
 RestartSec=5
