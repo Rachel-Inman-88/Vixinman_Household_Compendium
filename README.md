@@ -75,6 +75,12 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
   Landscaping, Gardening, Maintenance & Repair; Personal Improvement: Education,
   Health, Habit, Relationship, Misc — a fixed vocabulary (not free text) so the
   Requirements Engine has something reliable to match rules against.
+- **Owner (Piece 68)**: every project has an Owner — defaults to whoever
+  creates it, reassignable anytime from the General tab (`projects.manage`
+  permission required to change it; everyone who can view the project can
+  see who it is). Distinct from task assignment — a project can be
+  "owned" by one person while other household members work individual
+  tasks on it.
 - **Requirements Engine** — project selections → the certifications, permits, and
   prerequisites that apply, across two pages:
   - **Requirements Editor** (`/rules`): the editable catalog of resources (links,
@@ -154,6 +160,12 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
 - **Tasks are added manually** — there's no auto-generated process/pipeline chain.
   A **+ Add task** form on the project's Tasks tab is the only way tasks appear;
   assign one to a household member (or leave it unassigned) at any point.
+- **Sections (Piece 67)**: an optional, one-level-deep grouping for a
+  project's tasks — a major phase ("Tow old tractor") containing its own
+  smaller subtasks — independent of each task's own pipeline stage.
+  Deleting a section detaches its tasks (ungrouped, not deleted). A task
+  can also carry a 🚩 flag indicating it's been discussed in the 🧠 Plan
+  tab's chat.
 - **Default task deadlines**: a new task defaults to **7 days out**; when a task is
   marked Done, the next open task on the project is re-defaulted to 7 days after
   that completion. Hand-editable per task.
@@ -265,7 +277,9 @@ for a bare IP address and fail with a "can't provide a secure connection" error.
 - **One unified dashboard** (📊 My Dashboard) — the sign-in landing. Parent and
   Assistant see a household-wide **overview** (**projects by family
   member** — one row per person, their active projects as icon/color-
-  coded chips by pipeline stage, Piece 64 — money-in-flight tiles,
+  coded chips by pipeline stage, Piece 64; an owned project (Piece 68)
+  shows a 👑 marker so ownership stands out from just having a task on
+  it — money-in-flight tiles,
   **upcoming payments due within a month**, an attention row, a wrap-up
   worklist), plus **Procurement**, active
   projects grouped by stage, the **Backlog**, a **🗂 Productivity
@@ -484,6 +498,17 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   same question — no retyping or copy/pasting it back in. The per-project
   **🧠 Plan** tab's chat has the same Retry button (Piece 66) — it reuses
   the already-saved message on retry instead of inserting a duplicate.
+- **🔁 Repeat last (Piece 67).** A second, always-available button
+  (not gated on a failure) re-asks your most recent question fresh — handy
+  after something else changed and you want an updated answer. Each repeat
+  is a genuinely new turn, not a resend of a failed one.
+- **🧠 Plan tab: sections + task-flagging (Piece 67).** The AI can suggest
+  a whole **section** of work — a major phase ("Tow old tractor") with its
+  own smaller subtasks nested one level deep — as a single bordered
+  suggestion block, alongside plain ungrouped task suggestions as before.
+  It can also **flag** an existing task the conversation is discussing; a
+  one-click confirm sets a real, persisted 🚩 indicator visible on that
+  task in the Tasks tab, even after leaving the Plan tab.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
   stage/county/overdue/contract, drill into one project, list
@@ -577,6 +602,32 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.46** — **(on branch `feature/plan-tab-and-task-sections`) Projects
+  get a real Owner.** Previously the only way a person was connected to a
+  project was through individual task assignment — there was no way to
+  say "this whole project is mine" without also having a task on it (and
+  no way at all if the project was created with zero tasks). A project
+  now has an **Owner**, defaulting to whoever creates it, reassignable
+  anytime from its General tab. The dashboard's "Projects by family
+  member" card (Piece 64) now counts both signals — a project shows under
+  its owner (marked 👑) and under anyone with a task on it, so a parent
+  can tell at a glance who's overseeing something bigger vs. who's just
+  got a small piece of it.
+- **v0.45** — **(on branch `feature/plan-tab-and-task-sections`) 🔁 Repeat
+  last prompt, AI task-flagging, and a Section→Subtask task hierarchy.**
+  Three related additions to project planning:
+  - **🔁 Repeat last** — a persistent button (Assistant page and the Plan
+    tab) that re-asks your last question anytime, not just after a
+    failure — always a fresh turn, never a resend of a failed one.
+  - **AI task-flagging** — the Plan tab's AI can call out an *existing*
+    task it's discussing with a one-click "🚩 Flag" suggestion; confirming
+    it sets a real, persisted indicator on that task, visible on the
+    Tasks tab even after navigating away.
+  - **Sections** — a new one-level grouping for a project's tasks (a
+    major phase like "Tow old tractor" containing smaller subtasks),
+    independent of each task's own pipeline stage. The Plan tab's AI can
+    suggest a whole section with its subtasks in one visually distinct,
+    bordered block, or a plain ungrouped task as before.
 - **v0.44** — **🧠 Plan tab gets the 🔁 Retry button too.** Piece 57 added
   a retry button to the global 💬 Assistant chat but deliberately skipped
   the per-project Plan tab, since that chat saves your message to the

@@ -1719,6 +1719,154 @@ resend-on-retry would insert a duplicate row.
   ordinary non-retry flow is unchanged — plus the standard 40-route
   sweep.
 
+**Piece 67 (v0.45, branch `feature/plan-tab-and-task-sections` — NOT yet
+merged to main): Repeat prompt + AI task-flagging + Section→Subtask
+hierarchy — done, pending merge.** User bundled three related asks; per
+explicit instruction this entire piece lives on its own branch, not
+`main`, until a separate merge decision. Confirmed via 4 rounds of
+AskUserQuestion: (1) "repeat" means always-available (not failure-gated)
+resend of the last question, a genuinely new turn each time; (2) task
+flagging is a hybrid — an inline clickable chat reference AND a real,
+persisted Tasks-tab indicator, human-confirmed either way; (3) a Section
+is independent of pipeline stage, purely an organizational label; (4)
+plan and scope all three together, even though they'd very likely ship
+as separate verified commits.
+- **🔁 Repeat last** (`assistant.html` + `project_detail.html`'s Plan
+  tab): needed **no backend change at all** — unlike Retry (Piece 66),
+  repeating is just a normal fresh send with the same text, so for the
+  Plan tab it correctly inserts a brand-new `project_plan_messages` row
+  every time (confirmed via test: two repeats of the same question leave
+  two distinct rows, not a duplicate). A `lastQuestion` var (separate
+  from Retry's `lastAttempt`, which only tracks failures and clears on
+  success) is set at the start of every send. The Plan tab's version is
+  pre-populated from the last rendered `.plan-bubble[data-role="user"]`
+  already in the DOM on page load, so it works immediately after a
+  reload — `assistant.html` has no persisted history, so its button
+  simply starts disabled each load.
+- **AI task-flagging**: `build_project_plan_context()` now includes each
+  task's id (`[<id>] <title> — ...`, previously id-less) so the model can
+  cite one precisely via a new `FLAG: <id> | <title>` line convention
+  (`PROJECT_PLAN_SYSTEM_PROMPT` rewritten to teach all three marker
+  formats together). A new `flagged_in_plan` column (`ensure_columns()`,
+  a plain `'1'`-flag boolean like `is_admin`/`is_read`) and a
+  `toggle_task_flag()` route (a plain toggle, mirroring `set_task_assignee`'s
+  shape) serve both the Plan tab's one-click "🚩 Flag: `<title>`" chat
+  suggestion and a manual toggle button now on every Tasks-tab row —
+  real and persisted, visible even after navigating away, exactly what
+  was asked ("easier to verify both are talking about the same part of
+  the project").
+- **Section → Subtask hierarchy, one level deep**: new
+  `project_task_sections` table (`project_id`, `title`, `sort_order`) and
+  a `project_tasks.section_id` FK. **Real gotcha applied correctly**:
+  `section_id` needed an explicit typed `ALTER TABLE` in `init_db()`
+  (wrapped in the standard `try/except sqlite3.OperationalError`), not
+  `ensure_columns()`, which always adds a `TEXT` column — the Piece 41
+  `quantity`-as-INTEGER lesson, applied again here for a real FK column.
+  Deleting a section detaches its tasks (`section_id` → NULL) rather than
+  deleting them, and skips `trash_item()` entirely — a section is a
+  lightweight organizational label, not real content, same precedent as
+  `board_collaborators`. Five new/extended routes: `add_section` (returns
+  JSON when `Accept: application/json`, for the Plan tab's fetch-based
+  "➕ Add section" button, or flash+redirect for the classic Tasks-tab
+  form — one route serves both), `edit_section`, `delete_section`,
+  `set_task_section` (mirrors `set_task_assignee` exactly), and `add_task`
+  gaining an optional `section_id` field (same additive-field precedent
+  as Piece 48's `pipeline_status` addition — blank/absent is unchanged
+  behavior).
+  - **Tasks tab restructure**: `project_detail()` groups tasks by section
+    in Python (same style as `dashboard()`'s `by_stage` grouping); the
+    template wraps the existing 6-column task table in a local Jinja
+    `{% macro task_table(rows) %}` (called once per section plus once
+    for a trailing "Ungrouped" bucket) so the row markup isn't
+    duplicated, and gains two columns (🚩 flag toggle, Section
+    reassignment `<select>`). Each section is its own collapsible
+    `<details class="card">` with inline rename/delete controls.
+  - **Plan tab suggestion rendering, made "visually clear and concise"
+    per the ask**: `extractTasks()` replaced with `parseSuggestions()`, a
+    line-based parser recognizing `TASK:`/`SECTION:`/`FLAG:` — a `TASK:`
+    line before any `SECTION:` stays flat (Piece 48's original behavior,
+    confirmed unchanged by a regression test). Each suggested section
+    renders as its own bordered block (header + "➕ Add section" button,
+    subtasks indented beneath each with their own "➕ Add"); clicking a
+    subtask's Add button **lazily creates the parent section first**
+    (memoized per block, via the JSON-returning route) if it doesn't
+    exist yet, so a human never has to click "Add section" separately
+    just to add one subtask.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle covering all three features together (section
+  create/rename/delete-detaches-not-deletes, task-into-section and
+  move-between-sections, flag toggle on/off with the indicator rendering
+  correctly, `build_project_plan_context()` including task ids and
+  section structure, two repeats creating two distinct rows not a
+  duplicate, and a flat-`TASK:`-only regression check), a live-browser
+  check of the actual rendered Repeat button/disabled state and the
+  `parseSuggestions()` regex logic against a realistic multi-marker
+  sample (confirmed correct flat/grouped/flagged split), the standard
+  40-route sweep, and a migration + render check against a **copy** of
+  the real household database (never the original) — confirmed zero
+  row-count drift on its real 7 projects/53 tasks, both new columns land
+  correctly, and a real project's page still renders 200.
+- **Not yet done**: merging this branch into `main`. That's a separate,
+  explicitly-confirmed step — don't merge or push `main` from this piece
+  without asking first.
+
+**Piece 68 (v0.46, branch `feature/plan-tab-and-task-sections` — NOT yet
+merged to main): Projects get a real Owner — done, pending merge.** User:
+"Right now there doesn't seem to be a way to assign a person to a project
+if it was not assigned at creation. Let's fix that." Investigation found
+the actual gap was bigger than the phrasing suggested: `projects` had
+**no assignee-like field at all**, not even at creation — unlike Boards,
+which has had one since Piece 30.8. Confirmed via AskUserQuestion: a real
+**"Owner"** label (not "assigned to") — defaults to whoever creates the
+project, reassignable anytime — and it should feed into the Piece 64
+dashboard breakdown alongside (not instead of) task assignment, so a
+parent can "balance members who own a larger project vs. members on the
+team assigned to smaller tasks inside."
+- New `projects.owner_id` (nullable FK) — same explicit-typed-`ALTER
+  TABLE` pattern as Piece 67's `project_tasks.section_id` (a real INTEGER
+  FK needs this, not `ensure_columns()`, which always adds `TEXT`).
+  Existing real projects have no `created_by` field to backfill from, so
+  they land with `owner_id` NULL (no owner) after migration — correct,
+  not a bug; nothing is fabricated.
+- **Deliberately kept outside `PROJECT_FIELDS`/the generic edit-project
+  form and version-snapshot machinery** — same precedent as
+  `contract_amount`, which already gets its own dedicated route
+  (`set_contract`) rather than living in the shared field list. A new
+  `set_project_owner()` route (`projects.manage`-gated, matching
+  New/Edit/Cancel/Reopen project) handles reassignment as its own small
+  action.
+- `new_project()`: owner defaults to the current signed-in user when the
+  create form's Owner field is left blank; picking someone else (e.g. a
+  Parent creating a project on a Child's behalf) is honored as typed. The
+  Owner field only appears on the **create** form, not the edit form —
+  reassigning afterward happens via a dropdown on the project's General
+  tab instead (visible to everyone who can view the project; only
+  `projects.manage` can actually change it).
+- **Piece 64's dashboard breakdown updated to merge both signals**: a
+  project now counts for someone if they **own** it OR have a **task**
+  on it — the same project can appear under both its owner and a team
+  member working a piece of it (a project owned by one person with a
+  task assigned to someone else shows under both rows). An owned chip
+  gets a 👑 marker so ownership visually stands out from mere task
+  participation. The "Unassigned" bucket's definition tightened
+  accordingly: neither an owner nor any task-assignee.
+- Verified via compile, a full Jinja parse sweep, a fresh-DB boot, a
+  test-client cycle (create form shows the Owner field; blank defaults to
+  creator; an explicit different owner at creation is honored; the
+  dedicated reassign route works and can also clear the owner back to
+  none; the General tab shows the dropdown to a `projects.manage` user;
+  a project owned-but-taskless shows under its owner with the crown
+  marker; a project owned by one person with a task assigned to another
+  shows correctly under both; a project with neither shows in
+  Unassigned), regression runs of the Piece 64 and Piece 67 test suites
+  (zero breakage from either), the standard 40-route sweep, and a
+  migration + render check against a **copy** of the real household
+  database (never the original) — confirmed zero row-count drift on its
+  real 7 projects/53 tasks, `owner_id` lands correctly, and the
+  dashboard/project-detail/new-project pages all still render 200.
+- **Not yet done**: merging this branch into `main` — still a separate,
+  explicitly-confirmed step.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

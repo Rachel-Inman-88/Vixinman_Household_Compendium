@@ -50,7 +50,11 @@
     {% endif %}
     <div class="field" style="flex:0 0 auto;">
       <label>&nbsp;</label>
-      <button type="submit" id="ask-btn" class="btn">Ask</button>
+      <div style="display:flex; gap:0.4rem;">
+        <button type="submit" id="ask-btn" class="btn">Ask</button>
+        <button type="button" id="repeat-btn" class="btn btn-secondary" disabled
+                title="Ask your last question again">🔁 Repeat last</button>
+      </div>
     </div>
   </form>
 </div>
@@ -62,6 +66,7 @@
   var empty = document.getElementById("chat-empty");
   var box = document.getElementById("question");
   var btn = document.getElementById("ask-btn");
+  var repeatBtn = document.getElementById("repeat-btn");
   var status = document.getElementById("status");
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -90,6 +95,15 @@
   // without the user having to retype or copy/paste anything.
   var lastAttempt = null;
 
+  // Piece 67: "Repeat last" -- unlike Retry, always available (not just
+  // after a failure) and always a fresh send, not a resend of a failed
+  // one. This page has no persisted history, so it starts disabled each
+  // load and only enables once something's been asked this session.
+  var lastQuestion = null;
+  repeatBtn.addEventListener("click", function () {
+    if (lastQuestion) send(lastQuestion.q, lastQuestion.provider, false);
+  });
+
   function showError(text) {
     status.textContent = "";
     status.className = "flash error";
@@ -112,6 +126,8 @@
     msg("", "");
     if (!isRetry) bubble("You", q, "you");
     lastAttempt = { q: q, provider: provider };
+    lastQuestion = { q: q, provider: provider };
+    repeatBtn.disabled = false;
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "ai");
     var data = new URLSearchParams();

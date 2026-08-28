@@ -133,6 +133,21 @@
     <dd>{{ project["project_category"] or "—" }}{% if project["project_type"] %} · {{ project["project_type"] }}{% endif %}</dd>
     {% endif %}
     <dt>Site location</dt><dd>{{ project["site_location"] or "—" }}</dd>
+    <dt>Owner</dt>
+    <dd>
+      {% if can('projects.manage') %}
+      <form method="post" action="{{ url_for('set_project_owner', project_id=project['id']) }}" style="margin:0;">
+        <select name="owner_id" onchange="this.form.submit()" style="padding:0.2rem;">
+          <option value="" {% if not project["owner_id"] %}selected{% endif %}>— No owner —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if project["owner_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% else %}
+      {{ owner_name or "—" }}
+      {% endif %}
+    </dd>
     {% if can('finances.manage') %}
     <dt>Money invested / budget</dt><dd>{% if project["estimated_cost"] %}${{ (project["estimated_cost"])|money0 }}{% else %}—{% endif %}</dd>
     {% endif %}
@@ -227,7 +242,11 @@
     {% endif %}
     <div class="field" style="flex:0 0 auto;">
       <label>&nbsp;</label>
-      <button type="submit" id="plan-ask-btn" class="btn">Send</button>
+      <div style="display:flex; gap:0.4rem;">
+        <button type="submit" id="plan-ask-btn" class="btn">Send</button>
+        <button type="button" id="plan-repeat-btn" class="btn btn-secondary" disabled
+                title="Ask your last question again">🔁 Repeat last</button>
+      </div>
     </div>
   </form>
   {% endif %}
@@ -476,20 +495,28 @@
 {% endif %}
 
 <div class="tab-panel" id="tab-tasks">
-<div class="card">
-  <div class="toolbar" style="margin-bottom:0.6rem;">
-    <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
-  </div>
-  {% if tasks %}
+
+{# Piece 67: one shared table macro, called once per section plus once for
+   the trailing "Ungrouped" bucket, so the 8-column row markup isn't
+   duplicated per group. #}
+{% macro task_table(rows) %}
+  {% if rows %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Task</th><th>Assigned to</th><th>Due</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+    <thead><tr><th>Task</th><th title="Discussed in the 🧠 Plan tab">🚩</th><th>Assigned to</th><th>Due</th><th>Status</th><th>Section</th><th>Notes</th><th></th></tr></thead>
     <tbody>
-      {% for t in tasks %}
+      {% for t in rows %}
       {% set overdue = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
       {% set tf = "taskedit-" ~ t['id'] %}
       <tr>
         <td><input form="{{ tf }}" name="title" value="{{ t['title'] }}" required style="padding:0.2rem; width:100%; min-width:12rem;"></td>
+        <td>
+          <form method="post" action="{{ url_for('toggle_task_flag', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+            <button type="submit" class="btn {{ '' if t['flagged_in_plan'] == '1' else 'btn-secondary' }}"
+                    style="padding:0.15rem 0.4rem; font-size:0.85rem;"
+                    title="{{ 'Discussed in the 🧠 Plan tab — click to clear' if t['flagged_in_plan'] == '1' else 'Not flagged' }}">🚩</button>
+          </form>
+        </td>
         <td>
           <form method="post" action="{{ url_for('set_task_assignee', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
             <select name="household_member_id" onchange="this.form.submit()" style="padding:0.2rem;">
@@ -517,6 +544,16 @@
             </select>
           </form>
         </td>
+        <td>
+          <form method="post" action="{{ url_for('set_task_section', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+            <select name="section_id" onchange="this.form.submit()" style="padding:0.2rem;">
+              <option value="" {% if not t["section_id"] %}selected{% endif %}>— Ungrouped —</option>
+              {% for s in sections %}
+              <option value="{{ s['id'] }}" {% if t["section_id"] == s["id"] %}selected{% endif %}>{{ s["title"] }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
         <td><input form="{{ tf }}" name="notes" value="{{ t['notes'] }}" style="padding:0.2rem; width:100%; min-width:8rem;"></td>
         <td style="white-space:nowrap;">
           <form id="{{ tf }}" method="post" action="{{ url_for('edit_task', project_id=project['id'], task_id=t['id']) }}" style="display:inline; margin:0;">
@@ -535,10 +572,49 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No tasks yet — add the first one below.</p>
+  <p class="empty" style="margin:0;">No tasks here yet.</p>
   {% endif %}
+{% endmacro %}
 
-  <form method="post" action="{{ url_for('add_task', project_id=project['id']) }}" style="margin-top:0.8rem;">
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.6rem;">
+    <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
+  </div>
+
+  {% for grp in task_groups %}
+  <details class="card" style="margin-bottom:0.7rem; border-left:4px solid var(--brand);" open>
+    <summary style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+      📁 {{ grp.section["title"] }}
+      <span class="sect-count">{{ grp.tasks|length }}</span>
+      <span style="margin-left:auto; display:flex; gap:0.3rem; align-items:center;" onclick="event.stopPropagation()">
+        <form method="post" action="{{ url_for('edit_section', project_id=project['id'], section_id=grp.section['id']) }}" style="display:flex; gap:0.3rem; margin:0;">
+          <input name="title" value="{{ grp.section['title'] }}" style="padding:0.15rem; font-size:0.8rem; width:10rem;">
+          <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">Rename</button>
+        </form>
+        {% if can('delete') %}
+        <form method="post" action="{{ url_for('delete_section', project_id=project['id'], section_id=grp.section['id']) }}"
+              onsubmit="return confirm('Delete this section? Its tasks stay, just ungrouped.');" style="margin:0;">
+          <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
+        </form>
+        {% endif %}
+      </span>
+    </summary>
+    {{ task_table(grp.tasks) }}
+  </details>
+  {% endfor %}
+
+  <details class="card" style="margin-bottom:0.7rem;" open>
+    <summary>📋 Ungrouped <span class="sect-count">{{ ungrouped_tasks|length }}</span></summary>
+    {{ task_table(ungrouped_tasks) }}
+  </details>
+
+  <form method="post" action="{{ url_for('add_section', project_id=project['id']) }}"
+        style="margin-bottom:0.9rem; display:flex; gap:0.4rem; align-items:flex-end; flex-wrap:wrap;">
+    <div class="field"><label>New section</label><input name="title" placeholder="e.g. Tow old tractor" required></div>
+    <button type="submit" class="btn btn-secondary">＋ Add section</button>
+  </form>
+
+  <form method="post" action="{{ url_for('add_task', project_id=project['id']) }}">
     <div class="form-grid">
       <div class="field wide"><label>Task *</label><input name="title" required placeholder="e.g. Pull electrical permit"></div>
       <div class="field">
@@ -553,6 +629,13 @@
         <label>Status</label>
         <select name="status">
           {% for s in task_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Section</label>
+        <select name="section_id">
+          <option value="">— Ungrouped —</option>
+          {% for s in sections %}<option value="{{ s['id'] }}">{{ s["title"] }}</option>{% endfor %}
         </select>
       </div>
       <div class="field"><label>Notes</label><input name="notes"></div>
@@ -727,12 +810,12 @@
   activateTab(location.hash.slice(1) || "general", false);
 </script>
 
-{# Piece 48: the "🧠 Plan" tab's brainstorm chat. Mirrors assistant.html's
-   fetch()-based chat pattern, plus parsing "TASK: " lines out of an assistant
-   reply into an inline "➕ Add to project" button (posts to the existing
-   add_task route with pipeline_status set) and a "💾 Save as project note"
-   button (posts to the existing add_project_note route). The AI never writes
-   anything itself -- both buttons are ordinary user-clicked POSTs. #}
+{# Piece 48 (Sections/Flag/Repeat: Piece 67): the "🧠 Plan" tab's
+   brainstorm chat. Mirrors assistant.html's fetch()-based chat pattern,
+   plus parsing three suggestion line-formats out of an assistant reply
+   (TASK:/SECTION:/FLAG:) into inline one-click buttons, and a "💾 Save as
+   project note" button. The AI never writes anything itself -- every
+   button is an ordinary user-clicked POST. #}
 <script>
 (function () {
   var chat = document.getElementById("plan-chat");
@@ -741,11 +824,13 @@
   var empty = document.getElementById("plan-chat-empty");
   var box = document.getElementById("plan-message");
   var btn = document.getElementById("plan-ask-btn");
+  var repeatBtn = document.getElementById("plan-repeat-btn");
   var status = document.getElementById("plan-status");
   var providerEl = document.getElementById("plan-provider");
   var askUrl = "{{ url_for('project_plan_ask', project_id=project['id']) }}";
   var addTaskUrl = "{{ url_for('add_task', project_id=project['id']) }}";
   var addNoteUrl = "{{ url_for('add_project_note') }}";
+  var sectionNewUrl = "{{ url_for('add_section', project_id=project['id']) }}";
   var pipelineStatus = {{ (project['status'] or '')|tojson }};
   var projectId = {{ project['id'] }};
 
@@ -754,32 +839,147 @@
     status.className = "flash " + (kind || "");
     status.style.display = text ? "block" : "none";
   }
-  function extractTasks(text) {
-    var out = [], re = /^TASK:\s*(.+)$/gm, m;
-    while ((m = re.exec(text))) out.push(m[1].trim());
-    return out;
+
+  // Piece 67: three suggestion line-formats -- a flat TASK: (unchanged
+  // Piece 48 behavior), a SECTION: with its TASK: lines nested directly
+  // after it (exactly one level deep), and a FLAG: <id> | <title> calling
+  // out an existing task. A TASK: line before any SECTION: stays flat.
+  function parseSuggestions(text) {
+    var lines = text.split("\n");
+    var flatTasks = [], sections = [], flags = [], currentSection = null;
+    lines.forEach(function (line) {
+      var m;
+      if ((m = /^SECTION:\s*(.+)$/.exec(line))) {
+        currentSection = { title: m[1].trim(), tasks: [] };
+        sections.push(currentSection);
+      } else if ((m = /^TASK:\s*(.+)$/.exec(line))) {
+        (currentSection ? currentSection.tasks : flatTasks).push(m[1].trim());
+      } else if ((m = /^FLAG:\s*(\d+)\s*\|\s*(.+)$/.exec(line))) {
+        flags.push({ id: m[1], title: m[2].trim() });
+      }
+    });
+    return { flatTasks: flatTasks, sections: sections, flags: flags };
   }
+
+  function makeAddTaskButton(title, sectionId) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn btn-secondary";
+    b.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
+    b.textContent = "➕ Add: " + title;
+    b.addEventListener("click", function () {
+      b.disabled = true; b.textContent = "Adding…";
+      var data = new URLSearchParams();
+      data.append("title", title);
+      data.append("pipeline_status", pipelineStatus);
+      if (sectionId) data.append("section_id", String(sectionId));
+      fetch(addTaskUrl, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: data.toString()
+      }).then(function () { b.textContent = "Added ✓"; })
+        .catch(function () { b.disabled = false; b.textContent = "➕ Add: " + title; });
+    });
+    return b;
+  }
+
+  function makeFlagButton(id, title) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn btn-secondary";
+    b.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
+    b.textContent = "🚩 Flag: " + title;
+    b.addEventListener("click", function () {
+      b.disabled = true; b.textContent = "Flagging…";
+      fetch("/projects/" + projectId + "/tasks/" + id + "/flag", {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: ""
+      }).then(function () { b.textContent = "🚩 Flagged ✓"; })
+        .catch(function () { b.disabled = false; b.textContent = "🚩 Flag: " + title; });
+    });
+    return b;
+  }
+
+  // A suggested section is rendered as its own bordered block -- clicking
+  // any of its subtasks' Add buttons lazily creates the section first
+  // (memoized so it's only created once per block) so the user never has
+  // to click "Add section" separately just to add one subtask.
+  function makeSectionBlock(sec) {
+    var box = document.createElement("div");
+    box.style.cssText = "margin-top:0.5rem; border:1px solid var(--border); border-radius:8px;" +
+      " padding:0.5rem 0.7rem; background:var(--bg);";
+    var head = document.createElement("div");
+    head.style.cssText = "display:flex; align-items:center; gap:0.5rem; font-weight:700; font-size:0.85rem;";
+    var label = document.createElement("span");
+    label.textContent = "📁 " + sec.title;
+    head.appendChild(label);
+
+    var sectionId = null, creating = null;
+    function ensureSection() {
+      if (sectionId) return Promise.resolve(sectionId);
+      if (creating) return creating;
+      var data = new URLSearchParams();
+      data.append("title", sec.title);
+      creating = fetch(sectionNewUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+        body: data.toString()
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        sectionId = d.id;
+        addSectionBtn.textContent = "Added ✓"; addSectionBtn.disabled = true;
+        return sectionId;
+      });
+      return creating;
+    }
+    var addSectionBtn = document.createElement("button");
+    addSectionBtn.type = "button"; addSectionBtn.className = "btn btn-secondary";
+    addSectionBtn.style.cssText = "padding:0.15rem 0.5rem; font-size:0.72rem; margin-left:auto;";
+    addSectionBtn.textContent = "➕ Add section";
+    addSectionBtn.addEventListener("click", function () {
+      addSectionBtn.disabled = true;
+      ensureSection().catch(function () {
+        addSectionBtn.disabled = false; addSectionBtn.textContent = "➕ Add section";
+      });
+    });
+    head.appendChild(addSectionBtn);
+    box.appendChild(head);
+
+    var list = document.createElement("div");
+    list.style.cssText = "margin-top:0.35rem; padding-left:0.9rem; display:flex; flex-direction:column; gap:0.3rem;";
+    sec.tasks.forEach(function (title) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex; align-items:center; gap:0.4rem;";
+      var bullet = document.createElement("span");
+      bullet.textContent = "• " + title;
+      bullet.style.cssText = "flex:1 1 auto; font-size:0.85rem;";
+      var addBtn = document.createElement("button");
+      addBtn.type = "button"; addBtn.className = "btn btn-secondary";
+      addBtn.style.cssText = "padding:0.12rem 0.45rem; font-size:0.72rem;";
+      addBtn.textContent = "➕ Add";
+      addBtn.addEventListener("click", function () {
+        addBtn.disabled = true; addBtn.textContent = "Adding…";
+        ensureSection().then(function (sid) {
+          var data = new URLSearchParams();
+          data.append("title", title);
+          data.append("pipeline_status", pipelineStatus);
+          data.append("section_id", String(sid));
+          return fetch(addTaskUrl, {
+            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: data.toString()
+          });
+        }).then(function () { addBtn.textContent = "Added ✓"; })
+          .catch(function () { addBtn.disabled = false; addBtn.textContent = "➕ Add"; });
+      });
+      row.appendChild(bullet); row.appendChild(addBtn);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
   function addActions(wrap, role, text) {
+    var parsed = parseSuggestions(text);
     var bar = document.createElement("div");
     bar.style.cssText = "margin-top:0.4rem; display:flex; gap:0.4rem; flex-wrap:wrap;";
-    extractTasks(text).forEach(function (title) {
-      var b = document.createElement("button");
-      b.type = "button"; b.className = "btn btn-secondary";
-      b.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
-      b.textContent = "➕ Add: " + title;
-      b.addEventListener("click", function () {
-        b.disabled = true; b.textContent = "Adding…";
-        var data = new URLSearchParams();
-        data.append("title", title);
-        data.append("pipeline_status", pipelineStatus);
-        fetch(addTaskUrl, {
-          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: data.toString()
-        }).then(function () { b.textContent = "Added ✓"; })
-          .catch(function () { b.disabled = false; b.textContent = "➕ Add: " + title; });
-      });
-      bar.appendChild(b);
-    });
+    parsed.flatTasks.forEach(function (title) { bar.appendChild(makeAddTaskButton(title, null)); });
+    parsed.flags.forEach(function (f) { bar.appendChild(makeFlagButton(f.id, f.title)); });
     var saveBtn = document.createElement("button");
     saveBtn.type = "button"; saveBtn.className = "btn btn-secondary";
     saveBtn.style.cssText = "padding:0.2rem 0.55rem; font-size:0.78rem;";
@@ -797,6 +997,7 @@
     });
     bar.appendChild(saveBtn);
     wrap.appendChild(bar);
+    parsed.sections.forEach(function (sec) { wrap.appendChild(makeSectionBlock(sec)); });
   }
   function bubble(who, text, role, skipActions) {
     if (empty) { empty.remove(); empty = null; }
@@ -832,6 +1033,26 @@
   // saved server-side (see project_plan_ask()'s retry_of handling).
   var lastAttempt = null;
 
+  // Piece 67: "Repeat last" -- unlike Retry, this is always available (not
+  // just after a failure) and always a genuinely new turn (a fresh saved
+  // row, not a resend of a failed one), so it needs no server support.
+  // Pre-populated from the last saved user turn already in the DOM so it
+  // works immediately after a reload, not just after typing this session.
+  var lastQuestion = null;
+  (function () {
+    var userBubbles = document.querySelectorAll('#plan-chat .plan-bubble[data-role="user"]');
+    if (userBubbles.length) {
+      var lastText = userBubbles[userBubbles.length - 1].querySelector(".plan-bubble-text");
+      if (lastText) {
+        lastQuestion = { q: lastText.textContent, provider: providerEl.value };
+        repeatBtn.disabled = false;
+      }
+    }
+  })();
+  repeatBtn.addEventListener("click", function () {
+    if (lastQuestion) doSend(lastQuestion.q, lastQuestion.provider, false);
+  });
+
   function showError(text) {
     status.textContent = "";
     status.className = "flash error";
@@ -854,6 +1075,8 @@
     msg("", "");
     if (!isRetry) bubble("You", q, "user");
     lastAttempt = { q: q, provider: provider, messageId: retryMessageId || null };
+    lastQuestion = { q: q, provider: provider };
+    repeatBtn.disabled = false;
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "assistant", true);
     var data = new URLSearchParams();
