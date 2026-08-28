@@ -149,15 +149,15 @@
       </div>
       <div class="field wide">
         <label for="notes">Notes</label>
-        <input id="notes" name="notes" value="{{ ecr['notes'] if ecr else '' }}" placeholder="e.g. per tech on site">
+        <input id="notes" name="notes" value="{{ ecr['notes'] if ecr else '' }}" placeholder="e.g. renews every 2 years">
       </div>
     </div>
     <div class="actions"><button type="submit" class="btn">{{ "Save changes" if ecr else "＋ Add license / certification" }}</button>
       {% if ecr %}<a href="{{ url_for('household_member_detail', household_member_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
   </form>
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
-  to a project requirement lets each project page show whether someone on staff holds
-  the licenses it needs — and warn when a credential has lapsed.</p>
+  to a project requirement lets each project page show whether someone in the household
+  holds the licenses it needs — and warn when a credential has lapsed.</p>
   {% endif %}
 </div>
 </div>

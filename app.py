@@ -318,16 +318,20 @@ HOUSEHOLD_ROSTER = [
 # Documents tab (Piece 20.9) alongside the project's resolved requirements. Format
 # restrictions per slot to be added later.
 STANDARD_JOB_DOCS = [
-    "Signed Contract", "Site Photos", "Design / One-Line", "Site Plan (KMZ/KML)",
+    "Site Photos",
 ]
 # Piece 25.2: built-in accepted formats for the standard slots (rule-based slots
 # carry their own `allowed_formats`). A slot with no restriction accepts any of
 # the globally-allowed types.
+# Piece 74: "Signed Contract", "Design / One-Line", and "Site Plan (KMZ/KML)"
+# removed -- all three were solar-installation-specific document categories
+# (a customer contract; an electrical one-line diagram; a GIS site-survey
+# format for siting a solar array) with no household equivalent, and the
+# real database had zero files filed under any of them. Any file that *was*
+# ever filed under a removed label would simply fall into the existing
+# "other files" bucket, not disappear -- see the other_files filter below.
 STANDARD_DOC_FORMATS = {
-    "Signed Contract": {"pdf", "doc", "docx"},
     "Site Photos": {"png", "jpg", "jpeg", "heic", "gif"},
-    "Design / One-Line": {"pdf", "png", "jpg", "jpeg"},
-    "Site Plan (KMZ/KML)": {"kmz", "kml"},
 }
 
 
@@ -393,14 +397,18 @@ def _taken_names(db, table, column, id_col, id_val):
         f"SELECT original_name FROM {table} WHERE {id_col} = ?", (id_val,)).fetchall()
     return {r["original_name"] for r in rows if r["original_name"]}
 
-# Piece 21: Finance ledger vocabulary. Income = money in (deposits, invoices,
-# rebates); Expense = money out (materials, permits, labor, subs). Categories
-# map cleanly onto QuickBooks income/expense accounts on export.
+# Piece 21: Finance ledger vocabulary. Income = money in; Expense = money out
+# (materials, permits, labor, subs).
 TXN_KINDS = ["Income", "Expense"]
 TXN_STATUSES = ["Outstanding", "Paid"]
-INCOME_CATEGORIES = [
-    "50% Deposit", "40% Deposit", "Final 10% Invoice", "Financing / Rebate",
-    "Change Order", "Other Income",
+# Piece 74: was a fixed dropdown matching the solar 50/40/10 progress-billing
+# structure (50% Deposit, Final 10% Invoice, Change Order) -- confirmed via
+# the real database that it was never used once. Now free-text suggestions
+# only (the Billing tab's category field is a plain <input list=...>,
+# matching Household Budget's own category field), not an enforced list.
+INCOME_CATEGORY_SUGGESTIONS = [
+    "Reimbursement", "Insurance payout", "Gift / contribution", "Rebate",
+    "Other Income",
 ]
 EXPENSE_CATEGORIES = [
     "Materials", "Equipment", "Permit / Fees", "Labor", "Subcontractor",
@@ -424,11 +432,6 @@ DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 HOUSEHOLD_BUDGET_CATEGORIES = ["Groceries", "Utilities", "Subscriptions",
                                "Discretionary Spending", "Other"]
 
-# New Mexico gross-receipts tax. The rate is per project (it varies by the install
-# location), defaulting to 0% because Vixinman's solar systems are
-# GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance sets a
-# rate on the Billing tab where any receipts are taxable.
-GRT_DEFAULT_RATE = 0.0
 # Piece 38: renamed from the solar-shop taxonomy (License/Compliance) to fit
 # household requirements — a cert earned for a personal-improvement project,
 # a prerequisite/inspection a home-improvement project needs before it can
@@ -458,7 +461,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.50"
+VERSION = "0.51"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -565,27 +568,6 @@ TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # re-default the next open step to this many days out. Rough on purpose —
 # meant to be tightened by hand per project.
 TASK_DEFAULT_LEAD_DAYS = 7
-
-# Piece 18.1: infer a pipeline stage for an existing (un-tagged) task from its
-# title, so current projects show stage progress. Order matters — specific
-# first. Piece 34: the old Inspections and Closing keyword groups both now
-# map to the merged Wrap-up stage.
-TITLE_STATUS_KEYWORDS = [
-    ("sales walkthrough", "Wrap-up"), ("client review", "Wrap-up"),
-    ("final 10%", "Wrap-up"), ("final invoice", "Wrap-up"),
-    ("final paperwork", "Wrap-up"),
-    ("meter set", "Wrap-up"), ("inspection", "Wrap-up"),
-    ("sticker", "Wrap-up"), ("letter of compliance", "Wrap-up"),
-    ("install walkthrough", "In Progress"), ("site installation", "In Progress"),
-    ("doc tube", "In Progress"), ("monitoring", "In Progress"),
-    ("40%", "In Progress"),
-    ("site visit", "Planning"), ("questionnaire", "Planning"),
-    ("draft", "Planning"), ("finalize", "Planning"), ("design", "Planning"),
-    ("contract", "Prep"), ("deposit", "Prep"), ("50%", "Prep"),
-    ("permit", "Prep"), ("interconnection", "Prep"),
-    ("order", "Prep"), ("credit", "Prep"),
-    ("installation date", "Prep"), ("plan review", "Prep"),
-]
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
 # Piece 69: a real, per-install secret key -- Flask *signs* (not encrypts)
@@ -1909,15 +1891,6 @@ def init_db():
     ensure_columns(db, "projects", PROJECT_FIELDS + ["status", "install_date"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
     ensure_columns(db, "project_transactions", ["doc_type"])
-    # Piece 27.3: generated-invoice fields on the ledger row + the BOM cutoff the
-    # deposit invoice captures (BOM added after it counts as billable extras).
-    ensure_columns(db, "project_transactions",
-                   ["invoice_number", "milestone", "due_date", "contract_snapshot",
-                    "base_amount", "extras_amount", "bom_snapshot"])
-    # Piece 27.9: per-task time split by pay type (+ its work date) carried on a
-    # field-submission item, so approving a completed task posts Pending payroll
-    # entries (one per pay-type segment) for Finance to approve.
-    ensure_columns(db, "field_submission_items", ["hours_json", "work_date"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "project_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
@@ -1936,12 +1909,17 @@ def init_db():
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     # Piece 35: a table renamed from "employees" (not freshly created) skips
     # schema.sql's CREATE TABLE, so columns baked into the new household_members
-    # shape that the old employees table never had must be added explicitly —
-    # plus the transitional "access_level" column, kept just long enough for
-    # the is_admin backfill below, then dropped.
-    ensure_columns(db, "household_members",
-                   ["is_admin", "licenses_certifications", "access_level"])
+    # shape that the old employees table never had must be added explicitly.
+    ensure_columns(db, "household_members", ["is_admin", "licenses_certifications"])
     if not db.execute("SELECT 1 FROM meta WHERE key = 'household_reorg_v1'").fetchone():
+        # Piece 74: the transitional "access_level" column is added here,
+        # inside the one-time guard, not unconditionally above -- it used to
+        # sit in the always-run ensure_columns() call above, which silently
+        # re-added it on every single restart forever after this block first
+        # ran (the guard below only protects the backfill/drop, not the add).
+        # Kept just long enough for the is_admin backfill immediately below,
+        # then dropped in the same pass.
+        ensure_columns(db, "household_members", ["access_level"])
         # Backfill is_admin from the old access_level/GM-role signal *before*
         # the role remap below overwrites the role text it reads here.
         db.execute("UPDATE household_members SET is_admin = '1'"
@@ -2266,7 +2244,38 @@ def init_db():
                    " ('contract_field_removed_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
-    tag_tasks_by_stage(db)
+    # Piece 74: full legacy-artifact sweep. Two more write-only orphans from
+    # already-removed features: Piece 27.3's generated-invoice columns on
+    # project_transactions (the customer-invoicing feature itself was
+    # removed Piece 33) and Piece 27.9's per-task pay-type time segments on
+    # field_submission_items (payroll was cut entirely, Piece 35) -- neither
+    # is read anywhere in the current codebase.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'legacy_artifact_sweep_v1'").fetchone():
+        for col in ("invoice_number", "milestone", "due_date", "contract_snapshot",
+                    "base_amount", "extras_amount", "bom_snapshot"):
+            try:
+                db.execute(f"ALTER TABLE project_transactions DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        for col in ("hours_json", "work_date"):
+            try:
+                db.execute(f"ALTER TABLE field_submission_items DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        # access_level: any database that already ran the household_reorg_v1
+        # migration (years ago, for the real household db) has that guard
+        # permanently set, so today's fix to stop re-adding it inside that
+        # block never re-runs there -- it only prevents the bug on databases
+        # that haven't hit that migration yet. This is the separate, one-time
+        # cleanup for a database where it was already resurrected.
+        try:
+            db.execute("ALTER TABLE household_members DROP COLUMN access_level")
+        except sqlite3.OperationalError:
+            pass
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('legacy_artifact_sweep_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
     db.close()
 
 
@@ -2303,17 +2312,17 @@ def insert_seed_rules(db, rows):
 
 def condition_met(project, field, value, match_type):
     """One rule condition: the project's field equals the value
-    (case-insensitive), or — for 'contains' — the value appears in the
-    field's comma-separated list (used for products)."""
+    (case-insensitive). match_type is still accepted (it's a real
+    resource_rules column) but always resolves to a plain equality check
+    now -- its one other value, "contains" (for the removed "products"
+    field's comma-separated list), was Piece 74'd out as dead code once
+    "products" stopped being a valid field_name."""
     if field not in project.keys():
         return False
     actual = str(project[field] or "").strip()
     if not actual:
         return False
-    target = value.strip().lower()
-    if match_type == "contains":
-        return target in [p.strip().lower() for p in actual.split(",")]
-    return actual.lower() == target
+    return actual.lower() == value.strip().lower()
 
 
 def match_rules(project, rules):
@@ -2374,7 +2383,8 @@ def _rule_alert(rule):
 
 def group_rules(matched, dedupe=True):
     """Group matched rules by category in a fixed order. On project pages,
-    de-duplicate shared requirements (e.g. PV and Battery both need EE-98) and
+    de-duplicate shared requirements (e.g. two different project types both
+    needing the same permit) and
     collapse them into one entry that carries the list of triggering selections
     (`instances`), so a requirement shows once with its instances beneath it
     instead of repeating. The directory (dedupe=False) keeps every rule so each
@@ -2410,7 +2420,7 @@ def group_rules(matched, dedupe=True):
 def consolidate_rules(rules):
     """Piece 26.9: the Requirements Library view. Collapse every rule that shares a
     (category, label) into ONE entry, listing each triggering scenario as a
-    bullet beneath it — so a requirement like "EE-98 Contractor License" shows
+    bullet beneath it — so a requirement like "Homeschool Registration" shows
     once with all its scenarios, instead of a fresh listing per scenario. The
     entry carries a representative source (link/phone) and, for compliance, the
     verbatim source text; verification flags escalate (unverified > verify)."""
@@ -5474,7 +5484,7 @@ def project_detail(project_id):
         files_by_label=files_by_label, other_files=other_files,
         formats_by_label=formats_by_label,
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
-        income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
+        income_categories=INCOME_CATEGORY_SUGGESTIONS, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
         plan_providers=plan_providers, plan_default_provider=plan_default_provider,
         plan_messages=plan_messages,
@@ -6663,31 +6673,6 @@ def savings_balance(db, account_id):
             "balance": deposited - withdrawn}
 
 
-def _status_from_title(title):
-    t = (title or "").lower()
-    for keyword, status in TITLE_STATUS_KEYWORDS:
-        if keyword in t:
-            return status
-    return ""
-
-
-def tag_tasks_by_stage(db):
-    """One-time (Piece 18.1): give existing tasks a pipeline_status so current
-    projects show stage progress. Newly generated tasks are tagged at creation."""
-    if db.execute("SELECT 1 FROM meta WHERE key = 'tasks_stage_tagged'").fetchone():
-        return
-    db.row_factory = sqlite3.Row
-    for t in db.execute("SELECT id, title FROM project_tasks"
-                        " WHERE COALESCE(pipeline_status, '') = ''").fetchall():
-        status = _status_from_title(t["title"])
-        if status:
-            db.execute("UPDATE project_tasks SET pipeline_status = ? WHERE id = ?",
-                       (status, t["id"]))
-    db.execute("INSERT INTO meta (key, value) VALUES ('tasks_stage_tagged', '1')"
-               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    db.commit()
-
-
 def _redefault_next_due(db, project_id, completed_date):
     """A step just became Done — default the next still-open step's deadline
     to TASK_DEFAULT_LEAD_DAYS (7) days after that completion. "Next" is the
@@ -7051,10 +7036,8 @@ def api_work_bag_submit():
         status = ch.get("status", row["status"])
         if status not in TASK_STATUSES:
             status = row["status"]
-        work_date = (ch.get("work_date") or payload.get("work_date") or "").strip()
         valid.append((row["id"], row["title"], status,
-                      ch.get("notes", row["notes"]), ch.get("base_updated_at") or "",
-                      work_date))
+                      ch.get("notes", row["notes"]), ch.get("base_updated_at") or ""))
     reported_hours = _to_float(payload.get("reported_hours"))
     if not valid and reported_hours is None:
         return jsonify({"error": "nothing to submit"}), 400
@@ -7064,13 +7047,13 @@ def api_work_bag_submit():
         (user["id"], (payload.get("work_date") or "").strip(), reported_hours,
          (payload.get("note") or "").strip()))
     sub_id = cur.lastrowid
-    for task_id, title, status, notes, base, work_date in valid:
+    for task_id, title, status, notes, base in valid:
         db.execute(
             "INSERT INTO field_submission_items"
             " (submission_id, task_id, task_title, new_status, new_notes,"
-            "  base_updated_at, work_date)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (sub_id, task_id, title, status, notes, base, work_date))
+            "  base_updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (sub_id, task_id, title, status, notes, base))
     db.commit()
     return jsonify({"submission_id": sub_id, "status": "Pending",
                     "items": len(valid)})
@@ -7342,13 +7325,13 @@ def complete_photo_task(task_id):
     db.execute(
         "INSERT INTO field_submission_items"
         " (submission_id, task_id, task_title, new_status, new_notes,"
-        "  base_updated_at, work_date)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "  base_updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
         (sub_id, task_id, task["title"], status, notes,
-         task["updated_at"] or "", work_date))
+         task["updated_at"] or ""))
     db.commit()
     flash(f"“{task['title']}” submitted for approval."
-          if status == "Done" else f"“{task['title']}” flagged as blocked for the office.")
+          if status == "Done" else f"“{task['title']}” flagged as blocked.")
     return redirect(url_for("work_bag_job", project_id=task["project_id"]))
 
 
@@ -7536,10 +7519,10 @@ def _rule_form_values():
         values.update(
             field_name=field_name,
             field_value=request.form.get("field_value", "").strip(),
-            match_type="contains" if field_name == "products" else "equals",
+            match_type="equals",
             field_name2=field_name2,
             field_value2=request.form.get("field_value2", "").strip(),
-            match_type2="contains" if field_name2 == "products" else "equals",
+            match_type2="equals",
             allowed_formats=",".join(sorted(_parse_formats(
                 request.form.get("allowed_formats")))),
             household_member_id=None, recurrence_days=None, next_due="",
@@ -9050,7 +9033,7 @@ def assistant_settings_page():
 # (incl. the debug reloader -- only the serving child gets requests) and
 # any WSGI server." init_db() is fully idempotent, safe to call here. It's
 # placed at the bottom of the module (not right after its own def) because
-# it calls helpers (insert_seed_rules, tag_tasks_by_stage) defined later.
+# it calls a helper (insert_seed_rules) defined later.
 init_db()
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@
 {# Project context, styled like the Work Bag's project banner so it reads as the same place. #}
 <div style="padding:0.55rem 0.75rem; background:#e7f4ec; border-left:4px solid var(--brand); border-radius:6px; margin-bottom:0.8rem;">
   <div style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 {{ task["job_name"] or "Project #" ~ task["project_id"] }}</div>
-  {% if task["install_date"] %}<div class="muted" style="font-size:0.85rem;">🔧 install {{ task["install_date"] }}</div>{% endif %}
+  {% if task["install_date"] %}<div class="muted" style="font-size:0.85rem;">🔧 target {{ task["install_date"] }}</div>{% endif %}
   <div style="margin-top:0.2rem; font-weight:600;">Step: {{ task["title"] }}</div>
 </div>
 
@@ -63,7 +63,7 @@
   <form method="post" action="{{ url_for('complete_photo_task', task_id=task['id']) }}" id="completeform">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
-      <div class="field wide"><label>Notes</label><input name="notes" placeholder="anything the office should know"></div>
+      <div class="field wide"><label>Notes</label><input name="notes" placeholder="anything worth noting"></div>
       <div class="field"><label>Work date</label><input type="date" name="work_date" value="{{ today }}"></div>
       <div class="field"><label>Hours <span class="muted">(optional)</span></label>
         <input type="number" name="hours" step="0.25" min="0" placeholder="0"></div>

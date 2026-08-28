@@ -96,7 +96,7 @@ device, so it keeps working offline.</p>
 
 <div class="card" id="notes">
   <h2 style="margin-top:0; font-size:1.1rem;">📝 Project notes</h2>
-  <p class="muted" style="margin-top:0;">Jot anything the office should know about
+  <p class="muted" style="margin-top:0;">Jot anything worth remembering about
   this project — access details, a change on site, a callback needed. Each note is
   stamped with the time and your name.</p>
   <form method="post" action="{{ url_for('add_project_note') }}">
@@ -104,7 +104,7 @@ device, so it keeps working offline.</p>
     <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field wide"><label>Note *</label>
-        <textarea name="note" rows="2" required placeholder="what happened / what the office should know"></textarea></div>
+        <textarea name="note" rows="2" required placeholder="what happened / what's worth remembering"></textarea></div>
     </div>
     <div class="actions"><button type="submit" class="btn">＋ Save note</button></div>
   </form>
@@ -279,7 +279,7 @@ device, so it keeps working offline.</p>
     const note = document.createElement("input");
     note.className = "wb-note";
     note.value = (queue[t.id] && queue[t.id].notes != null) ? queue[t.id].notes : (t.notes || "");
-    note.placeholder = "notes for the office";
+    note.placeholder = "any notes on this task";
     note.style.cssText = "width:100%; padding:0.3rem;";
     nrow.appendChild(nlabel); nrow.appendChild(note);
     card.appendChild(nrow);
@@ -418,7 +418,7 @@ device, so it keeps working offline.</p>
       applyServer(await r.json());
       msg("", "");
       render();
-    } catch (e) { msg("Couldn't reach the office — showing saved copy.", "error"); render(); }
+    } catch (e) { msg("Couldn't reach the server — showing saved copy.", "error"); render(); }
   }
 
   async function flush() {
@@ -436,9 +436,9 @@ device, so it keeps working offline.</p>
       if (data.error) { msg(data.error, "error"); return; }
       changes.forEach(ch => { delete queue[ch.id]; });
       save();
-      msg("Submitted for approval — it counts once your supervisor approves it.", "");
+      msg("Submitted for approval — it counts once an admin approves it.", "");
       await pull();
-    } catch (e) { msg("Couldn't reach the office — it stays saved here.", "error"); }
+    } catch (e) { msg("Couldn't reach the server — it stays saved here.", "error"); }
   }
 
   window.addEventListener("online", () => { setNet(); pull(); });

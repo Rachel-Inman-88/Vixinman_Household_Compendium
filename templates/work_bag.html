@@ -18,8 +18,8 @@ and leave notes. Once you've opened a project it keeps working offline —
 <script>
 (function () {
   const LS_TASKS = "compendium_wb_tasks", LS_QUEUE = "compendium_wb_queue";
-  // Field work only (install & inspection) — office/scheduling tasks live on the
-  // dashboard, so the bag only surfaces the projects the crew is on site for.
+  // Field work only (install & inspection) — scheduling tasks live on the
+  // dashboard, so the bag only surfaces the projects you're actively working on.
   const FIELD_STAGES = ["In Progress", "Wrap-up"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
@@ -47,7 +47,7 @@ and leave notes. Once you've opened a project it keeps working offline —
       list.innerHTML = '<p class="empty">No tasks assigned to you.</p>'; setNet(); return;
     }
     if (!field.length) {
-      list.innerHTML = '<p class="empty">No projects in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
+      list.innerHTML = '<p class="empty">No projects in your bag right now. Other tasks are on your <a href="/dashboard">dashboard</a>.</p>';
       setNet(); return;
     }
     const order = [], groups = {};
@@ -67,7 +67,7 @@ and leave notes. Once you've opened a project it keeps working offline —
             '<span style="font-weight:800; font-size:1.1rem; color:var(--brand-dark);">🏠 ' + esc(first.job_name) + '</span>' +
           '</div>' +
           '<span class="badge" style="white-space:nowrap; background:#fff; border-color:var(--brand); color:var(--brand-dark);">' +
-            (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>' +
+            (first.install_date ? '🔧 target ' + esc(first.install_date) : 'target date TBD') + '</span>' +
         '</div>' +
         '<div style="margin-top:0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">' +
           '<span class="badge neutral">' + open + ' open task' + (open === 1 ? '' : 's') + '</span>' +
@@ -96,7 +96,7 @@ and leave notes. Once you've opened a project it keeps working offline —
       applyServer(await r.json());
       msg("", "");
       render();
-    } catch (e) { msg("Couldn't reach the office — showing saved projects.", "error"); render(); }
+    } catch (e) { msg("Couldn't reach the server — showing saved projects.", "error"); render(); }
   }
 
   window.addEventListener("online", () => { setNet(); pull(); });

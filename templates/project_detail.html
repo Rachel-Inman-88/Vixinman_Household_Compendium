@@ -111,7 +111,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field" style="margin:0; flex:1; min-width:16rem;">
       <label style="font-size:0.85rem;">Reason (required, logged)</label>
-      <input name="reason" required placeholder="e.g. customer went with another installer">
+      <input name="reason" required placeholder="e.g. changed plans, no longer needed">
     </div>
     <button type="submit" class="btn" style="background:#9a1c1c;">🚫 Cancel project</button>
   </form>
@@ -161,7 +161,7 @@
   </dl>
 </div>
 
-{# Piece 21.9: field notes jotted from the Work Bag, for the office to read. #}
+{# Piece 21.9: field notes jotted from the Work Bag, for later reading. #}
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📝 Field notes <span class="badge">{{ project_notes|length }}</span></h2>
   {% if project_notes %}
@@ -350,7 +350,7 @@
             <span class="muted" style="font-size:0.8rem;">👷 held by:</span>
             {% for h in holders %}<span class="badge {{ {'ok':'','soon':'warn','expired':'danger','none':'neutral'}[h.state] }}">{{ h.name }}{% if h.state == 'expired' %} · expired{% elif h.state == 'soon' %} · expiring{% endif %}</span>{% endfor %}
             {% else %}
-            <span class="badge danger">⚠ no one on staff holds this</span>
+            <span class="badge danger">⚠ no one in the household holds this</span>
             {% endif %}
           {% endif %}
         </li>
@@ -757,7 +757,11 @@
       </div>
       <div class="field">
         <label>Category</label>
-        <select name="category" id="txn_cat"></select>
+        <select id="txn_cat_select" name="category">
+          {% for c in expense_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <input id="txn_cat_text" list="income_cat_options" style="display:none;"
+               placeholder="e.g. Reimbursement, Insurance payout">
       </div>
       <div class="field"><label>Amount $ *</label><input name="amount" type="number" step="0.01" min="0" required placeholder="0.00"></div>
       <div class="field"><label>Date</label><input name="txn_date" type="date" value="{{ today }}"></div>
@@ -765,27 +769,36 @@
         <label>Status</label>
         <select name="status">{% for s in txn_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
       </div>
-      <div class="field"><label id="party_label">Customer / Vendor</label><input name="party" placeholder="who paid / who was paid"></div>
+      <div class="field"><label id="party_label">Payer / Vendor</label><input name="party" placeholder="who paid / who was paid"></div>
       <div class="field"><label>Reference #</label><input name="reference" placeholder="invoice / check / PO"></div>
       <div class="field">
         <label>Method</label>
         <select name="method">{% for m in payment_methods %}<option value="{{ m }}">{{ m or "—" }}</option>{% endfor %}</select>
       </div>
-      <div class="field wide"><label>Description</label><input name="description" placeholder="e.g. 50% deposit, panel order, permit fee"></div>
+      <div class="field wide"><label>Description</label><input name="description" placeholder="e.g. lumber and hardware, permit fee"></div>
     </div>
     <div class="actions"><button type="submit" class="btn">＋ Record transaction</button></div>
   </form>
 </div>
 <script>
-  const INCOME_CATS = {{ income_categories|tojson }};
-  const EXPENSE_CATS = {{ expense_categories|tojson }};
+  // Piece 74: expense stays a fixed dropdown (Materials/Equipment/Labor/etc.
+  // are all still reasonable household categories); income became free text
+  // with suggestions instead, matching Household Budget's own category field
+  // -- the old fixed income list was the solar 50/40/10 progress-billing
+  // structure, confirmed never used once. Both fields share name="category"
+  // but only one has it at a time, so only the visible one gets submitted.
   function txnCats() {
     const kind = document.getElementById("txn_kind").value;
-    const sel = document.getElementById("txn_cat");
-    const cats = kind === "Income" ? INCOME_CATS : EXPENSE_CATS;
-    sel.innerHTML = "";
-    cats.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
-    document.getElementById("party_label").textContent = kind === "Income" ? "Customer" : "Vendor";
+    const sel = document.getElementById("txn_cat_select");
+    const txt = document.getElementById("txn_cat_text");
+    if (kind === "Income") {
+      sel.style.display = "none"; sel.removeAttribute("name");
+      txt.style.display = ""; txt.setAttribute("name", "category");
+    } else {
+      txt.style.display = "none"; txt.removeAttribute("name");
+      sel.style.display = ""; sel.setAttribute("name", "category");
+    }
+    document.getElementById("party_label").textContent = kind === "Income" ? "Payer" : "Vendor";
   }
   // Picking a source document nudges Type/Status to the usual accounting flow:
   //   Invoice → Income, Outstanding (we billed a customer)
@@ -808,6 +821,9 @@
   }
   txnCats();
 </script>
+<datalist id="income_cat_options">
+  {% for c in income_categories %}<option value="{{ c }}">{% endfor %}
+</datalist>
 </div>
 {% endif %}
 
