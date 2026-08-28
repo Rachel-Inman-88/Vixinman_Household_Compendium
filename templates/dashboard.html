@@ -53,9 +53,10 @@
 
   {# Money in flight -- finances.manage-gated, hidden entirely for a Child.
      Piece 54: reworked from Contract/Collected/Outstanding/Expenses into
-     unpaid expenses/loans/income/savings/money in projects, rolling up
-     both the project and household ledgers, plus an estimate-vs-actual
-     variance tile. #}
+     unpaid expenses/loans/income/savings, rolling up both the project and
+     household ledgers, plus an estimate-vs-actual variance tile. Piece 73
+     dropped the "money in projects" (contract-total) tile entirely -- the
+     Contract concept never had a household equivalent. #}
   {% if can('finances.manage') %}
   <section style="{{ panel }}">
     <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active projects and the household ledger</span></div>
@@ -72,9 +73,6 @@
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Savings</div>
         <div style="font-size:1.25rem; font-weight:800; color:var(--brand-dark);">${{ (gm.money.savings)|money0 }}</div></div>
-      <div style="{{ tile }} padding:0.5rem 0.7rem;">
-        <div class="muted" style="font-size:0.78rem;">Money in projects</div>
-        <div style="font-size:1.25rem; font-weight:800;">${{ (gm.money.projects)|money0 }}</div></div>
       {% set variance = gm.money.estimated - gm.money.actual_expense %}
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Anticipated spending <span class="muted" style="font-weight:400;">(est. vs. actual)</span></div>
@@ -146,12 +144,11 @@
     {% if gm.closing %}
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Project</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
+      <thead><tr><th>Project</th><th>Steps left</th><th>Next step</th></tr></thead>
       <tbody>
         {% for c in gm.closing %}
         <tr>
           <td><a href="{{ url_for('project_detail', project_id=c.project['id'], _anchor='billing') }}">{{ c.project["job_name"] or "Project #" ~ c.project["id"] }}</a></td>
-          <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ (c.balance)|money0 }}</td>
           <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
         </tr>

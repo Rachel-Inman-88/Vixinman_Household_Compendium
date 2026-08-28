@@ -680,22 +680,11 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">💵 Billing</h2>
-    <form method="post" action="{{ url_for('set_contract', project_id=project['id']) }}"
-          style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label style="margin:0; font-size:0.85rem; color:var(--muted);">Contract total $</label>
-      <input name="contract_amount" type="number" step="0.01" min="0"
-             value="{{ '%.2f'|format(billing.contract) if billing.contract else '' }}"
-             placeholder="0.00" style="padding:0.3rem; width:9rem;">
-      <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
-    </form>
   </div>
 
   <div class="form-grid" style="margin-bottom:0.9rem;">
-    <div class="field"><label>Contract total</label><div style="font-weight:700; font-size:1.05rem;">${{ (billing.contract)|money }}</div></div>
     <div class="field"><label>Collected</label><div style="font-weight:700; font-size:1.05rem; color:var(--brand);">${{ (billing.collected)|money }}</div></div>
     <div class="field"><label>Outstanding (invoiced)</label><div style="font-weight:700; font-size:1.05rem; color:#8a5a00;">${{ (billing.outstanding)|money }}</div></div>
-    <div class="field"><label>Not yet invoiced</label><div style="font-weight:700; font-size:1.05rem;">${{ (billing.uninvoiced)|money }}</div></div>
     <div class="field"><label>Expenses</label><div style="font-weight:700; font-size:1.05rem; color:#b02a2a;">${{ (billing.expense)|money }}</div></div>
     <div class="field"><label>Net (collected − expenses paid)</label><div style="font-weight:700; font-size:1.05rem;">${{ (billing.net)|money }}</div></div>
   </div>

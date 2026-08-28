@@ -458,7 +458,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.49"
+VERSION = "0.50"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1029,7 +1029,6 @@ VIEW_PERMISSION = {
     "savings_entry_new": "finances.manage",
     "savings_entry_delete": "finances.manage",
     "download_savings_statement": "finances.manage",
-    "set_contract": "finances.manage",
     "add_transaction": "finances.manage",
     "toggle_transaction_paid": "finances.manage",
     "delete_transaction": "finances.manage",
@@ -1908,8 +1907,6 @@ def init_db():
         db.execute("INSERT INTO meta (key, value) VALUES ('clients_removed_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     ensure_columns(db, "projects", PROJECT_FIELDS + ["status", "install_date"])
-    # Piece 21: contract total for the Finance viewport (dollar amounts).
-    ensure_columns(db, "projects", ["contract_amount"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
     ensure_columns(db, "project_transactions", ["doc_type"])
     # Piece 27.3: generated-invoice fields on the ledger row + the BOM cutoff the
@@ -2121,7 +2118,8 @@ def init_db():
     # Piece 40 Part B: Loads & Sizing (a PV/battery/inverter electrical-sizing
     # calculator) and the Cost Model/GRT pricing system both priced/sized a job
     # for the original solar business — cut entirely; a household budget just
-    # needs the plain contract-total + income/expense ledger that survives.
+    # needs the plain income/expense ledger that survives (the contract-total
+    # figure this comment used to also mention was itself removed in Piece 73).
     # Drop their tables from any existing database; a no-op on a fresh one.
     if not db.execute("SELECT 1 FROM meta WHERE key = 'loads_and_cost_model_removed_v1'").fetchone():
         for legacy_table in ("appliance_catalog", "component_catalog",
@@ -2252,6 +2250,22 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     db.commit()
+    # Piece 73: the project "Contract" concept (a customer's total agreed
+    # price) is another leftover from this app's original solar-installation
+    # origins -- confirmed via the real household database that it was never
+    # used once (every project's contract_amount blank, zero Income
+    # transactions ever logged). Collected/Outstanding/Expense/Net are
+    # already fully driven by the real transaction ledger, independent of
+    # this column -- nothing downstream is lost by dropping it.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'contract_field_removed_v1'").fetchone():
+        try:
+            db.execute("ALTER TABLE projects DROP COLUMN contract_amount")
+        except sqlite3.OperationalError:
+            pass
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('contract_field_removed_v1', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
     tag_tasks_by_stage(db)
     db.close()
 
@@ -3262,21 +3276,22 @@ def wishlist_delete(item_id):
 
 
 def _closing_worklist(db):
-    """Projects in the Wrap-up stage with balance due and remaining close-out
-    steps — the Executive overview's Wrap-up worklist, also the Sales
-    'Wrap-up' mode."""
+    """Projects in the Wrap-up stage with remaining close-out steps — the
+    Executive overview's Wrap-up worklist, also the Sales 'Wrap-up' mode.
+    Piece 73: used to also show a contract-based "balance due" figure,
+    always $0 in practice since contract_amount was never used -- removed
+    along with the rest of the Contract concept."""
     out = []
     for p in db.execute(
             "SELECT * FROM projects"
             " WHERE status = 'Wrap-up' ORDER BY id").fetchall():
-        b = project_billing(db, p["id"], p["contract_amount"] or 0.0)
         steps = db.execute(
             "SELECT title, status FROM project_tasks WHERE project_id = ?"
             " AND pipeline_status = 'Wrap-up' ORDER BY sort_order, id",
             (p["id"],)).fetchall()
         open_steps = [s for s in steps if s["status"] != "Done"]
         out.append({
-            "project": p, "balance": max(b["contract"] - b["collected"], 0.0),
+            "project": p,
             "open": len(open_steps), "total": len(steps),
             "next": open_steps[0]["title"] if open_steps else ""})
     return out
@@ -3380,16 +3395,19 @@ def _household_money_snapshot(db):
     household ledgers and the Loans/Savings accounts' live-computed
     balances. Shared by dashboard()'s Household overview tiles and the
     /money page, so the two never drift apart."""
+    # Piece 73: this used to also tally a "Money in projects" tile from
+    # contract_amount -- removed along with the rest of the Contract
+    # concept, rather than repurposed, since feeding it from estimated_cost
+    # instead would just duplicate the "Anticipated spending" tile below.
     money = {"unpaid_expenses": 0.0, "loans": 0.0, "income": 0.0,
-             "savings": 0.0, "projects": 0.0,
+             "savings": 0.0,
              "estimated": 0.0, "actual_expense": 0.0}
     for j in db.execute(
-            "SELECT id, contract_amount, estimated_cost FROM projects"
+            "SELECT id, estimated_cost FROM projects"
             " WHERE status != 'Abandoned'").fetchall():
-        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        b = project_billing(db, j["id"])
         money["unpaid_expenses"] += b["expense_out"]
         money["income"] += b["collected"]
-        money["projects"] += b["contract"]
         money["estimated"] += _to_float(j["estimated_cost"]) or 0.0
         money["actual_expense"] += b["expense"]
     # Fold in the whole-household ledger (lifetime totals, matching
@@ -3415,12 +3433,12 @@ def _payments_summary(db):
     every active project (all in-flight money -- deposits, invoices,
     expenses). Shared by dashboard()'s Payments card and the /money page."""
     payments = []
-    pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
+    pay_totals = {"collected": 0.0, "outstanding": 0.0,
                   "expense": 0.0, "net": 0.0}
     for j in db.execute(
-            "SELECT id, job_name, status, contract_amount FROM projects"
+            "SELECT id, job_name, status FROM projects"
             " WHERE status != 'Abandoned' ORDER BY status, id").fetchall():
-        b = project_billing(db, j["id"], j["contract_amount"] or 0.0)
+        b = project_billing(db, j["id"])
         payments.append({"project": j, "b": b})
         for k in pay_totals:
             pay_totals[k] += b[k]
@@ -5215,9 +5233,10 @@ def render_project_form(values, editing_job_id=None):
 
 def _apply_new_project(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
     values = payload["values"]
-    # Piece 68: owner_id is handled outside PROJECT_FIELDS (like
-    # contract_amount's own dedicated route/field) -- absent for a drafted
-    # Assistant-role submission's payload, which is fine, .get() covers it.
+    # Piece 68: owner_id is handled outside PROJECT_FIELDS (its own
+    # dedicated route/field, the pattern set_contract used to follow
+    # before Piece 73 removed it) -- absent for a drafted Assistant-role
+    # submission's payload, which is fine, .get() covers it.
     owner_id = payload.get("owner_id")
     cur = db.execute(
         f"INSERT INTO projects ({', '.join(PROJECT_FIELDS)}, owner_id)"
@@ -5424,8 +5443,7 @@ def project_detail(project_id):
         fmts = allowed_formats_for_label(db, lbl)
         formats_by_label[lbl] = sorted(fmts) if fmts else None
 
-    billing = project_billing(
-        db, project_id, project["contract_amount"] if "contract_amount" in project.keys() else 0.0)
+    billing = project_billing(db, project_id)
 
     # Piece 21.9: field notes the crew left from the Work Bag, newest first.
     project_notes = db.execute(
@@ -5463,19 +5481,6 @@ def project_detail(project_id):
     )
 
 
-def _capture_contract(**_):
-    return {"contract_amount": _to_float(request.form.get("contract_amount")) or 0.0}, []
-
-
-def _apply_set_contract(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
-    project = db.execute("SELECT 1 FROM projects WHERE id = ?", (ref_id,)).fetchone()
-    if project is None:
-        return False, "That project no longer exists.", None
-    db.execute("UPDATE projects SET contract_amount = ? WHERE id = ?",
-               (payload["contract_amount"], ref_id))
-    return True, "Billing details updated.", None
-
-
 def _capture_project_owner(**_):
     owner_id = request.form.get("owner_id", type=int)
     owner_name = None
@@ -5504,12 +5509,13 @@ def _apply_set_project_owner(db, payload, ref_id, actor_name, draft_file_stored_
 def set_project_owner(project_id):
     """Piece 68 (draftable gap closed, Piece 71): reassign a project's
     owner after creation -- kept as its own small route rather than
-    folded into the generic edit-project form/version-snapshot flow,
-    same precedent as set_contract() above. Originally shipped without
-    @draftable, a real gap against Piece 52's "every Assistant write
-    across all 7 permission areas becomes a draft" promise -- caught on
-    review before this branch was merged, never actually exploitable
-    since this branch was never deployed until now."""
+    folded into the generic edit-project form/version-snapshot flow
+    (the same precedent the now-removed set_contract() used to follow,
+    Piece 73). Originally shipped without @draftable, a real gap against
+    Piece 52's "every Assistant write across all 7 permission areas
+    becomes a draft" promise -- caught on review before this branch was
+    merged, never actually exploitable since this branch was never
+    deployed until now."""
     fetch_project(project_id)
     db = get_db()
     actor = current_user()
@@ -5520,18 +5526,8 @@ def set_project_owner(project_id):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
-@app.route("/projects/<int:project_id>/contract", methods=["POST"])
-@admin_required
-@draftable("project.contract", ref_id_kwarg="project_id")
-def set_contract(project_id):
-    fetch_project(project_id)
-    db = get_db()
-    actor = current_user()
-    ok, message, _ = _apply_set_contract(
-        db, _capture_contract()[0], project_id, actor["name"] if actor else "")
-    db.commit()
-    flash(message, "" if ok else "error")
-    return redirect(url_for("project_detail", project_id=project_id, _anchor="billing"))
+
+
 
 
 def _capture_project_transaction(**_):
@@ -6606,10 +6602,12 @@ def build_project_progress(db, project):
     }
 
 
-def project_billing(db, project_id, contract_amount=0.0):
-    """Piece 21: financial rollup for a project — income collected/outstanding,
-    expenses, and the balance — plus the raw transactions. Drives the Finance
-    Payments table and the per-project Billing tab."""
+def project_billing(db, project_id):
+    """Piece 21 (Piece 73: contract_amount removed -- every figure here is
+    now driven entirely by the real transaction ledger): financial rollup
+    for a project — income collected/outstanding, expenses, and the net —
+    plus the raw transactions. Drives the Finance Payments table and the
+    per-project Billing tab."""
     txns = db.execute(
         "SELECT t.*, (SELECT f.id FROM project_files f WHERE f.txn_id = t.id LIMIT 1)"
         " AS receipt_file_id FROM project_transactions t WHERE t.project_id = ?"
@@ -6621,9 +6619,6 @@ def project_billing(db, project_id, contract_amount=0.0):
     outstanding = total("Income", paid=False)
     expense = total("Expense")
     expense_paid = total("Expense", paid=True)
-    # contract_amount is stored with TEXT affinity (added via ensure_columns),
-    # so coerce it to a number before any arithmetic.
-    contract = _to_float(contract_amount) or 0.0
     # Piece 21.5: roll up the source paperwork (Receipt / Invoice / Bill) so the
     # Billing tab can show how many of each are on file and their totals.
     def _doc(dt):
@@ -6631,10 +6626,9 @@ def project_billing(db, project_id, contract_amount=0.0):
         return {"count": len(rows), "amount": sum(t["amount"] or 0 for t in rows)}
     docs = {dt: _doc(dt) for dt in DOC_TYPES}
     return {
-        "txns": txns, "contract": contract,
+        "txns": txns,
         "collected": collected, "outstanding": outstanding,
         "invoiced": collected + outstanding,
-        "uninvoiced": max(contract - (collected + outstanding), 0.0),
         "expense": expense, "expense_paid": expense_paid,
         "expense_out": expense - expense_paid,
         "net": collected - expense_paid,          # cash in hand vs. cash out
@@ -8060,10 +8054,6 @@ DRAFT_KINDS = {
         "label": "Project target date", "capture": _capture_install_date,
         "apply": _apply_set_install_date,
         "summarize": lambda p: p["install_date"] or "(cleared)"},
-    "project.contract": {
-        "label": "Project contract total", "capture": _capture_contract,
-        "apply": _apply_set_contract,
-        "summarize": lambda p: f"${p['contract_amount']:,.2f}"},
     "project.owner": {
         "label": "Project owner change", "capture": _capture_project_owner,
         "apply": _apply_set_project_owner,
@@ -8661,20 +8651,6 @@ def build_assistant_snapshot(db, user):
     ).fetchone()[0]
     lines.append(f"Company-wide overdue open tasks: {overdue}.")
 
-    # Piece 51: contract/financial figures are finances.manage-gated
-    # everywhere else in the app (Budget page, Billing tab, dashboard money
-    # tiles) -- the assistant must respect the same gate, or a Child could
-    # just ask the AI for numbers the UI otherwise hides entirely.
-    if has_permission("finances.manage"):
-        row = db.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM projects"
-            " WHERE status NOT IN ('Done','Abandoned')"
-            " AND COALESCE(contract_amount,0) > 0").fetchone()
-        if row and row["n"]:
-            lines.append(
-                f"Active projects with a contract total: {row['n']}, "
-                f"summing ${row['t']:,.0f}.")
-
     return "\n".join(lines)
 
 
@@ -8764,11 +8740,6 @@ def build_assistant_tools(db, user):
     """Piece 32.1: read-only, permission-scoped tools the assistant may call to
     look data up live. Every tool respects what the signed-in user may see —
     no tool exposes pay. Each returns a compact text block for the model to read."""
-    # Piece 51: contract/financial figures are finances.manage-gated
-    # everywhere else in the app -- these tools must match, or a Child could
-    # just ask the AI for numbers the UI otherwise hides entirely.
-    can_finances = has_permission("finances.manage")
-
     def find_projects(args):
         text = (args.get("text") or "").strip()
         stage = (args.get("stage") or "").strip()
@@ -8782,12 +8753,6 @@ def build_assistant_tools(db, user):
             where.append("j.job_name LIKE ?"); params.append(f"%{text}%")
         if stage:
             where.append("j.status = ?"); params.append(stage)
-        if can_finances and args.get("min_contract") not in (None, ""):
-            try:
-                where.append("COALESCE(j.contract_amount,0) >= ?")
-                params.append(float(args.get("min_contract")))
-            except (TypeError, ValueError):
-                pass
         today = datetime.now().strftime("%Y-%m-%d")
         if overdue_only:
             where.append(
@@ -8796,8 +8761,7 @@ def build_assistant_tools(db, user):
                 " AND t.due_date < ?)")
             params.append(today)
         rows = db.execute(
-            "SELECT id, job_name, status, install_date,"
-            "  COALESCE(contract_amount,0) AS amt"
+            "SELECT id, job_name, status, install_date"
             " FROM projects j"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY (install_date = ''), install_date, id LIMIT ?",
@@ -8808,8 +8772,6 @@ def build_assistant_tools(db, user):
         for r in rows:
             line = (f"#{r['id']} {r['job_name'] or 'Project'} — "
                     f"{r['status']} — target date {r['install_date'] or 'none set'}")
-            if can_finances and r["amt"]:
-                line += f" — contract {_assist_money(r['amt'])}"
             out.append("• " + line)
         return "\n".join(out)
 
@@ -8831,8 +8793,6 @@ def build_assistant_tools(db, user):
         out = [f"Project #{row['id']}: {row['job_name'] or 'Project'}",
                f"Stage: {row['status']}",
                f"Target date: {row['install_date'] or 'none set'}"]
-        if can_finances and (row["contract_amount"] or 0):
-            out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
         if (row["status"] or "") == "Abandoned" and (row["cancel_reason"] or ""):
             out.append(f"Cancelled — reason: {row['cancel_reason']}")
         tasks = db.execute(
@@ -8919,12 +8879,11 @@ def build_assistant_tools(db, user):
              "text": {"type": "string", "description": "match project name"},
              "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
              "overdue_only": {"type": "boolean", "description": "only projects with an overdue task"},
-             "min_contract": {"type": "number", "description": "minimum contract total"},
              "limit": {"type": "integer", "description": "max rows (default 25)"}}},
          "run": find_projects},
         {"name": "project_details",
          "description": ("Full detail for one project by name or #id: stage, target "
-                         "date, open tasks, materials, recent notes, and contract total."),
+                         "date, open tasks, materials, and recent notes."),
          "parameters": {"type": "object", "properties": {
              "project": {"type": "string", "description": "project name or #id"}},
              "required": ["project"]},

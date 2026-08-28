@@ -14,7 +14,7 @@ needed) and <strong>completed</strong> projects. Nothing here is deleted.</p>
   {% if cancelled %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Project</th><th>Reason</th><th>Cancelled</th><th style="text-align:right;">Contract</th><th></th></tr></thead>
+    <thead><tr><th>Project</th><th>Reason</th><th>Cancelled</th><th></th></tr></thead>
     <tbody>
       {% for j in cancelled %}
       <tr>
@@ -24,7 +24,6 @@ needed) and <strong>completed</strong> projects. Nothing here is deleted.</p>
         <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
           {% if j["cancelled_by"] %}{{ j["cancelled_by"] }}{% endif %}
           {% if j["cancelled_at"] %}<br>{{ j["cancelled_at"][:10] }}{% endif %}</td>
-        <td style="text-align:right;">{% if j["contract_amount"] %}${{ (j["contract_amount"])|money0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('reopen_project', project_id=j['id']) }}" style="margin:0;"
                 onsubmit="return confirm('Reopen this project?');">
@@ -47,13 +46,12 @@ needed) and <strong>completed</strong> projects. Nothing here is deleted.</p>
   {% if completed %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Project</th><th>Install date</th><th style="text-align:right;">Contract</th></tr></thead>
+    <thead><tr><th>Project</th><th>Install date</th></tr></thead>
     <tbody>
       {% for j in completed %}
       <tr>
         <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
-        <td style="text-align:right;">{% if j["contract_amount"] %}${{ (j["contract_amount"])|money0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
