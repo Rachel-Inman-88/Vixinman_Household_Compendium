@@ -224,6 +224,13 @@ job_creator.db
 # restarts on a machine that doesn't set COMPENDIUM_SECRET_KEY)
 secret_key.txt
 
+# Piece 70: real household database snapshots pulled down from the VPS
+lan_backups/
+
+# Piece 70: this machine's own scheduled-task launcher (bakes in a local
+# python.exe path and the real VPS address -- not portable/shareable)
+deploy/run_pull_vps_backup.bat
+
 # Uploaded job documents (local storage)
 uploads/
 
