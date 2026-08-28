@@ -2096,21 +2096,80 @@ Piece 68's actual code (not from memory) before touching anything.
   exact code, well before this merge.
 - **Deliberately not done this piece**: merging `deploy/production-
   hosting-security`'s own unique content (Pieces 69-70: hosting/security
-  scaffolding, the LAN backup pull) back into `main`. After this piece,
-  `main` has Pieces 67/68/71 but *not* 69/70 — only `deploy/production-
-  hosting-security` has everything. Fully unifying every branch into
-  `main` is a separate, not-yet-requested step; note this asymmetry
-  before assuming `main` reflects the full current state.
+  scaffolding, the LAN backup pull) back into `main` — **update: done
+  immediately after, per the user's explicit "let's merge everything
+  now."** `deploy/production-hosting-security` was already an ancestor
+  of nothing and a strict descendant of `main`, so `main` fast-forwarded
+  cleanly to match it exactly — **all three branches
+  (`main`/`feature/plan-tab-and-task-sections`/`deploy/production-
+  hosting-security`) point at the identical commit as of right after
+  this piece.**
 - **CSRF retrofit intentionally deferred**, per explicit user instruction
-  ("We'll scope the CSRF retrofit after") — to be scoped as its own
-  piece, not bundled into this merge.
+  ("We'll scope the CSRF retrofit after") — see Piece 72, immediately
+  below, where it was actually built.
+
+**Piece 72 (v0.49): CSRF protection via Flask-WTF — done.** User: "Let's
+use Flask-WTF then," after a direct conversation (not AskUserQuestion,
+dismissed once and re-asked as a plain question) weighing Flask-WTF's
+`CSRFProtect` against a hand-rolled token scheme. Recommended and chosen:
+Flask-WTF — CSRF is a security-critical primitive where a subtle
+self-made mistake (missed timing-safe comparison, no token rotation at
+login, one missed `fetch()` call site) creates false confidence rather
+than real protection, unlike this app's other "no dependency" choices
+(ORM, JS framework, charting library), which were about convenience, not
+correctness. Built on a fresh `feature/csrf-protection` branch per the
+new post-Piece-71 branching rule.
+- **Real scope, grepped not estimated**: 119 `<form ...method="post"...>`
+  occurrences across 40 templates (no shared form macro exists anywhere
+  in this app — genuinely one insertion per form, done via a one-off
+  local script, verified afterward with an independent multi-line-safe
+  scan confirming all 119 forms have a token and none were missed by a
+  form tag spanning multiple lines) and 8 `fetch()`-based POST calls
+  across 3 files (`assistant.html`, `project_detail.html`'s six Plan-tab
+  actions, `work_bag_job.html`'s offline-queue flush).
+- **A real interaction caught by connecting two pieces of context, not
+  discovered after the fact**: Flask-WTF's default `WTF_CSRF_TIME_LIMIT`
+  is 1 hour. This app's Work Bag (Piece 26) is explicitly offline-capable
+  — its JS queues submissions in `localStorage` and only `fetch()`s them
+  once `navigator.onLine` again, which could be hours later for a crew
+  off-grid. A 1-hour token expiry would have silently reintroduced a real
+  regression against a feature this app specifically built and documents.
+  Set `WTF_CSRF_TIME_LIMIT = None` instead, tying it to the session's
+  already-deliberate 12-hour lifetime.
+- `templates/base.html` (the one shared template every page extends)
+  gained a `<meta name="csrf-token">` tag and a one-line
+  `window.CSRF_TOKEN` assignment, so every fetch() call site reads it
+  once rather than re-querying the DOM.
+- **Testing**: Flask-WTF does not auto-disable itself under
+  `app.testing` — every existing scratch regression test needed a
+  sibling `WTF_CSRF_ENABLED = False` line next to its `TESTING = True`
+  one. **Caught one real miss during this exact update**: one test
+  script used `app.testing = True` (a different, valid Flask idiom)
+  instead of `app.config["TESTING"] = True` — the batch fix's regex only
+  matched the latter form, so that one file's logins all started failing
+  with 400s the first time it was re-run. Diagnosed correctly as CSRF
+  actually working as intended (proof the protection is live), not a
+  bug, then fixed by hand. A new dedicated test deliberately leaves CSRF
+  enabled (every other test disables it) to prove the protection itself
+  works: rejects a POST with no token, rejects one with a bogus token,
+  accepts one with a real token via the form field, and — separately,
+  closing a gap the first pass of that test missed — accepts one via the
+  `X-CSRFToken` header alone with no form field at all, the exact
+  mechanism every `fetch()` call in this app actually uses.
+- Verified via: the mechanical form/token-count-match scan; every
+  existing Piece 58-71 regression script re-run with CSRF disabled (all
+  still pass unchanged); the new dedicated CSRF-enforcement test (both
+  the form-field and header paths); a migration/boot smoke test against
+  a **copy** of the real household database; and a genuine live-browser
+  check via a scratch dev server — a real login form submission and a
+  real Tasks-tab flag-toggle both round-tripped correctly with CSRF
+  fully enabled, not just the Flask test client.
+- Merged `feature/csrf-protection` → `main`; since `main` and
+  `deploy/production-hosting-security` were already identical (Piece
+  71's unification), fast-forwarded the deploy branch to match rather
+  than a real merge. Deployed to the live VPS and verified there too.
 
 **NOT done yet:**
-- **Full CSRF token protection**, flagged in Piece 69 above — no CSRF
-  defense exists anywhere in this app's many POST forms. A real retrofit
-  (Flask-WTF or manual tokens, threaded through ~100+ forms) is a
-  separate, larger piece; `SESSION_COOKIE_SAMESITE=Lax` is a partial
-  mitigation in the meantime, not a replacement.
 - **`main` still doesn't have Pieces 69-70** (hosting/security
   scaffolding, the LAN backup pull) — Piece 71 merged
   `feature/plan-tab-and-task-sections` into both `main` and

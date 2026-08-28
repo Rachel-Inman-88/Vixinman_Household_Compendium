@@ -607,6 +607,23 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.49** — **CSRF protection, via Flask-WTF.** This app's biggest
+  remaining security gap, flagged but deliberately deferred in v0.45
+  (Piece 69): none of its ~119 POST forms carried any CSRF defense
+  beyond the partial mitigation of `SESSION_COOKIE_SAMESITE=Lax`. Every
+  form across all 40 templates now carries a hidden token
+  (`{{ csrf_token() }}`), and every JavaScript `fetch()`-based POST (the
+  Plan tab's actions, the Work Bag's offline-submission flush) sends the
+  same token via an `X-CSRFToken` header instead. One deliberate
+  configuration choice: Flask-WTF's default token expiry (1 hour) is
+  disabled in favor of tying it to the session's own 12-hour lifetime —
+  the Work Bag's offline queue can genuinely sit unflushed for hours
+  with no signal, and a shorter token expiry would have silently broken
+  that exact feature. New dependency: `Flask-WTF` (pulls in `WTForms` as
+  its own dependency, though this app still hand-writes every form in
+  Jinja rather than adopting WTForms itself) — the one dependency this
+  app has added specifically because CSRF correctness matters in a way
+  its usual "no ORM, no JS framework" minimalism doesn't extend to.
 - **v0.48** — **Merged in: projects get a real Owner** (originally built
   as v0.46 on the now-merged `feature/plan-tab-and-task-sections`
   branch). Previously the only way a person was connected to a project
@@ -680,7 +697,8 @@ overdue permit"*), and — if both providers are set up — pick the model to an
   and DNS are the household's own steps). **Known gap, flagged rather
   than fixed**: no CSRF token protection exists anywhere in this app's
   many POST forms — a real retrofit is a separate, larger piece; partially
-  mitigated for now by `SESSION_COOKIE_SAMESITE=Lax`.
+  mitigated for now by `SESSION_COOKIE_SAMESITE=Lax`. **Closed in v0.49
+  (Piece 72), below.**
 - **v0.44** — **🧠 Plan tab gets the 🔁 Retry button too.** Piece 57 added
   a retry button to the global 💬 Assistant chat but deliberately skipped
   the per-project Plan tab, since that chat saves your message to the
