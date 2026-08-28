@@ -582,6 +582,22 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.46** — **One-time LAN→VPS data migration, plus an automatic
+  one-way VPS→LAN backup pull.** With the VPS now running (v0.45), the
+  household's real projects/tasks lived only on the LAN machine; they're
+  now the VPS's live data too (migrated once, verified by checksum and
+  row counts, with the VPS's prior seed data backed up first). Going
+  forward the VPS is the single source of truth for daily use — the LAN
+  and VPS databases are **independent and do not sync** — but a new
+  scheduled task (`CompendiumVPSBackupPull`, Windows Task Scheduler,
+  daily) now automatically pulls the VPS's latest nightly snapshot down
+  to the LAN machine's `lan_backups/` folder via a new
+  `deploy/pull_vps_backup.py`, so the LAN copy stays a current backup
+  with no manual effort — solving the "off-box backup" gap `DEPLOY.md`
+  had flagged as still-manual. See [OPERATIONS.md](OPERATIONS.md) for
+  the full architecture writeup and troubleshooting playbook (including
+  a real OneDrive/Task-Scheduler interaction that took some real
+  debugging to work around).
 - **v0.45** — **production hosting scaffolding + security hardening**, on
   branch `deploy/production-hosting-security`. The app's security posture
   assumed a trusted home LAN; this piece makes it safe to run reachable

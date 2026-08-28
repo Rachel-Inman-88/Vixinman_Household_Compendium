@@ -1807,6 +1807,107 @@ unmerged feature branch, not `main` directly).
   starting the systemd service) is **not** verified here — that happens
   when the household works through `DEPLOY.md` on their own VPS.
 
+**Piece 70 (v0.46): one-time LAN→VPS data migration + automatic one-way
+VPS→LAN backup pull — done, same `deploy/production-hosting-security`
+branch.** Right after Piece 69's VPS went live, the user pointed out the
+two copies of the app didn't talk to each other at all, and asked for
+either real two-way sync or, failing that, "VPS by default, LAN as
+backup." Recommended against two-way sync (conflict resolution for a
+household app is real complexity for little payoff) and for the
+one-way version instead — confirmed by the user, then walked through
+live end-to-end on the real VPS and the real LAN machine (not simulated).
+
+- **One-time migration**: the VPS had only just been created and held
+  fresh seed data (5 default household members, 0 real projects); the
+  LAN's `job_creator.db` held the household's actual data (7 projects,
+  53 tasks, 5 members). Two decisions confirmed via AskUserQuestion
+  first, since one directly conflicted with something the user had
+  already done: (1) **full database replace** (not a selective
+  per-table copy) — chosen deliberately over a partial merge specifically
+  because a partial copy risks silently mismatching foreign-key IDs
+  between the two databases (a task assigned to `household_member_id=3`
+  meaning a different actual person on each side) if the two rosters
+  ever drifted, even slightly; the accepted cost is that the user's own
+  already-separate VPS password (deliberately different from their LAN
+  one) gets overwritten back to match the LAN's and needs re-setting
+  right after — a real, known trade-off, not an oversight; (2) also
+  migrate `uploads/` — turned out moot, no `uploads/` folder existed on
+  the LAN checkout at all (no real uploaded files yet). Executed
+  directly via SSH/SCP from the LAN machine (`ssh`/`scp` already
+  available from `DEPLOY.md`'s own setup): stopped the VPS's
+  `compendium` service, backed up its pre-migration database to
+  `job_creator.db.pre-migration.bak` (kept, in case ever worth
+  checking), `scp`'d the LAN's database up, verified an exact `md5sum`
+  match on both ends before proceeding, fixed ownership, restarted, and
+  confirmed via a direct SQL count (7 projects / 53 tasks / 5 members)
+  that real data — not stale seed data — was live.
+- **Ongoing one-way backup** (`deploy/pull_vps_backup.py`, new): rather
+  than a live/bidirectional sync, a scheduled task pulls the VPS's
+  **already-produced nightly snapshot** (Piece 69's `backup_db.py`
+  output — safe to copy since it's a finished, SQLite-online-backup-API
+  file, never the live database mid-write) down to the LAN machine's new
+  `lan_backups/` folder (gitignored — real household data). One
+  direction only, by design, matching the user's own "VPS by default,
+  LAN as backup" framing exactly — no merge/conflict logic exists or is
+  needed. The script takes `--host`/`--keep`/`--local-dir` as arguments
+  rather than hardcoding this household's specific VPS address, keeping
+  it portable/reusable.
+- **A real, multi-round Windows debugging chain, worth remembering for
+  any future Windows-side automation on this project**:
+  1. `schtasks /create`'s `/tr` value cannot reliably hold two separate
+     quoted paths back-to-back (a quoted `python.exe` path immediately
+     followed by a quoted script path, both containing spaces) —
+     regardless of correct PowerShell-vs-cmd quote-escaping (backtick vs
+     backslash), `schtasks.exe` itself chokes on this specific pattern.
+     Fixed by wrapping the real invocation in a small `.bat` file (which
+     `cmd.exe` parses correctly at run time) and pointing `/tr` at that
+     one single, simply-quoted path instead.
+  2. Even after that fix, the task ran but failed with
+     `-2147024891`/`0x80070005` ("Access is denied") — reproduced
+     identically after recreating the task with `/rl highest`
+     (eliminating a UAC-filtered-token theory) and after confirming via a
+     disposable trivial task that Task Scheduler itself worked fine
+     against a plain non-OneDrive path. Root cause: this repo lives under
+     **OneDrive**, and something about how OneDrive's sync client
+     interacts with a background/non-interactive process caused reads to
+     fail there specifically — the exact same script always ran fine
+     interactively. **Fixed by relocating**, not by fighting OneDrive:
+     a plain copy of `pull_vps_backup.py` (and its `.bat` launcher) now
+     lives at `C:\CompendiumOps\`, entirely outside OneDrive, invoked
+     via the new `--local-dir` argument so pulled backups still land
+     back in the repo's `lan_backups/` for the user to find where
+     expected. Documented in `OPERATIONS.md` with an explicit reminder:
+     if `deploy/pull_vps_backup.py` is ever edited, the
+     `C:\CompendiumOps\` copy needs a manual re-copy — it will not
+     update itself, since it's deliberately outside git's reach.
+  3. `schtasks`'s own `267009` result code is not an error (it's
+     `SCHED_S_TASK_RUNNING` — "still running, check again shortly") —
+     easy to misread as a new failure mid-debugging; worth remembering
+     for any future scheduled-task work.
+- **New `OPERATIONS.md`** (repo root, alongside `DEPLOY.md`): a from-
+  scratch reference doc the user explicitly asked for ("I'm still
+  learning these skills and want to keep records for later study"),
+  covering the full LAN/VPS architecture (with an explicit "the two
+  databases are independent and don't sync" warning, plus a live "as of
+  this writing, both happen to sit on the same branch — check
+  `git branch --show-current`, don't assume" branch-state note), the
+  update routine for each side, a VPS file/system glossary, and a
+  troubleshooting playbook built directly from every real issue hit
+  across both this piece and Piece 69's live setup — not a generic
+  troubleshooting template. Also published as a **designed HTML
+  Artifact** (IBM Plex Sans/Mono, a hand-built architecture diagram, a
+  pine/brass/rust callout system) for the user's own easier reading,
+  kept in sync with the same content as the repo's plain-Markdown copy.
+- Verified via: direct execution against the real VPS and real LAN
+  machine (not a simulated/scratch environment, since this piece's whole
+  point was operating on the household's actual data) — `md5sum` match
+  pre/post transfer, a live SQL row-count check post-migration, three
+  full pull-script test cycles (direct run, idempotent re-run correctly
+  skipping an already-had file, and a fresh `backup_db.py` trigger +
+  re-pull to replace a stale pre-migration snapshot with a real
+  post-migration one), and the scheduled task itself confirmed via
+  `Last Result: 0` after working through the OneDrive relocation fix.
+
 **NOT done yet:**
 - **Full CSRF token protection**, flagged in Piece 69 above — no CSRF
   defense exists anywhere in this app's many POST forms. A real retrofit

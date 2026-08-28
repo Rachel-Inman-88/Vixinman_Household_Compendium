@@ -43,6 +43,12 @@ the VPS is unreachable — not as a second place data casually gets
 entered. If both ever get used for real work in the same week, they will
 diverge, and there's no built-in merge tool to reconcile that.
 
+As of Piece 70, a scheduled task pulls a fresh copy of the VPS's nightly
+backup down to this LAN machine automatically every morning (Section 5
+below) — that keeps the LAN's backup copy current without any manual
+effort, but it is still **one-way and non-live**: a snapshot from
+sometime in the last day, not a real-time mirror.
+
 ### The VPS request path, step by step
 
 1. A browser requests `https://home.jstellarcomp.com`.
@@ -166,7 +172,53 @@ always-on one.
 
 ---
 
-## 5. Troubleshooting playbook
+## 5. Automatic LAN backup of VPS data (Piece 70)
+
+A scheduled task on the LAN machine (`CompendiumVPSBackupPull`, Windows
+Task Scheduler, daily at 6:00 AM) runs `deploy/pull_vps_backup.py`,
+which fetches the VPS's **latest already-made nightly snapshot** (the
+one `backup_db.py` produces via SQLite's online backup API — never the
+live database file directly, since that could be mid-write) down to
+this machine's `lan_backups/` folder. One direction only: VPS → LAN,
+never the reverse, and it never touches the LAN's own live
+`job_creator.db`.
+
+```bash
+# Run it by hand anytime:
+python deploy/pull_vps_backup.py --host root@143.198.155.113 --keep 14
+
+# Check/trigger the scheduled task:
+schtasks /query /tn "CompendiumVPSBackupPull" /v /fo list
+schtasks /run /tn "CompendiumVPSBackupPull"
+```
+
+`Last Result` should read `0` (success). `267009` isn't an error — it's
+Task Scheduler's own "still running, check again in a few seconds" code.
+
+**A real, hard-won gotcha:** the scheduled task cannot run the script
+directly from inside this repo's folder, because this repo lives under
+**OneDrive**, and something about how OneDrive interacts with a
+background/non-interactive process caused every attempt to fail with
+`Access is denied` (`-2147024891` / `0x80070005`) — even though running
+the exact same script by hand, interactively, always worked fine. The
+working fix: a **plain copy** of the script lives outside OneDrive
+entirely, at `C:\CompendiumOps\pull_vps_backup.py`, launched by
+`C:\CompendiumOps\run_pull_vps_backup.bat` — that's what the scheduled
+task actually points at. It's told where to put backups via
+`--local-dir`, so the pulled files still land in this repo's
+`lan_backups/` folder as normal.
+
+**If `deploy/pull_vps_backup.py` is ever edited in the repo**, the copy
+at `C:\CompendiumOps\pull_vps_backup.py` needs to be manually refreshed
+to match — it will not update on its own:
+
+```bash
+cp "path\to\this\repo\deploy\pull_vps_backup.py" C:\CompendiumOps\pull_vps_backup.py
+```
+
+---
+
+## 6. Troubleshooting playbook
 
 **Site is unreachable entirely (nothing loads, not even an error page)**
 ```bash
@@ -233,6 +285,27 @@ This is the login rate-limiter working as designed (8 failed attempts
 per IP address within 15 minutes), not a bug. Wait it out, or double
 check the password if it keeps happening.
 
+**`schtasks /create` fails with "Invalid argument/option"**
+`schtasks.exe` can't reliably handle two separate quoted paths
+back-to-back in one `/tr` value (e.g. a quoted `python.exe` path
+immediately followed by a quoted script path that also has spaces in
+it). Fix: put the real command inside a small `.bat` file instead
+(`cmd.exe` parses nested quotes fine at run time), and point `/tr` at
+that one single, simply-quoted `.bat` path.
+
+**A scheduled task's `Last Result` is `-2147024891` (`0x80070005`,
+"Access is denied")**
+If the task's target script lives inside a **OneDrive-synced** folder,
+that's the likely cause — a background/non-interactive process can fail
+to read files there even though the exact same script runs fine
+interactively. Fix: keep a plain copy of whatever the task launches
+outside OneDrive entirely (see Section 5's `C:\CompendiumOps\` example)
+rather than trying to fix OneDrive's side of it.
+
+**A scheduled task's `Last Result` is `267009`**
+Not an error — Task Scheduler's own status code for "the task is
+currently running." Wait a few seconds and query again.
+
 **Checking the firewall**
 ```bash
 sudo ufw status
@@ -250,7 +323,7 @@ still scheduled.
 
 ---
 
-## 6. Recurring things to remember
+## 7. Recurring things to remember
 
 - **Domain renewal** — Namecheap bills yearly; they'll email ahead of
   renewal. Losing the domain would break `home.jstellarcomp.com` even
@@ -258,15 +331,16 @@ still scheduled.
 - **VPS billing** — DigitalOcean bills monthly against the card on file.
 - **HTTPS certificate renewal** — fully automatic via Caddy; nothing to
   do here, ever, as long as the server and DNS stay as they are.
-- **Off-box backup copies** — `backup_db.py` only writes to the VPS's
-  own disk (`/opt/compendium/backups`). That protects against bad data,
-  not against the VPS's disk itself failing. Periodically copying the
-  newest snapshot elsewhere (a cloud drive, an external copy) is still a
-  manual, occasional task — not automated.
+- **Off-box backup copies** — as of Piece 70, this is automated: the
+  `CompendiumVPSBackupPull` scheduled task pulls the VPS's latest
+  snapshot down to this LAN machine's `lan_backups/` folder every
+  morning at 6am. Worth occasionally glancing at Task Scheduler to
+  confirm it's still running (`Last Result: 0`) — a silently-broken
+  scheduled task is easy to not notice for months.
 
 ---
 
-## 7. Quick command reference
+## 8. Quick command reference
 
 ```bash
 # Is it running?
@@ -284,8 +358,12 @@ sudo systemctl reload caddy      # reload, not restart -- keeps existing connect
 # Update the code
 cd /opt/compendium && sudo -u compendium git pull
 
-# Firewall / backups
+# Firewall / VPS-side backups
 sudo ufw status
 sudo crontab -u compendium -l
 ls -l /opt/compendium/backups
+
+# LAN-side backup pull (Windows)
+schtasks /query /tn "CompendiumVPSBackupPull" /v /fo list
+schtasks /run /tn "CompendiumVPSBackupPull"
 ```
