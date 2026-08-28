@@ -5416,21 +5416,47 @@ def _apply_set_contract(db, payload, ref_id, actor_name, draft_file_stored_name=
     return True, "Billing details updated.", None
 
 
-@app.route("/projects/<int:project_id>/owner", methods=["POST"])
-@admin_required
-def set_project_owner(project_id):
-    """Piece 68: reassign a project's owner after creation -- kept as its
-    own small route rather than folded into the generic edit-project
-    form/version-snapshot flow, same precedent as set_contract() above."""
-    fetch_project(project_id)
-    db = get_db()
+def _capture_project_owner(**_):
     owner_id = request.form.get("owner_id", type=int)
+    owner_name = None
+    if owner_id is not None:
+        row = get_db().execute(
+            "SELECT name FROM household_members WHERE id = ?", (owner_id,)).fetchone()
+        owner_name = row["name"] if row else None
+    return {"owner_id": owner_id, "owner_name": owner_name}, []
+
+
+def _apply_set_project_owner(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    project = db.execute("SELECT 1 FROM projects WHERE id = ?", (ref_id,)).fetchone()
+    if project is None:
+        return False, "That project no longer exists.", None
+    owner_id = payload.get("owner_id")
     if owner_id is not None and db.execute(
             "SELECT 1 FROM household_members WHERE id = ?", (owner_id,)).fetchone() is None:
         owner_id = None
-    db.execute("UPDATE projects SET owner_id = ? WHERE id = ?", (owner_id, project_id))
+    db.execute("UPDATE projects SET owner_id = ? WHERE id = ?", (owner_id, ref_id))
+    return True, "Project owner updated.", None
+
+
+@app.route("/projects/<int:project_id>/owner", methods=["POST"])
+@admin_required
+@draftable("project.owner", ref_id_kwarg="project_id")
+def set_project_owner(project_id):
+    """Piece 68 (draftable gap closed, Piece 71): reassign a project's
+    owner after creation -- kept as its own small route rather than
+    folded into the generic edit-project form/version-snapshot flow,
+    same precedent as set_contract() above. Originally shipped without
+    @draftable, a real gap against Piece 52's "every Assistant write
+    across all 7 permission areas becomes a draft" promise -- caught on
+    review before this branch was merged, never actually exploitable
+    since this branch was never deployed until now."""
+    fetch_project(project_id)
+    db = get_db()
+    actor = current_user()
+    ok, message, _ = _apply_set_project_owner(
+        db, _capture_project_owner()[0], project_id, actor["name"] if actor else "")
     db.commit()
-    flash("Project owner updated.")
+    flash(message, "" if ok else "error")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -7978,6 +8004,10 @@ DRAFT_KINDS = {
         "label": "Project contract total", "capture": _capture_contract,
         "apply": _apply_set_contract,
         "summarize": lambda p: f"${p['contract_amount']:,.2f}"},
+    "project.owner": {
+        "label": "Project owner change", "capture": _capture_project_owner,
+        "apply": _apply_set_project_owner,
+        "summarize": lambda p: f"Assign to {p['owner_name']}" if p.get("owner_name") else "Clear the owner"},
     "rule.new": {
         "label": "New requirement rule", "capture": _capture_rule,
         "apply": _apply_rule, "summarize": lambda p: p["values"]["label"]},
