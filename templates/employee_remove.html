@@ -24,6 +24,7 @@
   </ul>
 
   <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field wide">
       <label for="reason">Reason for removal * <span class="muted">(recorded in the audit log)</span></label>
       <textarea id="reason" name="reason" rows="2" required

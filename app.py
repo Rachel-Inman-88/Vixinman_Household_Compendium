@@ -31,6 +31,7 @@ from pathlib import Path
 
 from functools import wraps
 
+from flask_wtf.csrf import CSRFProtect
 from flask import (
     Flask, Response, abort, flash, g, jsonify, redirect, render_template,
     request, session, send_from_directory, url_for,
@@ -457,7 +458,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.48"
+VERSION = "0.49"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -616,6 +617,15 @@ if os.environ.get("COMPENDIUM_BEHIND_PROXY"):
     # request as HTTPS even though Caddy talks to gunicorn over plain HTTP.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app.config["SESSION_COOKIE_SECURE"] = True
+# Piece 72: CSRF protection (Flask-WTF) -- the app's biggest remaining
+# security gap once internet-facing, flagged but deliberately deferred in
+# Piece 69. WTF_CSRF_TIME_LIMIT defaults to 1 hour, which would silently
+# break the Work Bag's offline queue (Piece 26) -- a crew can go hours
+# without signal before flushing queued submissions -- so it's tied to
+# the session's own 12-hour lifetime instead, matching that existing
+# design intent rather than Flask-WTF's shorter default.
+app.config["WTF_CSRF_TIME_LIMIT"] = None
+csrf = CSRFProtect(app)
 # Piece 24.7 / 24.8: a sign-in lasts at most this many hours of INACTIVITY — the
 # window slides forward on every request, so an active user stays signed in and
 # an idle one is dropped 12 hours after their last activity. The cookie also

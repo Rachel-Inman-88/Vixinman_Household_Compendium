@@ -11,6 +11,7 @@
      style="cursor:pointer; text-decoration:none; font-size:0.9rem;"
      onclick="var w=this.closest('.stage-editor'); w.querySelector('.stage-label').style.display='none'; this.style.display='none'; w.querySelector('form').style.display='inline-flex';">✎</a>
   <form method="post" action="{{ url_for('set_project_status', project_id=project['id']) }}" style="display:none; margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="status" onchange="this.form.submit()" style="padding:0.25rem;">
       {% for s in job_statuses if s != 'Abandoned' %}
       <option value="{{ s }}" {% if (project["status"] or "Planning") == s %}selected{% endif %}>{{ s }}</option>
@@ -41,6 +42,7 @@
     {% if can('projects.manage') %}
     <form method="post" action="{{ url_for('reopen_project', project_id=project['id']) }}" style="margin:0;"
           onsubmit="return confirm('Reopen this project? Its tasks will show again.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn">↩ Reopen project</button>
     </form>
     {% endif %}
@@ -72,6 +74,7 @@
     {% endif %}
     <form method="post" action="{{ url_for('set_install_date', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <span class="muted" style="font-size:0.82rem;">📅 Target/completion date</span>
       <input type="date" name="install_date" value="{{ project['install_date'] or '' }}" style="padding:0.2rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button>
@@ -79,6 +82,7 @@
     {% if stage.next %}
     <form method="post" action="{{ url_for('set_project_status', project_id=project['id']) }}" style="margin:0 0 0 auto;"
           {% if not stage.ready %}onsubmit="return confirm('This stage isn’t complete ({{ stage.pending|join(', ') }}). Advance to {{ stage.next }} anyway?');"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="status" value="{{ stage.next }}">
       <button type="submit" class="btn {{ '' if stage.ready else 'btn-secondary' }}"
               style="padding:0.35rem 0.8rem;"
@@ -104,6 +108,7 @@
   <form method="post" action="{{ url_for('cancel_project', project_id=project['id']) }}"
         onsubmit="return confirm('Cancel this project (mark it Abandoned)?');"
         style="margin:0; display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field" style="margin:0; flex:1; min-width:16rem;">
       <label style="font-size:0.85rem;">Reason (required, logged)</label>
       <input name="reason" required placeholder="e.g. customer went with another installer">
@@ -137,6 +142,7 @@
     <dd>
       {% if can('projects.manage') %}
       <form method="post" action="{{ url_for('set_project_owner', project_id=project['id']) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="owner_id" onchange="this.form.submit()" style="padding:0.2rem;">
           <option value="" {% if not project["owner_id"] %}selected{% endif %}>— No owner —</option>
           {% for e in employees %}
@@ -297,6 +303,7 @@
             {% if can('delete') %}
             <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
                   onsubmit="return confirm('Send this document to the trash?');" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
             </form>
             {% endif %}
@@ -304,6 +311,7 @@
             {% set rfmts = formats_by_label.get(r["label"]) %}
             <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
                   style="display:flex; gap:0.3rem; align-items:center; margin:0; flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="rule_label" value="{{ r['label'] }}">
               <input type="file" name="document" required style="font-size:0.78rem; max-width:12rem;"
                      {% if rfmts %}accept="{% for e in rfmts %}.{{ e }}{% if not loop.last %},{% endif %}{% endfor %}"{% endif %}>
@@ -378,6 +386,7 @@
         <td><input form="{{ mf }}" name="supplier" value="{{ m['supplier'] }}" style="padding:0.2rem; width:100%;"></td>
         <td>
           <form method="post" action="{{ url_for('update_material_status', project_id=project['id'], material_id=m['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
               {% for s in material_statuses %}
               <option value="{{ s }}" {% if m["status"] == s %}selected{% endif %}>{{ s }}</option>
@@ -388,11 +397,13 @@
         <td><input form="{{ mf }}" name="notes" value="{{ m['notes'] }}" style="padding:0.2rem; width:100%;"></td>
         <td style="white-space:nowrap;">
           <form id="{{ mf }}" method="post" action="{{ url_for('edit_material', project_id=project['id'], material_id=m['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save changes to this row">Save</button>
           </form>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_material', project_id=project['id'], material_id=m['id']) }}"
                 onsubmit="return confirm('Send this material to the trash?');" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -405,6 +416,7 @@
   <p class="empty">No materials listed yet.</p>
   {% endif %}
   <form method="post" action="{{ url_for('add_material', project_id=project['id']) }}" style="margin-top:0.8rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field"><label>Item *</label><input name="item" required placeholder="e.g. 400W panels"></div>
       <div class="field"><label>Quantity</label><input name="quantity" placeholder="20"></div>
@@ -443,6 +455,7 @@
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
                 onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.2rem;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
           </form>
           {% endif %}
@@ -452,6 +465,7 @@
       {% set fmts = formats_by_label.get(label) %}
       <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
             style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="rule_label" value="{{ label }}">
         <input type="file" name="document" required style="font-size:0.8rem; max-width:15rem;"
                {% if fmts %}accept="{% for e in fmts %}.{{ e }}{% if not loop.last %},{% endif %}{% endfor %}"{% endif %}>
@@ -475,6 +489,7 @@
         {% if can('delete') %}
         <form method="post" action="{{ url_for('delete_file', project_id=project['id'], file_id=f['id']) }}"
               onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
         </form>
         {% endif %}
@@ -484,6 +499,7 @@
     {% endif %}
     <form method="post" action="{{ url_for('upload_file', project_id=project['id']) }}" enctype="multipart/form-data"
           style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="rule_label" value="">
       <label style="font-size:0.85rem; margin:0;">Anything else:</label>
       <input type="file" name="document" required style="font-size:0.8rem; max-width:16rem;">
@@ -512,6 +528,7 @@
         <td><input form="{{ tf }}" name="title" value="{{ t['title'] }}" required style="padding:0.2rem; width:100%; min-width:12rem;"></td>
         <td>
           <form method="post" action="{{ url_for('toggle_task_flag', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn {{ '' if t['flagged_in_plan'] == '1' else 'btn-secondary' }}"
                     style="padding:0.15rem 0.4rem; font-size:0.85rem;"
                     title="{{ 'Discussed in the 🧠 Plan tab — click to clear' if t['flagged_in_plan'] == '1' else 'Not flagged' }}">🚩</button>
@@ -519,6 +536,7 @@
         </td>
         <td>
           <form method="post" action="{{ url_for('set_task_assignee', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="household_member_id" onchange="this.form.submit()" style="padding:0.2rem;">
               <option value="" {% if not t["household_member_id"] %}selected{% endif %}>— Unassigned —</option>
               {% for e in employees %}
@@ -530,6 +548,7 @@
         <td>
           <form method="post" action="{{ url_for('set_task_due', project_id=project['id'], task_id=t['id']) }}"
                 style="margin:0; display:flex; gap:0.3rem; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="date" name="due_date" value="{{ t['due_date'] }}"
                    onchange="this.form.submit()" style="padding:0.15rem;">
             {% if overdue %}<span class="badge danger">overdue</span>{% endif %}
@@ -537,6 +556,7 @@
         </td>
         <td>
           <form method="post" action="{{ url_for('set_task_status', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
               {% for s in task_statuses %}
               <option value="{{ s }}" {% if t["status"] == s %}selected{% endif %}>{{ s }}</option>
@@ -546,6 +566,7 @@
         </td>
         <td>
           <form method="post" action="{{ url_for('set_task_section', project_id=project['id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="section_id" onchange="this.form.submit()" style="padding:0.2rem;">
               <option value="" {% if not t["section_id"] %}selected{% endif %}>— Ungrouped —</option>
               {% for s in sections %}
@@ -557,11 +578,13 @@
         <td><input form="{{ tf }}" name="notes" value="{{ t['notes'] }}" style="padding:0.2rem; width:100%; min-width:8rem;"></td>
         <td style="white-space:nowrap;">
           <form id="{{ tf }}" method="post" action="{{ url_for('edit_task', project_id=project['id'], task_id=t['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save the task name/notes">Save</button>
           </form>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_task', project_id=project['id'], task_id=t['id']) }}"
                 onsubmit="return confirm('Send this task to the trash?');" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -588,12 +611,14 @@
       <span class="sect-count">{{ grp.tasks|length }}</span>
       <span style="margin-left:auto; display:flex; gap:0.3rem; align-items:center;" onclick="event.stopPropagation()">
         <form method="post" action="{{ url_for('edit_section', project_id=project['id'], section_id=grp.section['id']) }}" style="display:flex; gap:0.3rem; margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input name="title" value="{{ grp.section['title'] }}" style="padding:0.15rem; font-size:0.8rem; width:10rem;">
           <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">Rename</button>
         </form>
         {% if can('delete') %}
         <form method="post" action="{{ url_for('delete_section', project_id=project['id'], section_id=grp.section['id']) }}"
               onsubmit="return confirm('Delete this section? Its tasks stay, just ungrouped.');" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
         </form>
         {% endif %}
@@ -610,11 +635,13 @@
 
   <form method="post" action="{{ url_for('add_section', project_id=project['id']) }}"
         style="margin-bottom:0.9rem; display:flex; gap:0.4rem; align-items:flex-end; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field"><label>New section</label><input name="title" placeholder="e.g. Tow old tractor" required></div>
     <button type="submit" class="btn btn-secondary">＋ Add section</button>
   </form>
 
   <form method="post" action="{{ url_for('add_task', project_id=project['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Task *</label><input name="title" required placeholder="e.g. Pull electrical permit"></div>
       <div class="field">
@@ -655,6 +682,7 @@
     <h2 style="margin:0; font-size:1.1rem;">💵 Billing</h2>
     <form method="post" action="{{ url_for('set_contract', project_id=project['id']) }}"
           style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label style="margin:0; font-size:0.85rem; color:var(--muted);">Contract total $</label>
       <input name="contract_amount" type="number" step="0.01" min="0"
              value="{{ '%.2f'|format(billing.contract) if billing.contract else '' }}"
@@ -696,6 +724,7 @@
         <td style="text-align:right; font-weight:600;">${{ (t["amount"] or 0)|money }}</td>
         <td>
           <form method="post" action="{{ url_for('toggle_transaction_paid', project_id=project['id'], txn_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;"
                     title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
           </form>
@@ -703,6 +732,7 @@
         <td>
           <form method="post" action="{{ url_for('delete_transaction', project_id=project['id'], txn_id=t['id']) }}"
                 onsubmit="return confirm('Delete this transaction?');" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>
         </td>
@@ -717,6 +747,7 @@
 
   <form method="post" action="{{ url_for('add_transaction', project_id=project['id']) }}"
         enctype="multipart/form-data" style="margin-top:0.9rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field">
         <label>Document</label>
@@ -873,7 +904,8 @@
       data.append("pipeline_status", pipelineStatus);
       if (sectionId) data.append("section_id", String(sectionId));
       fetch(addTaskUrl, {
-        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded",
+                                    "X-CSRFToken": window.CSRF_TOKEN },
         body: data.toString()
       }).then(function () { b.textContent = "Added ✓"; })
         .catch(function () { b.disabled = false; b.textContent = "➕ Add: " + title; });
@@ -889,7 +921,8 @@
     b.addEventListener("click", function () {
       b.disabled = true; b.textContent = "Flagging…";
       fetch("/projects/" + projectId + "/tasks/" + id + "/flag", {
-        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded",
+                                    "X-CSRFToken": window.CSRF_TOKEN },
         body: ""
       }).then(function () { b.textContent = "🚩 Flagged ✓"; })
         .catch(function () { b.disabled = false; b.textContent = "🚩 Flag: " + title; });
@@ -919,7 +952,8 @@
       data.append("title", sec.title);
       creating = fetch(sectionNewUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
+                   "X-CSRFToken": window.CSRF_TOKEN },
         body: data.toString()
       }).then(function (r) { return r.json(); }).then(function (d) {
         sectionId = d.id;
@@ -961,7 +995,8 @@
           data.append("pipeline_status", pipelineStatus);
           data.append("section_id", String(sid));
           return fetch(addTaskUrl, {
-            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded",
+                                        "X-CSRFToken": window.CSRF_TOKEN },
             body: data.toString()
           });
         }).then(function () { addBtn.textContent = "Added ✓"; })
@@ -990,7 +1025,8 @@
       data.append("project_id", String(projectId));
       data.append("note", text);
       fetch(addNoteUrl, {
-        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded",
+                                    "X-CSRFToken": window.CSRF_TOKEN },
         body: data.toString()
       }).then(function () { saveBtn.textContent = "Saved ✓"; })
         .catch(function () { saveBtn.disabled = false; saveBtn.textContent = "💾 Save as project note"; });
@@ -1085,7 +1121,8 @@
     if (retryMessageId) data.append("retry_of", String(retryMessageId));
     fetch(askUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
+                 "X-CSRFToken": window.CSRF_TOKEN },
       body: data.toString()
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {

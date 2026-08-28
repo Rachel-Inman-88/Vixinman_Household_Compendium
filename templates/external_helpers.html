@@ -42,6 +42,7 @@ subscription service, a co-op, or a utility. Each can have appointments linked t
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_external_helper', helper_id=h['id']) }}"
                 onsubmit="return confirm('Send this contact to the trash?');" style="margin:0; display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -60,6 +61,7 @@ subscription service, a co-op, or a utility. Each can have appointments linked t
   {% set eh = edit_helper %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit contact" if eh else "＋ New contact" }}</h2>
   <form method="post" action="{{ url_for('edit_external_helper', helper_id=eh['id']) if eh else url_for('new_external_helper') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field"><label for="kind">Type</label>
         <select id="kind" name="kind">

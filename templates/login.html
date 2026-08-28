@@ -4,6 +4,7 @@
 <div style="max-width:380px; margin:2rem auto;">
   <h1 style="text-align:center;">🦊 Sign in to Compendium</h1>
   <form method="post" action="{{ url_for('login') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <div class="field" style="margin-bottom:0.8rem;">
       <label for="username">Username</label>

@@ -8,6 +8,7 @@
 
 <div class="card">
   <form method="post" action="{{ url_for('inventory_tool_edit', tool_id=tool['id']) if tool else url_for('inventory_tool_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Tool name *</label><input name="name" required value="{{ tool['name'] if tool else '' }}" placeholder="e.g. Cordless drill/driver"></div>
       <div class="field"><label>Category</label><input name="category" value="{{ tool['category'] if tool else '' }}" list="tool-cat-list" placeholder="e.g. Power tools"></div>
@@ -32,6 +33,7 @@
 <div class="card">
   <form method="post" action="{{ url_for('inventory_tool_delete', tool_id=tool['id']) }}"
         onsubmit="return confirm('Move this tool to the trash?');" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-secondary" style="color:#b02a2a !important; border-color:#b02a2a;">🗑 Move to trash</button>
   </form>
 </div>

@@ -4,6 +4,7 @@
 <div style="max-width:380px; margin:2rem auto;">
   <h1 style="text-align:center;">🔑 Reset your password</h1>
   <form method="post" action="{{ url_for('forgot_password') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="muted" style="margin-top:0; font-size:0.9rem;">Enter your username.
       If you've set up security questions, we'll ask them next so you can choose
       a new password yourself.</p>

@@ -31,6 +31,7 @@
     (requested {{ pending["requested_at"][:16] }}). It takes effect once an
     admin approves it.
     <form method="post" action="{{ url_for('cancel_password_change') }}" style="display:inline; margin-left:0.5rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.8rem;">Cancel request</button>
     </form>
   </div>
@@ -39,6 +40,7 @@
   approved by an admin before it takes effect. Submitting a new one replaces any
   request still waiting.</p>
   <form method="post" action="{{ url_for('request_password_change') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field">
         <label for="current_password">Current password</label>
@@ -73,6 +75,7 @@
     (type them exactly as you do here, capitals and spaces included).
     {% if enrolled %}<br><strong>You're set up.</strong> Re-saving replaces your current questions.{% endif %}</p>
   <form method="post" action="{{ url_for('save_security_questions') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for i in range(questions_required) %}
     <div class="form-grid" style="align-items:end;">
       <div class="field wide">

@@ -50,6 +50,7 @@ Assign one to a teammate, log time on it, and keep a running notes log.</p>
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">＋ New board</h2>
   <form method="post" action="{{ url_for('board_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="title">To-do *</label>
         <input id="title" name="title" required placeholder="e.g. Clean the shop bathroom"></div>

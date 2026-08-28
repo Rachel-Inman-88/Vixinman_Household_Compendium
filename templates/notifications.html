@@ -6,6 +6,7 @@
   {% if items %}
   <form method="post" action="{{ url_for('notifications_clear_all') }}" style="margin:0;"
         onsubmit="return confirm('Clear all your notifications?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-secondary">Clear all</button>
   </form>
   {% endif %}

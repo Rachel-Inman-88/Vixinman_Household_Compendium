@@ -25,9 +25,11 @@ whoever proposed it; <strong>discarding</strong> throws it away — nothing chan
   {% if r["status"] == "Pending" %}
   <div class="actions">
     <form method="post" action="{{ url_for('approve_draft', draft_id=r['id']) }}" style="display:inline; margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn">✓ Approve</button>
     </form>
     <form method="post" action="{{ url_for('discard_draft', draft_id=r['id']) }}" style="display:inline; margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary"
         onclick="return confirm('Discard this draft?{{ ' Its attached file will be deleted.' if d.has_file else '' }}');">✕ Discard</button>
     </form>

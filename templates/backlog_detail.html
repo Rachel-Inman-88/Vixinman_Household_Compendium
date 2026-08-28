@@ -9,11 +9,13 @@
     <span class="badge {{ sc.get(idea['status'],'neutral') }}" style="vertical-align:middle;">{{ idea["status"] }}</span></h1>
   {% if idea["status"] == "Backlog" %}
   <form method="post" action="{{ url_for('backlog_status', idea_id=idea['id']) }}" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="status" value="Abandoned">
     <button type="submit" class="btn btn-secondary" onclick="return confirm('Mark this idea abandoned?');">Mark abandoned</button>
   </form>
   {% elif idea["status"] == "Abandoned" %}
   <form method="post" action="{{ url_for('backlog_status', idea_id=idea['id']) }}" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="status" value="Backlog">
     <button type="submit" class="btn btn-secondary">Move back to backlog</button>
   </form>
@@ -31,6 +33,7 @@
   project form that follows.</p>
   <form method="post" action="{{ url_for('backlog_start', idea_id=idea['id']) }}"
         onsubmit="return confirm('Start this as a project?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn">🚀 Start as a project</button>
   </form>
 </div>
@@ -44,6 +47,7 @@
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">✎ Details</h2>
   <form method="post" action="{{ url_for('backlog_edit', idea_id=idea['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Idea *</label><input name="name" required value="{{ idea['name'] }}"></div>
       <div class="field"><label>Proposed by</label>

@@ -191,6 +191,7 @@
           {% if item.overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
           <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ a["when_date"] }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}</span>
           <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
           </form>
         </li>
@@ -211,6 +212,7 @@
           {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
           <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ c["next_due"] or "—" }}</span>
           <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
           </form>
         </li>
@@ -391,6 +393,7 @@
         {% if user %}
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('work_bag_toggle', project_id=j['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn {{ '' if j['id'] in my_bag_project_ids else 'btn-secondary' }}"
                     style="padding:0.2rem 0.5rem; font-size:0.78rem;"
                     title="{{ 'Remove from your Work Bag' if j['id'] in my_bag_project_ids else 'Add to your Work Bag' }}">
@@ -398,6 +401,7 @@
             </button>
           </form>
           <form method="post" action="{{ url_for('work_bag_load_tasks', project_id=j['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
                     title="Add to your bag and claim its unassigned tasks">⬇ Load tasks</button>
           </form>
@@ -432,6 +436,7 @@
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('backlog_start', idea_id=i['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Start this as a project?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">🚀 Start</button>
           </form>
         </td>
@@ -462,6 +467,7 @@
         <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
         <td>
           <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
           </form>
         </td>

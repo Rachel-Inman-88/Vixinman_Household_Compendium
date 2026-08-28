@@ -7,6 +7,7 @@
   <h1 style="margin:0;">📋 {{ board["title"] }}
     {% if board["priority"] == "High" %}<span class="badge danger" style="vertical-align:middle;">High</span>{% elif board["priority"] %}<span class="badge neutral" style="vertical-align:middle;">{{ board["priority"] }}</span>{% endif %}</h1>
   <form method="post" action="{{ url_for('board_status', board_id=board['id']) }}" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
     <select name="status" onchange="this.form.submit()" style="padding:0.3rem;">
       {% for s in task_statuses %}<option value="{{ s }}" {% if board["status"] == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
@@ -25,6 +26,7 @@
     <h2 style="margin-top:0; font-size:1.05rem;">👤 Assigned to</h2>
     <form method="post" action="{{ url_for('board_assign', board_id=board['id']) }}"
           style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field" style="margin:0; flex:1; min-width:12rem;">
         <label>Send this to-do to</label>
         <select name="assigned_to">
@@ -46,6 +48,7 @@
       <li style="display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0; border-bottom:1px solid var(--border);">
         <span>{{ c["name"] }}</span>
         <form method="post" action="{{ url_for('board_collaborator_remove', board_id=board['id'], collab_id=c['id']) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
         </form>
       </li>
@@ -56,6 +59,7 @@
     {% endif %}
     <form method="post" action="{{ url_for('board_collaborator_add', board_id=board['id']) }}"
           style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field" style="margin:0; flex:1; min-width:10rem;">
         <label>Add a collaborator</label>
         <select name="household_member_id">
@@ -73,6 +77,7 @@
     <h2 style="margin-top:0; font-size:1.05rem;">⏱ Time <span class="muted" style="font-weight:400; font-size:0.9rem;">— {{ '%g'|format(total_hours) }} h total</span></h2>
     <form method="post" action="{{ url_for('board_time_add', board_id=board['id']) }}"
           style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field" style="margin:0;"><label>Hours</label>
         <input name="hours" type="number" step="0.25" min="0" required style="max-width:6rem;"></div>
       <div class="field" style="margin:0;"><label>Date</label>
@@ -99,6 +104,7 @@
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">✎ Details</h2>
   <form method="post" action="{{ url_for('board_edit', board_id=board['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Title *</label><input name="title" required value="{{ board['title'] }}"></div>
       <div class="field"><label>Priority</label>
@@ -120,6 +126,7 @@
   <h2 style="margin-top:0; font-size:1.05rem;">📝 Notes</h2>
   <form method="post" action="{{ url_for('board_note', board_id=board['id']) }}"
         style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap; margin-bottom:0.6rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field" style="margin:0; flex:1; min-width:14rem;"><label>Add a note / update</label>
       <input name="note" required placeholder="progress, blockers, follow-ups…"></div>
     <button type="submit" class="btn">Add note</button>

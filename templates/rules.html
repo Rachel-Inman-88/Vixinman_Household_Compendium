@@ -26,6 +26,7 @@ To look up what applies to a given project type instead of editing, use the read
 {% set er_standalone = er and not er['field_name'] %}
 <form method="post" id="rule-form"
       action="{{ url_for('update_rule', rule_id=er['id']) if er else url_for('add_rule') }}" class="card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
   <h2 style="margin-top:0; font-size:1.05rem;">{{ "Edit rule" if er else "Add a rule" }}</h2>
   <label class="check" style="margin-bottom:0.6rem;">
@@ -224,6 +225,7 @@ To look up what applies to a given project type instead of editing, use the read
         <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
           </form>
           {% if can('rules.manage') %}
@@ -233,6 +235,7 @@ To look up what applies to a given project type instead of editing, use the read
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
                 onsubmit="return confirm('Send this requirement to the trash?');" style="margin:0; display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -288,6 +291,7 @@ To look up what applies to a given project type instead of editing, use the read
             {% if can('delete') %}
             <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
                   onsubmit="return confirm('Send this rule to the trash?');" style="margin:0; display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
               <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
             </form>

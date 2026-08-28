@@ -4,6 +4,7 @@
 <div style="max-width:420px; margin:2rem auto;">
   <h1 style="text-align:center;">🔑 Verify it's you</h1>
   <form method="post" action="{{ url_for('forgot_password_verify') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="muted" style="margin-top:0; font-size:0.9rem;">Answer the security
       questions below, then set a new password. Answers are
       <strong>case-sensitive</strong> — type them exactly as you saved them.</p>

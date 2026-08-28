@@ -21,6 +21,7 @@ warranties, general correspondence. Kept separate from each project's own requir
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_household_file', file_id=f['id']) }}"
                 onsubmit="return confirm('Send this document to the trash?');" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -34,6 +35,7 @@ warranties, general correspondence. Kept separate from each project's own requir
   {% endif %}
   <form method="post" action="{{ url_for('upload_household_file') }}"
         enctype="multipart/form-data" style="margin-top:0.8rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field">
         <label>File * <span class="muted">(pdf, images, office docs — max 25 MB)</span></label>

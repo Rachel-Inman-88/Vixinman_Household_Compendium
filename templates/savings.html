@@ -36,6 +36,7 @@
           {% if can('delete') %}
           <form method="post" action="{{ url_for('savings_account_delete', account_id=a.row['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Send this savings account to the trash?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -54,6 +55,7 @@
   {% set ea = edit_account %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit savings account" if ea else "＋ New savings account" }}</h2>
   <form method="post" action="{{ url_for('savings_account_edit', account_id=ea['id']) if ea else url_for('savings_account_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="name">Name *</label>
         <input id="name" name="name" required value="{{ ea['name'] if ea else '' }}" placeholder="e.g. Emergency fund, Vacation fund"></div>

@@ -135,7 +135,8 @@
     data.append("provider", provider);
     fetch("{{ url_for('assistant_ask') }}", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
+                 "X-CSRFToken": window.CSRF_TOKEN },
       body: data.toString()
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {

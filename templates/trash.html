@@ -24,11 +24,13 @@ the trash.</p>
       <td class="muted" style="font-size:0.85rem;">{{ r["deleted_at"][:16] }}{% if r["deleted_by"] %}<br>by {{ r["deleted_by"] }}{% endif %}</td>
       <td style="white-space:nowrap;">
         <form method="post" action="{{ url_for('restore_trash', trash_id=r['id']) }}" style="display:inline; margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">↩ Restore</button>
         </form>
         {% if is_admin %}
         <form method="post" action="{{ url_for('purge_trash', trash_id=r['id']) }}" style="display:inline; margin:0;"
               onsubmit="return confirm('Permanently delete this item? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">🗑 Delete permanently</button>
         </form>
         {% endif %}

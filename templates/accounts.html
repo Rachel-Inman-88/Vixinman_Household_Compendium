@@ -47,10 +47,12 @@ does everyday work unless individually granted more on the
         <td>
           <div style="display:flex; gap:0.4rem;">
             <form method="post" action="{{ url_for('approve_password_change', req_id=r['id']) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Approve</button>
             </form>
             <form method="post" action="{{ url_for('reject_password_change', req_id=r['id']) }}" style="margin:0;"
                   onsubmit="return confirm('Reject this password change?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Reject</button>
             </form>
           </div>

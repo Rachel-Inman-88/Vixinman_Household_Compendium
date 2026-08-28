@@ -8,6 +8,7 @@
 
 <div class="card">
   <form method="post" action="{{ url_for('inventory_vehicle_edit', vehicle_id=vehicle['id']) if vehicle else url_for('inventory_vehicle_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Vehicle name *</label><input name="name" required value="{{ vehicle['name'] if vehicle else '' }}" placeholder="e.g. Family car, Pickup truck"></div>
       <div class="field"><label>Nickname</label><input name="nickname" value="{{ vehicle['nickname'] if vehicle else '' }}" placeholder="e.g. Big Blue"></div>
@@ -34,6 +35,7 @@
 <div class="card">
   <form method="post" action="{{ url_for('inventory_vehicle_delete', vehicle_id=vehicle['id']) }}"
         onsubmit="return confirm('Move this vehicle to the trash?');" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-secondary" style="color:#b02a2a !important; border-color:#b02a2a;">🗑 Move to trash</button>
   </form>
 </div>

@@ -46,10 +46,12 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
         <td style="white-space:nowrap;">
           {% if w["status"] == "Pending" and can('approvals') %}
           <form method="post" action="{{ url_for('wishlist_approve', item_id=w['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Approve</button>
           </form>
           <form method="post" action="{{ url_for('wishlist_reject', item_id=w['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Reject this wishlist item?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕ Reject</button>
           </form>
           {% endif %}
@@ -58,6 +60,7 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
           {% if can('delete') %}
           <form method="post" action="{{ url_for('wishlist_delete', item_id=w['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Send this wishlist item to the trash?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -77,6 +80,7 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
   {% set ew = edit_item %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit wishlist item" if ew else "＋ New wishlist item" }}</h2>
   <form method="post" action="{{ url_for('wishlist_edit', item_id=ew['id']) if ew else url_for('wishlist_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="title">Item *</label>
         <input id="title" name="title" required value="{{ ew['title'] if ew else (prefill['title'] if prefill else '') }}" placeholder="e.g. New bike helmet"></div>

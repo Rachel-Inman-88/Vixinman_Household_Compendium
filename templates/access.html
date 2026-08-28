@@ -23,6 +23,7 @@ check or uncheck anything here on top of that default, per person.</p>
   <p class="muted" style="margin:0;">Full access except Delete — nothing else to configure.</p>
   {% else %}
   <form method="post" action="{{ url_for('save_access', member_id=r.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="overflow-x:auto;">
     <table>
       <thead><tr><th>Tool / function</th><th>Granted</th></tr></thead>

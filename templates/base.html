@@ -428,6 +428,12 @@
       header > a[href="/"] { font-size: 1.05rem; }
     }
   </style>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    // Piece 72: every fetch()-based POST elsewhere in this app reads its
+    // CSRF token from here, rather than re-querying the DOM each time.
+    window.CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+  </script>
 </head>
 <body>
   <header>
@@ -511,6 +517,7 @@
        title="My account">
       {{ current_user["name"] }}{% if is_admin %} · admin{% endif %}</a>
     <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
     </form>
     </div>

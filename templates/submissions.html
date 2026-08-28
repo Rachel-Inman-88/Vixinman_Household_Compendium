@@ -53,6 +53,7 @@ rejecting discards it. Nothing here counts in the system until you approve it.</
     "confirm hours" total is what gets recorded.</p>
     <form method="post" action="{{ url_for('approve_submission', sub_id=s['id']) }}"
           style="margin-top:0.5rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field" style="max-width:12rem;">
         <label>Confirm hours</label>
         <input type="number" step="0.25" min="0" name="approved_hours"

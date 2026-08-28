@@ -9,6 +9,7 @@ recordkeeping.</p>
 <h1>Create a project</h1>
 {% endif %}
 <form method="post" class="card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="form-grid">
     <div class="field wide">
       <label for="job_name">Project name *</label>

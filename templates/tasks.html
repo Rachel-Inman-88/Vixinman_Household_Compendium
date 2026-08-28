@@ -59,6 +59,7 @@ to see just their work — the “my tasks” view for the whole team.
         <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue_t %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           <form method="post" action="{{ url_for('set_task_status', project_id=t['project_id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="next" value="{{ request.full_path }}">
             <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
               {% for s in task_statuses %}

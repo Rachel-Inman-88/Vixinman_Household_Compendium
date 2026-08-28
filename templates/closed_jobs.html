@@ -28,6 +28,7 @@ needed) and <strong>completed</strong> projects. Nothing here is deleted.</p>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('reopen_project', project_id=j['id']) }}" style="margin:0;"
                 onsubmit="return confirm('Reopen this project?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.8rem;">↩ Reopen</button>
           </form>
         </td>

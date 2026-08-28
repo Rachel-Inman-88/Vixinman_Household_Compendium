@@ -20,6 +20,7 @@
   <p class="muted" style="margin-top:0;">On a phone this opens the camera. You can pick several at once. They're saved to this project as you go.</p>
   <form method="post" action="{{ url_for('task_photos', task_id=task['id']) }}"
         enctype="multipart/form-data" id="photoform">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="photos" accept="image/*" capture="environment" multiple
            id="photoinput" style="display:block; margin-bottom:0.7rem;">
     <div class="actions"><button type="submit" class="btn">⬆ Upload photos</button></div>
@@ -43,6 +44,7 @@
         <span class="muted" style="font-size:0.72rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ p["original_name"] }}</span>
         <form method="post" action="{{ url_for('delete_task_photo', file_id=p['id']) }}"
               onsubmit="return confirm('Remove this photo?');" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;" title="Remove">✕</button>
         </form>
       </div>
@@ -59,6 +61,7 @@
   <p class="muted" style="margin-top:0;">Add any notes and the time it took, then submit —
   it's held for an admin to approve.</p>
   <form method="post" action="{{ url_for('complete_photo_task', task_id=task['id']) }}" id="completeform">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label>Notes</label><input name="notes" placeholder="anything the office should know"></div>
       <div class="field"><label>Work date</label><input type="date" name="work_date" value="{{ today }}"></div>

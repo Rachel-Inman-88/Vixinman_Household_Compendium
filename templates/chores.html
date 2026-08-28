@@ -32,6 +32,7 @@ recurrence interval, no need to re-add it.</p>
         <td class="muted">{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
           </form>
           <a href="{{ url_for('chores_page', who=who, edit=c['id']) }}#chore-form"
@@ -39,6 +40,7 @@ recurrence interval, no need to re-add it.</p>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('chore_delete', chore_id=c['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Send this chore to the trash?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -58,6 +60,7 @@ recurrence interval, no need to re-add it.</p>
   {% set ec = edit_chore %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit chore" if ec else "＋ New chore" }}</h2>
   <form method="post" action="{{ url_for('chore_edit', chore_id=ec['id']) if ec else url_for('chore_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="title">Chore *</label>
         <input id="title" name="title" required value="{{ ec['title'] if ec else '' }}" placeholder="e.g. Take out the trash"></div>

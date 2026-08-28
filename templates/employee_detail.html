@@ -101,6 +101,7 @@
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_credential', household_member_id=employee['id'], credential_id=r['id']) }}"
                 onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0; display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -118,6 +119,7 @@
   {% set ecr = edit_credential %}
   <form method="post" id="credential-form" style="margin-top:0.9rem;"
         action="{{ url_for('update_credential', household_member_id=employee['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', household_member_id=employee['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h3 style="margin:0 0 0.5rem; font-size:0.95rem;">{{ "Edit license / certification" if ecr else "Add a license / certification" }}</h3>
     <div class="form-grid">
       <div class="field wide">
@@ -173,6 +175,7 @@
       {% if can('delete') %}
       <form method="post" action="{{ url_for('delete_household_member_file', household_member_id=employee['id'], file_id=f['id']) }}"
             onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
       </form>
       {% endif %}
@@ -184,6 +187,7 @@
   {% endif %}
   {% if can('household.manage') %}
   <form method="post" action="{{ url_for('upload_household_member_file', household_member_id=employee['id']) }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field">
         <label>File * <span class="muted">(pdf, images, office docs — max 25 MB)</span></label>

@@ -43,6 +43,7 @@ A recurring one (a checkup, say) comes back due after its interval instead.</p>
         <td style="white-space:nowrap;">
           {% if not a["completed_at"] %}
           <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="display:inline; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
           </form>
           {% endif %}
@@ -51,6 +52,7 @@ A recurring one (a checkup, say) comes back due after its interval instead.</p>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('appointment_delete', appt_id=a['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Send this appointment to the trash?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -70,6 +72,7 @@ A recurring one (a checkup, say) comes back due after its interval instead.</p>
   {% set ea = edit_appt %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit appointment" if ea else "＋ New appointment" }}</h2>
   <form method="post" action="{{ url_for('appointment_edit', appt_id=ea['id']) if ea else url_for('appointment_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="title">Appointment *</label>
         <input id="title" name="title" required

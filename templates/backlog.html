@@ -43,6 +43,7 @@ start it as a real project when you're ready, or mark it abandoned if it's off t
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">＋ New idea</h2>
   <form method="post" action="{{ url_for('backlog_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field wide"><label for="name">Idea *</label>
         <input id="name" name="name" required placeholder="e.g. Repaint the bedroom"></div>

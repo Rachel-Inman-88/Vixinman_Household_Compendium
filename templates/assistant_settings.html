@@ -18,6 +18,7 @@
 </div>
 
 <form method="post" class="card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="field wide" style="max-width:26rem;">
     <label for="default_provider">Default provider</label>
     <select id="default_provider" name="default_provider">

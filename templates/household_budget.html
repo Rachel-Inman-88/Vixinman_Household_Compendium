@@ -127,6 +127,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
           {% if can('delete') %}
           <form method="post" action="{{ url_for('household_budget_delete', budget_id=b.id) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Delete this budget category?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -164,6 +165,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
         <td style="text-align:right; font-weight:600;">${{ (t["amount"])|money0 }}</td>
         <td>
           <form method="post" action="{{ url_for('household_txn_toggle_paid', txn_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;"
                     title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
           </form>
@@ -176,6 +178,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
           {% if can('delete') %}
           <form method="post" action="{{ url_for('household_txn_delete', txn_id=t['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Send this transaction to the trash?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -259,6 +262,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit transaction" if et else "＋ New transaction" }}</h2>
   <form method="post" action="{{ url_for('household_txn_edit', txn_id=et['id']) if et else url_for('household_txn_new') }}"
         enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field"><label for="kind">Kind</label>
         <select id="kind" name="kind">
@@ -313,6 +317,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   {% set eb = edit_budget %}
   <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit budget category" if eb else "＋ New budget category" }}</h2>
   <form method="post" action="{{ url_for('household_budget_edit', budget_id=eb['id']) if eb else url_for('household_budget_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field"><label for="budget_category">Category *</label>
         <input id="budget_category" name="category" list="budget_category_options" required

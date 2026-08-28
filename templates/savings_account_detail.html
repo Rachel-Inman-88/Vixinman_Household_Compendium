@@ -55,6 +55,7 @@
         <td>{% if e["statement_filename"] %}<a href="{{ url_for('download_savings_statement', entry_id=e['id']) }}" target="_blank" rel="noopener" title="Statement">📎</a>{% endif %}</td>
         <td>{% if can('delete') %}
           <form method="post" action="{{ url_for('savings_entry_delete', entry_id=e['id']) }}" onsubmit="return confirm('Send this entry to the trash?');" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>{% endif %}</td>
       </tr>
@@ -67,6 +68,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('savings_entry_new', account_id=account['id']) }}" enctype="multipart/form-data" style="margin-top:0.9rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field"><label for="kind">Type *</label>
         <select id="kind" name="kind"><option value="Deposit">Deposit</option><option value="Withdrawal">Withdrawal</option></select></div>

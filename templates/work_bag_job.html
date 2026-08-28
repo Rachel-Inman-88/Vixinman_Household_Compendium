@@ -52,6 +52,7 @@ device, so it keeps working offline.</p>
   <p class="muted" style="margin-top:0;">Snap a photo of the receipt and log the
   details — it's filed on this project and recorded as a paid expense for bookkeeping.</p>
   <form method="post" action="{{ url_for('add_receipt') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field wide">
@@ -99,6 +100,7 @@ device, so it keeps working offline.</p>
   this project — access details, a change on site, a callback needed. Each note is
   stamped with the time and your name.</p>
   <form method="post" action="{{ url_for('add_project_note') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="project_id" value="{{ project['id'] }}">
     <div class="form-grid">
       <div class="field wide"><label>Note *</label>
@@ -120,6 +122,7 @@ device, so it keeps working offline.</p>
         <td>
           <form method="post" action="{{ url_for('delete_project_note', note_id=n['id']) }}" style="margin:0;"
                 onsubmit="return confirm('Remove this note?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="project_id" value="{{ project['id'] }}">
             <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
           </form>
@@ -426,7 +429,7 @@ device, so it keeps working offline.</p>
     const totalHours = changes.reduce((a, ch) => a + (Number(ch.hours) || 0), 0);
     try {
       const r = await fetch("/api/work-bag/submit", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-CSRFToken": window.CSRF_TOKEN },
         body: JSON.stringify({ changes: changes, reported_hours: totalHours || null }) });
       if (r.status === 401) { msg("Please sign in to submit.", "error"); return; }
       const data = await r.json();
