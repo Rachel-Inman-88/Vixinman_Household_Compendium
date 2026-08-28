@@ -2168,14 +2168,87 @@ new post-Piece-71 branching rule.
   `deploy/production-hosting-security` were already identical (Piece
   71's unification), fast-forwarded the deploy branch to match rather
   than a real merge. Deployed to the live VPS and verified there too.
+  **`main` and `deploy/production-hosting-security` are still identical
+  after this piece** (both fast-forwarded together) — the "main is
+  missing Pieces 69-70" asymmetry noted after Piece 71 no longer applies.
+
+**Piece 73 (v0.50): removed the legacy "Contract" concept — done.** User:
+"let's check the legacy 'Contract' field cleanup and then move onto UI."
+Investigated fresh rather than trusting the old Piece 54 inventory as
+still-current: re-grepped every touchpoint, re-read `project_billing()`'s
+actual current code, and — critically — **queried the real household
+database before recommending anything**: all 7 real projects had
+`contract_amount` blank, and zero Income transactions had ever been
+logged. That's concrete proof, not inference, that the concept was never
+used once. Confirmed with the user to remove it outright rather than
+rename it, then scoped and built via Plan Mode given the real multi-file
+size (comparable to Piece 41's de-solarize work).
+- **What actually fed what, worth remembering**: `project_billing()`'s
+  `collected`/`outstanding`/`expense`/`net` were already computed
+  entirely from the real `project_transactions` ledger — `contract_amount`
+  only ever fed one derived figure, `uninvoiced` (contract minus
+  invoiced), which was therefore mathematically guaranteed to always be
+  `$0` given contract was always 0. Removing it left every other billing
+  figure completely intact and correct.
+- **A real bug caught by re-reading `init_db()` closely, not assumed
+  away**: `ensure_columns(db, "projects", ["contract_amount"])` ran
+  *earlier* in `init_db()` than the new drop-column migration. Left
+  as-is, this would have silently re-added the column on every
+  subsequent server restart after the first (`ensure_columns` doesn't
+  know about the later meta-guard), completely undoing the removal one
+  restart after it shipped. Caught during implementation, not after —
+  removed the stale `ensure_columns` call outright.
+- **Also removed, since they only ever existed to support Contract**:
+  the dedicated `set_contract` route (with its own `_capture_contract`/
+  `_apply_set_contract`/`DRAFT_KINDS` entry — the request would have
+  404'd harmlessly if left, but leaving a route with nothing behind it
+  is its own kind of clutter), the "Money in projects" dashboard/Money-
+  page tile (removed outright rather than repurposed from
+  `estimated_cost`, since that would have just duplicated the existing
+  "Anticipated spending" tile's own estimate half), and the Wrap-up
+  worklist's "balance due" column (`_closing_worklist`) — which, doing
+  the math, had never once shown a nonzero figure for any real project
+  either, for the identical reason `uninvoiced` never had.
+- **Explicitly found and deliberately deferred, not touched this
+  piece**: `TITLE_STATUS_KEYWORDS`/`_status_from_title`/
+  `tag_tasks_by_stage` — a much larger, separate solar-installation-
+  jargon artifact ("meter set", "doc tube", "interconnection", milestone
+  percentages) that happens to include the word "contract" as one of
+  ~30 keywords, built for auto-tagging tasks the BPMN engine (removed
+  Piece 40) used to generate. Its own one-time migration guard suggests
+  it's already fully inert on the real database. Also left untouched:
+  `project_transactions.contract_snapshot` and its sibling invoice-
+  generation columns (Piece 27.3) and the "Signed Contract" document-
+  upload-slot category (`project_detail.html`'s Documents tab) — both
+  genuinely different "contract" concepts (a generated-invoice snapshot;
+  a document category) than the dollar-figure field this piece removed,
+  out of scope for this specific cleanup.
+- Verified via: a fresh-DB boot confirming the column never gets
+  created; a full Jinja parse sweep; a dedicated test-client script
+  (Billing tab renders with none of the removed elements while
+  Collected/Expenses stay correct; the Money page and dashboard render
+  with no "Money in projects" tile; Closed Projects renders with no
+  Contract column; the old `/projects/<id>/contract` route now 404s;
+  the AI assistant's `find_projects`/`project_details` tools no longer
+  mention contract at all); regression re-runs of the money-adjacent
+  Piece 60/62/63 suites (`piece62_money_test.py` updated to match the
+  new shape) plus Piece 69/71/72's suites, all unchanged; the standard
+  46-route sweep; and a migration test against a **copy** of the real
+  household database — confirmed the column actually drops and all 7
+  real projects survive with every other field intact.
+- Also swept a stale build-history claim discovered along the way:
+  README's own "Finance & billing" and "💬 AI Assistant" sections still
+  described Contract as a current feature (not just historical build-
+  history entries, which stay untouched by this project's own
+  convention) — updated both, and caught an unrelated pre-existing
+  staleness in the same paragraph (a "find projects by
+  stage/county/overdue/contract" line still mentioning `county`, a
+  filter removed back in Piece 41) while already there.
+- Merged `feature/remove-contract-field` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
 
 **NOT done yet:**
-- **`main` still doesn't have Pieces 69-70** (hosting/security
-  scaffolding, the LAN backup pull) — Piece 71 merged
-  `feature/plan-tab-and-task-sections` into both `main` and
-  `deploy/production-hosting-security`, but only the latter branch has
-  everything. Fully unifying every branch into `main` is a distinct,
-  not-yet-requested future step, not something to do proactively.
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
   no sample export on hand yet. Bank: **Navy Federal Credit Union**.
@@ -2193,12 +2266,18 @@ new post-Piece-71 branching rule.
   name; the user's own "among others" phrasing implied more might be
   wanted — nothing further has been specified. Ask before assuming what's
   still missing.
-- **The "Contract" legacy-code extraction**, flagged by the user (see the
-  Piece 54 entry above for the full inventory) — `contract_amount`/
-  `set_contract`/the Billing tab's Contract tile are a leftover from this
-  app's original solar-installation-business origins and don't really fit a
-  household project. Not touched yet by design; a future piece should
-  reconsider/rename/replace it using the inventory already gathered.
+- **Two more solar-jargon legacy artifacts, found during Piece 73 but
+  explicitly out of its scope**: (1) `TITLE_STATUS_KEYWORDS`/
+  `_status_from_title`/`tag_tasks_by_stage` (`app.py`) — ~30 solar-
+  installation keywords ("meter set", "doc tube", "interconnection",
+  milestone percentages) for auto-tagging tasks the BPMN engine (removed
+  Piece 40) used to generate; its own one-time migration guard suggests
+  it's already fully inert on the real database, worth confirming before
+  a future cleanup piece. (2) `project_transactions.contract_snapshot`
+  and its Piece 27.3 sibling invoice-generation columns, plus the
+  "Signed Contract" document-upload-slot category — both a genuinely
+  different "contract" concept (a generated-invoice snapshot; a document
+  category) than the dollar-figure field Piece 73 removed.
 - **Pixel 9a beta-test readiness** — (2) of the 3 original blockers is
   done (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`). Still
   open: (1) a mobile-responsive UI pass — this app has never had a real

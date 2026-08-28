@@ -160,8 +160,8 @@ stay available as a backup even once a VPS is running.
   stage and its tasks. ("Abandoned" is removed from the plain stage dropdown so every
   cancellation captures a reason.)
 - **Closed projects review** (🗄 Databases → Closed projects, Admin): a
-  management view of **cancelled** projects — reason, who/when, prior stage,
-  contract — each with a one-click Reopen, plus a list of **completed** projects.
+  management view of **cancelled** projects — reason, who/when, prior stage
+  — each with a one-click Reopen, plus a list of **completed** projects.
 - **Tasks are added manually** — there's no auto-generated process/pipeline chain.
   A **+ Add task** form on the project's Tasks tab is the only way tasks appear;
   assign one to a household member (or leave it unassigned) at any point.
@@ -393,10 +393,10 @@ stay available as a backup even once a VPS is running.
   from growing a link per feature.
 
 ### Finance & billing
-- **Per-project billing ledger** (💵 Billing tab): set the contract total and record
-  every **income** (deposits, invoices, rebates) and **expense** (materials,
-  permits, labor, subs) with a dollar amount, date, category, party, reference,
-  method, and paid/outstanding status.
+- **Per-project billing ledger** (💵 Billing tab): record every **income**
+  (deposits, invoices, rebates) and **expense** (materials, permits, labor,
+  subs) with a dollar amount, date, category, party, reference, method, and
+  paid/outstanding status.
 - **Receipts, invoices & bills**: each ledger entry can be tagged with the
   **source document** behind it — **Receipt** (proof of a payment made),
   **Invoice** (money billed to a customer, A/R), or **Bill** (money a vendor
@@ -405,18 +405,17 @@ stay available as a backup even once a VPS is running.
   still editable). The Billing tab shows a **paperwork-on-file** tally (count +
   total for each type).
 - **Payments table** on the **💰 Money** page (Piece 62): every active project
-  with Contract / Collected / Outstanding / Expenses / Net and a grand-total
+  with Collected / Outstanding / Expenses / Net and a grand-total
   row. **Gated by the `finances.manage` permission (Piece 51)** — a Child has
   none of it by default, so this table (and the project page's whole Billing
   tab) don't render for them at all. The dashboard's own Household overview
   card shows a shorter **Upcoming payments** list instead (Piece 63) —
   Outstanding project expenses due within a month, not the full table.
 - **Money invested / budget** (Piece 54, relabeled Piece 65 — was "Estimated
-  cost"): a Planning-phase ballpark figure, separate from the (later, real)
-  Contract total — set on the general project form, shown on the General
-  details tab (`finances.manage`-gated like every other dollar
-  figure). Compared against actual expenses logged so far on the dashboard's
-  "Anticipated spending" tile.
+  cost"): a Planning-phase ballpark figure — set on the general project form,
+  shown on the General details tab (`finances.manage`-gated like every other
+  dollar figure). Compared against actual expenses logged so far on the
+  dashboard's "Anticipated spending" tile.
 - **Money formatting**: dollar amounts show a **thousands separator** everywhere
   (a comma appears for amounts ≥ $1,000).
 
@@ -431,11 +430,15 @@ estimator, the NM gross-receipts-tax rate table, and the per-project Estimate
 tab were cut entirely** (Piece 40): all of it priced a job for a paying
 customer — equipment markup percentages, a 33-county tax table, an internal
 cost-vs-margin breakdown — with no household equivalent. What's left is
-exactly what a household budget needs: a plain contract-total field plus the
-income/expense ledger above, both gated by `finances.manage` (Piece 51) —
-visible to whoever's granted it (Parent and Assistant by default, not
-Child). An Assistant can still see every figure, but editing anything here
-goes through a draft first (Piece 52), same as everywhere else it can write.
+exactly what a household budget needs: the plain income/expense ledger
+above, gated by `finances.manage` (Piece 51) — visible to whoever's granted
+it (Parent and Assistant by default, not Child). An Assistant can still see
+every figure, but editing anything here goes through a draft first (Piece
+52), same as everywhere else it can write. **The project "Contract" concept
+itself (a customer's agreed total price) was removed entirely in Piece 73**
+— confirmed via the real household data that it had never been used once;
+Collected/Outstanding/Expenses/Net were already fully driven by the ledger
+above, independent of it the whole time.
 
 ### Household Budget
 - **💵 Budget**: a household-wide income/expense ledger for spending that
@@ -516,15 +519,15 @@ goes through a draft first (Piece 52), same as everywhere else it can write.
   task in the Tasks tab, even after leaving the Plan tab.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
-  stage/county/overdue/contract, drill into one project, list
+  name/stage/overdue status, drill into one project, list
   tasks, look up staff) rather than inventing details.
 - **Permission-scoped & private.** It only ever sees what the signed-in user is
-  already allowed to see — contract totals only appear for someone with the
-  `finances.manage` permission (Piece 52 closed a real gap here: the
-  assistant used to include them unconditionally, a text-based way around
-  the Budget/Billing gate); pay/payroll doesn't exist in this app.
-  **Online-only** — nothing is sent until a question is asked, and nothing
-  is sent while offline.
+  already allowed to see (Piece 52 closed a real gap here: the assistant
+  used to include finance figures unconditionally, a text-based way around
+  the Budget/Billing gate); pay/payroll doesn't exist in this app, and the
+  project "Contract" concept it used to also report on was removed
+  entirely in Piece 73. **Online-only** — nothing is sent until a question
+  is asked, and nothing is sent while offline.
 - **🧠 Plan tab** (on each project's own page): a project-scoped brainstorm chat
   to think through finishing *that* project — same read-only, permission-scoped,
   Claude-or-Gemini design as 💬 Assistant, but its conversation is **saved per
@@ -607,6 +610,20 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.50** — **Removed the legacy "Contract" concept.** Flagged back in
+  v0.30 (Piece 54) as a leftover from this app's original solar-
+  installation-business origins — a project's Contract total (the
+  customer's agreed price) has no household DIY equivalent. Confirmed
+  with real data before removing anything: every one of the household's
+  real projects had it blank, and zero income transactions had ever been
+  logged against it. Removed outright, not renamed: the Contract input/
+  tile on a project's Billing tab, the "Money in projects" dashboard/
+  Money-page tile, the Contract column on the Money page's Payments
+  table and the Closed Projects review page, the Wrap-up worklist's
+  always-$0 "balance due" figure, and the AI assistant's contract-total
+  filter/answers. **Collected/Outstanding/Expenses/Net are untouched** —
+  they were already computed entirely from the real income/expense
+  ledger, independent of Contract the whole time.
 - **v0.49** — **CSRF protection, via Flask-WTF.** This app's biggest
   remaining security gap, flagged but deliberately deferred in v0.45
   (Piece 69): none of its ~119 POST forms carried any CSRF defense
