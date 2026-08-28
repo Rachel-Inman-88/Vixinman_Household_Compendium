@@ -2248,6 +2248,91 @@ size (comparable to Piece 41's de-solarize work).
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 74 (v0.51): full legacy-artifact sweep — done.** User: "let's take
+the time to clean up those legacy artifacts and any others you find so
+they're truly done and over with," explicitly asking to go beyond the two
+items Piece 73 had already flagged and deferred. Ran a 3-way parallel
+Explore-agent audit (dead code in `app.py`, orphaned schema in
+`schema.sql`, stale UI text in `templates/`) rather than guessing at scope,
+then verified the riskiest findings against the real household database
+before committing to a plan.
+- **A genuine, previously-unnoticed bug, found during the audit**:
+  `household_members.access_level` was being silently re-added by an
+  unconditional `ensure_columns()` call on *every single app restart*,
+  immediately ahead of the one-time `household_reorg_v1`-guarded migration
+  that was supposed to have dropped it for good back in Piece 35 — moved
+  the `ensure_columns()` call to inside that guard, right before the
+  column is read/dropped in the same pass.
+- **A second, deeper layer of the same bug, caught only by testing against
+  a copy of the real database, not just a fresh one**: the real household
+  database already has `household_reorg_v1` permanently set from years
+  ago, so the relocated fix alone never re-runs there — the guard is
+  already satisfied, meaning `access_level` (already resurrected by the
+  old bug) would have stayed resurrected forever on that specific
+  database. Fixed by adding a second, independent, unconditional
+  `ALTER TABLE household_members DROP COLUMN access_level` to the new
+  `legacy_artifact_sweep_v1` migration block, which runs once regardless
+  of the old flag's state. Re-verified against a **fresh copy** of the
+  real database (the first copy had already consumed the new migration
+  flag, which would have masked a re-test) — confirmed the column drops
+  and stays dropped across two successive `init_db()` calls, all 5 real
+  household members and 7 real projects intact.
+- **Other dead code removed**: the unused `GRT_DEFAULT_RATE` constant; the
+  dead `"products"`-field special-case in `_rule_form_values()` and the
+  now-unreachable `match_type == "contains"` branch in `condition_met()`
+  (confirmed safe via grep — no `<select name="match_type">` exists
+  anywhere, so it's never user-submitted — and the real database has zero
+  `resource_rules` rows at all); `TITLE_STATUS_KEYWORDS`/
+  `_status_from_title()`/`tag_tasks_by_stage()`, the BPMN-era task
+  auto-tagger flagged as deferred at the end of Piece 73, removed entirely
+  along with its call site in `init_db()` (already permanently inert via
+  its own `tasks_stage_tagged` meta guard); two stale PV/Battery/EE-98
+  docstring examples in `group_rules()`/`consolidate_rules()`.
+- **Schema cleanup**: a new `legacy_artifact_sweep_v1` migration drops
+  `project_transactions.invoice_number/milestone/due_date/
+  contract_snapshot/base_amount/extras_amount/bom_snapshot` (Piece 27.3
+  invoice-generation remnants, the other half of Piece 73's deferred item)
+  and `field_submission_items.hours_json/work_date` (Piece 27.9 payroll
+  remnants) — required also fixing two live INSERT statements
+  (`api_work_bag_submit` and the photo-task-completion route) that were
+  still writing to `work_date`.
+- **Billing tab overhaul, per two explicit user decisions**: income
+  categories changed from a fixed dropdown (the literal solar 50/40/10
+  progress-billing structure — `HANDOFF.md` had claimed this was "cut
+  entirely" after the invoice-PDF route was removed, but the vocabulary
+  itself had survived) to a free-text field with suggestions
+  (`INCOME_CATEGORY_SUGGESTIONS`), matching Household Budget's own
+  existing `<datalist>` pattern — confirmed via the real database that
+  zero Income transactions have ever been logged, so nothing was ever
+  actually exercising the old fixed list either. Expense categories stay
+  an untouched fixed dropdown (still reasonable for a household ledger;
+  only income was in scope). The three solar-specific document-upload
+  slots (`"Signed Contract"`, `"Design / One-Line"`, `"Site Plan
+  (KMZ/KML)"`) were removed outright, leaving just `"Site Photos"` —
+  confirmed via the real database that `project_files` has zero rows, so
+  nothing was orphaned. Party label relabeled "Customer"/"Payer" for
+  Income mode.
+- **Wording sweep**: ~20 instances of stale business vocabulary ("the
+  office," "supervisor," "crew," "on staff," "install date") replaced
+  with plain household language across 10 templates — mechanical,
+  no behavior change.
+- Verified via: a fresh-DB boot across two successive `init_db()` calls
+  confirming the schema stays clean; the new `piece74_legacy_sweep_test.py`
+  (Documents tab shows only Site Photos, Billing tab renders income as
+  free text with a working datalist while expense stays a dropdown, an
+  arbitrary non-suggested income category saves fine, the old
+  `/projects/<id>/contract` route still 404s, a `field_name="products"`
+  rule is still rejected); a full Jinja parse sweep across every touched
+  template; the full regression suite (Pieces 58-73) re-run unchanged; the
+  standard 46-route sweep; and — the most important check — a migration
+  test against a **fresh copy** of the real household database, which is
+  what actually caught the second `access_level` layer described above.
+- Also swept README's "Finance & billing" current-feature section for the
+  now-outdated income-category description.
+- Merged `feature/legacy-artifact-sweep` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -2266,18 +2351,6 @@ size (comparable to Piece 41's de-solarize work).
   name; the user's own "among others" phrasing implied more might be
   wanted — nothing further has been specified. Ask before assuming what's
   still missing.
-- **Two more solar-jargon legacy artifacts, found during Piece 73 but
-  explicitly out of its scope**: (1) `TITLE_STATUS_KEYWORDS`/
-  `_status_from_title`/`tag_tasks_by_stage` (`app.py`) — ~30 solar-
-  installation keywords ("meter set", "doc tube", "interconnection",
-  milestone percentages) for auto-tagging tasks the BPMN engine (removed
-  Piece 40) used to generate; its own one-time migration guard suggests
-  it's already fully inert on the real database, worth confirming before
-  a future cleanup piece. (2) `project_transactions.contract_snapshot`
-  and its Piece 27.3 sibling invoice-generation columns, plus the
-  "Signed Contract" document-upload-slot category — both a genuinely
-  different "contract" concept (a generated-invoice snapshot; a document
-  category) than the dollar-figure field Piece 73 removed.
 - **Pixel 9a beta-test readiness** — (2) of the 3 original blockers is
   done (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`). Still
   open: (1) a mobile-responsive UI pass — this app has never had a real

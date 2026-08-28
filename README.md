@@ -394,9 +394,10 @@ stay available as a backup even once a VPS is running.
 
 ### Finance & billing
 - **Per-project billing ledger** (💵 Billing tab): record every **income**
-  (deposits, invoices, rebates) and **expense** (materials, permits, labor,
-  subs) with a dollar amount, date, category, party, reference, method, and
-  paid/outstanding status.
+  (reimbursements, rebates, gifts — free text with suggestions, Piece 74)
+  and **expense** (materials, permits, labor, subs — a fixed category
+  list) with a dollar amount, date, category, party, reference, method,
+  and paid/outstanding status.
 - **Receipts, invoices & bills**: each ledger entry can be tagged with the
   **source document** behind it — **Receipt** (proof of a payment made),
   **Invoice** (money billed to a customer, A/R), or **Bill** (money a vendor
@@ -610,6 +611,26 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.51** — **Full legacy-artifact sweep.** A 3-way parallel audit (dead
+  code, orphaned schema, stale UI text) found and closed out everything
+  left over from this app's original solar-installation-business origins
+  beyond the Contract concept (v0.50). A genuine bug fixed along the way:
+  `household_members.access_level` was being silently re-added on every
+  single app restart by a migration ordering issue dating back to the
+  Piece 35 household reorg — it's been resurrecting itself forever,
+  confirmed and fixed against the real database, not just a fresh
+  install. Also dropped several other write-only orphan columns (Piece
+  27.3's invoice-generation fields, Piece 27.9's payroll time-segments)
+  and the BPMN-era task auto-tagger. The Billing tab's income category
+  field is now free text with suggestions (matching Household Budget's
+  own pattern) instead of a locked dropdown of solar payment milestones
+  ("50% Deposit," "Final 10% Invoice") that had never actually been used;
+  the party field relabeled "Customer" → "Payer." Three solar-specific
+  document-upload slots ("Signed Contract," "Design / One-Line," "Site
+  Plan (KMZ/KML)") were removed, leaving just "Site Photos." Swept ~20
+  instances of stale business vocabulary ("the office," "supervisor,"
+  "crew," "on staff," un-renamed "install date" labels) across 10
+  templates — wording only, no behavior change.
 - **v0.50** — **Removed the legacy "Contract" concept.** Flagged back in
   v0.30 (Piece 54) as a leftover from this app's original solar-
   installation-business origins — a project's Contract total (the
