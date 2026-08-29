@@ -2333,6 +2333,68 @@ before committing to a plan.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 75 (v0.52): mobile-responsive UI audit — done.** User: "let's
+move onto UI," picking up the long-deferred mobile-responsive pass this
+same NOT-done-yet list had been carrying since Piece 56. Rather than
+assume the app needed a ground-up responsive retrofit (the old framing:
+"never had a real small-screen check"), actually ran the app on real
+phone-width viewports and checked, since the previous framing was never
+itself re-verified against current code — same lesson as
+`feedback-scope-assumptions-vs-user-intent`.
+- **Method**: a scratch copy of the real household database (never the
+  original) behind a throwaway dev-server config, driven headlessly at
+  375px/330px/320px viewports. Since this environment's browser pane
+  doesn't composite screenshots, verification used the DOM directly — a
+  small injected script measuring `document.documentElement.scrollWidth`
+  against the viewport (flagging real horizontal page overflow, not
+  false positives from legitimately-scrollable containers or off-screen
+  `.rstack`-collapsed table headers) — the same technique Piece 31.6
+  originally used ("verified with headless Chromium... no horizontal
+  page overflow"), just without a visual screenshot layer.
+- **Checked ~30 pages/tabs/forms**: dashboard, every project-detail tab
+  (General/Plan/Requirements/Materials/Documents/Tasks/Billing) on both
+  an empty project and one with 49 tasks + injected test transactions,
+  Tasks, Boards, Work Bag + a job detail view, Household Members + a
+  profile, Money, Approvals, Drafts, Requirements Editor + Library,
+  Inventory, Wishlist, Contacts, Household Files, Backlog, Closed
+  Projects, Appointments, Chores, Notifications, Audit Log, Access
+  console, Assistant + its settings, Help, Account, Budget, and New
+  Project. **All but one came back completely clean** — the existing
+  Piece 31.6/31.7 foundation (hamburger nav, table auto-wrap/restack,
+  `repeat(auto-fit, minmax(...))` form grids, ≥16px inputs) turned out to
+  already cover nearly the entire app correctly, including every feature
+  built since the original pass (Chores, Appointments, Budget, Wishlist,
+  Contacts, the Plan tab, Piece 74's new Billing category fields) with
+  zero page-specific work needed — it's genuinely global CSS/JS, not
+  something that has to be re-applied per new page.
+- **One real, verified bug found and fixed**: the dashboard's month-
+  calendar (a 7-column Sun–Sat grid, `dashboard.html`) has a `<thead>`
+  with 3+ columns, so base.html's generic table-auto-tagger script
+  (built for dense *data* tables — Billing ledgers, the audit log, etc.)
+  was tagging it `rstack` too. At ≤560px that collapses a table into
+  labelled `data-label: cell` rows — appropriate for a data table, but
+  for a date grid it destroyed the calendar into 6 stacked "cards," each
+  just a vertical list of "Sun: —", "Mon: —", ... "Sat: 1" — confirmed
+  live via the DOM (`display: block/flex` instead of `table/table-cell`
+  before the fix). Fixed by giving the calendar table a `no-rstack`
+  class and teaching the auto-tagger to skip any table carrying it — a
+  new, narrow opt-out, not a change to how any other table behaves.
+  Confirmed via grep this is the app's *only* calendar-grid-shaped table
+  (no `["Sun","Mon",...]` pattern anywhere else).
+- Verified via: a new `piece75_mobile_calendar_test.py` (the rendered
+  dashboard HTML carries the `no-rstack` class on the calendar table); a
+  live DOM check confirming the calendar now stays `table`/`table-cell`
+  at 375px while the dashboard's other two `rstack` tables are unaffected
+  and still restack correctly; a re-check that overall page overflow is
+  still zero at 375px, 330px, and 320px; a Jinja parse check on both
+  touched templates; and the full Piece 69/71/72/73/74 regression suite
+  re-run unchanged.
+- Merged `feature/mobile-responsive-ui` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+- **This closes item (1) of the Pixel 9a beta-test readiness list
+  below** — items (2) and (3) there are unaffected and still open.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -2351,15 +2413,11 @@ before committing to a plan.
   name; the user's own "among others" phrasing implied more might be
   wanted — nothing further has been specified. Ask before assuming what's
   still missing.
-- **Pixel 9a beta-test readiness** — (2) of the 3 original blockers is
-  done (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`). Still
-  open: (1) a mobile-responsive UI pass — this app has never had a real
-  small-screen-phone check, only desktop dev-server click-throughs
-  (Piece 49) plus automated Flask test-client work — now that a real
-  phone can actually reach the app, this can happen for real instead of
-  simulated via a resized browser viewport; (3) a real-data readiness
-  check on `job_creator.db` itself before starting an actual project in
-  it. Note: this app already has some PWA/offline infrastructure
+- **Pixel 9a beta-test readiness** — 2 of the 3 original blockers are
+  done now (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`; Piece
+  75: the mobile-responsive UI audit, see above). Still open: a real-data
+  readiness check on `job_creator.db` itself before starting an actual
+  project in it. Note: this app already has some PWA/offline infrastructure
   (`/sw.js`, `/offline`, Work Bag's offline support since Piece 26) —
   check what already works there before assuming more offline support
   needs building from scratch. **Also still open**: Jacob (household

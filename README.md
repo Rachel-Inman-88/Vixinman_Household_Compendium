@@ -611,6 +611,17 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.52** — **Mobile-responsive audit.** Checked the app on real phone-
+  width viewports (375px/330px/320px) across every page, project-detail
+  tab, and form. Found the responsive foundation from Piece 31.6/31.7
+  (hamburger nav, auto-wrapped/restacking tables, ≥16px inputs, wrapping
+  flex/grid layouts) already covers nearly everything correctly — one
+  genuine bug found and fixed: the dashboard's month-calendar grid was
+  getting caught by the same generic table-restacking script built for
+  dense data tables, which on phones collapsed the 7-column Sun–Sat grid
+  into a broken vertical list of labelled day rows instead of keeping it
+  a compact calendar. The calendar now opts out (`no-rstack`) while every
+  other table keeps restacking as before.
 - **v0.51** — **Full legacy-artifact sweep.** A 3-way parallel audit (dead
   code, orphaned schema, stale UI text) found and closed out everything
   left over from this app's original solar-installation-business origins
