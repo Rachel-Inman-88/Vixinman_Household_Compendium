@@ -59,42 +59,46 @@ def ensure_backlog_reminders(db):
     backlog" notice if anything is still sitting in Backlog; (2) per-idea, an
     optional custom reminder_date fires once. Called both on dashboard load
     and from the background scheduler (run_maintenance) — the latter has no
-    request/app context, so this builds plain link paths, not url_for."""
+    request/app context, so this builds plain link paths, not url_for.
+    Piece 77: both nudges claim atomically (UPDATE/UPSERT first, checked via
+    rowcount, notify only on a real 0→1 flip) before notifying -- see
+    ensure_routine_task_reminders' docstring for why this matters."""
     recipients = [r["id"] for r in db.execute(
         "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
     if not recipients:
         return
-    made = False
     today = datetime.now().strftime("%Y-%m-%d")
     this_month = today[:7]
     backlog_count = db.execute(
         "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'").fetchone()[0]
     if backlog_count:
-        last_sent = db.execute(
-            "SELECT value FROM meta WHERE key = 'backlog_review_last_sent'").fetchone()
-        if not last_sent or last_sent["value"] != this_month:
+        claimed = db.execute(
+            "INSERT INTO meta (key, value) VALUES ('backlog_review_last_sent', ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+            " WHERE meta.value != excluded.value",
+            (this_month,)).rowcount
+        db.commit()
+        if claimed:
             notify_employees(
                 db, recipients,
                 f"🗂 Time to review the household idea backlog"
                 f" ({backlog_count} waiting).",
                 link="/backlog", kind="backlog_review")
-            db.execute(
-                "INSERT INTO meta (key, value) VALUES"
-                " ('backlog_review_last_sent', ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (this_month,))
-            made = True
+            db.commit()
     for idea in db.execute(
             "SELECT id, name FROM household_ideas WHERE status = 'Backlog'"
             " AND reminder_date != '' AND reminder_date <= ?"
             " AND COALESCE(reminder_sent, '') != '1'", (today,)).fetchall():
+        claimed = db.execute(
+            "UPDATE household_ideas SET reminder_sent = '1'"
+            " WHERE id = ? AND COALESCE(reminder_sent, '') != '1'",
+            (idea["id"],)).rowcount
+        db.commit()
+        if not claimed:
+            continue
         notify_employees(
             db, recipients, f"💡 Reminder: {idea['name']}",
             link=f"/backlog/{idea['id']}", kind="backlog_idea")
-        db.execute("UPDATE household_ideas SET reminder_sent = '1' WHERE id = ?",
-                   (idea["id"],))
-        made = True
-    if made:
         db.commit()
 
 
@@ -104,11 +108,17 @@ def ensure_routine_task_reminders(db):
     through the same notifications inbox as ensure_backlog_reminders. Each
     chore reminds once per cycle (reminder_sent flag), to whoever it's
     assigned to — or every member with a login, if unassigned. Called both
-    on dashboard load and from the background scheduler (run_maintenance)."""
+    on dashboard load and from the background scheduler (run_maintenance) --
+    Piece 77: those two callers (plus gunicorn running multiple worker
+    processes, each with its own connection) could both pass the
+    reminder_sent check before either wrote it back, stacking a duplicate
+    notification for the same chore. The UPDATE is now the atomic claim --
+    it runs FIRST, and only a caller whose UPDATE actually flips the flag
+    (rowcount 1, since SQLite serializes writes) goes on to notify; a
+    caller that loses the race sees rowcount 0 and skips it entirely."""
     today = datetime.now().strftime("%Y-%m-%d")
     all_members = [r["id"] for r in db.execute(
         "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
-    made = False
     for chore in db.execute(
             "SELECT * FROM routine_tasks WHERE next_due != '' AND next_due <= ?"
             " AND COALESCE(reminder_sent, '') != '1'", (today,)).fetchall():
@@ -116,13 +126,16 @@ def ensure_routine_task_reminders(db):
                       else all_members)
         if not recipients:
             continue
+        claimed = db.execute(
+            "UPDATE routine_tasks SET reminder_sent = '1'"
+            " WHERE id = ? AND COALESCE(reminder_sent, '') != '1'",
+            (chore["id"],)).rowcount
+        db.commit()
+        if not claimed:
+            continue
         notify_employees(
             db, recipients, f"🔁 Chore due: {chore['title']}",
             link="/chores", kind="chore")
-        db.execute("UPDATE routine_tasks SET reminder_sent = '1' WHERE id = ?",
-                   (chore["id"],))
-        made = True
-    if made:
         db.commit()
 
 
@@ -132,11 +145,12 @@ def ensure_appointment_reminders(db):
     notifications inbox as ensure_routine_task_reminders. Each appointment
     reminds once per when_date (reminder_sent flag), to whoever it's
     assigned to — or every member with a login, if unassigned. Called both
-    on dashboard load and from the background scheduler (run_maintenance)."""
+    on dashboard load and from the background scheduler (run_maintenance) --
+    Piece 77: the UPDATE is the atomic claim, run before notifying (see
+    ensure_routine_task_reminders' docstring for why)."""
     today = datetime.now().strftime("%Y-%m-%d")
     all_members = [r["id"] for r in db.execute(
         "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
-    made = False
     for appt in db.execute(
             "SELECT * FROM appointments WHERE when_date != '' AND when_date <= ?"
             " AND COALESCE(completed_at, '') = '' AND COALESCE(reminder_sent, '') != '1'",
@@ -145,14 +159,17 @@ def ensure_appointment_reminders(db):
                       else all_members)
         if not recipients:
             continue
+        claimed = db.execute(
+            "UPDATE appointments SET reminder_sent = '1'"
+            " WHERE id = ? AND COALESCE(reminder_sent, '') != '1'",
+            (appt["id"],)).rowcount
+        db.commit()
+        if not claimed:
+            continue
         when = appt["when_date"] + (f" {appt['when_time']}" if appt["when_time"] else "")
         notify_employees(
             db, recipients, f"📅 Appointment: {appt['title']} ({when})",
             link="/appointments", kind="appointment")
-        db.execute("UPDATE appointments SET reminder_sent = '1' WHERE id = ?",
-                   (appt["id"],))
-        made = True
-    if made:
         db.commit()
 
 
@@ -161,11 +178,12 @@ def ensure_requirement_reminders(db):
     """Due-date reminders for standalone recurring requirements (resource_rules
     rows with no project field_name) — the same mechanics as
     ensure_routine_task_reminders, just against a different table. Called both
-    on dashboard load and from the background scheduler (run_maintenance)."""
+    on dashboard load and from the background scheduler (run_maintenance) --
+    Piece 77: the UPDATE is the atomic claim, run before notifying (see
+    ensure_routine_task_reminders' docstring for why)."""
     today = datetime.now().strftime("%Y-%m-%d")
     all_members = [r["id"] for r in db.execute(
         "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
-    made = False
     for req in db.execute(
             "SELECT * FROM resource_rules WHERE field_name = '' AND next_due != ''"
             " AND next_due <= ? AND COALESCE(reminder_sent, '') != '1'",
@@ -174,13 +192,16 @@ def ensure_requirement_reminders(db):
                       else all_members)
         if not recipients:
             continue
+        claimed = db.execute(
+            "UPDATE resource_rules SET reminder_sent = '1'"
+            " WHERE id = ? AND COALESCE(reminder_sent, '') != '1'",
+            (req["id"],)).rowcount
+        db.commit()
+        if not claimed:
+            continue
         notify_employees(
             db, recipients, f"📋 Requirement due: {req['label']}",
             link="/rules", kind="requirement")
-        db.execute("UPDATE resource_rules SET reminder_sent = '1' WHERE id = ?",
-                   (req["id"],))
-        made = True
-    if made:
         db.commit()
 
 
@@ -461,7 +482,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.53"
+VERSION = "0.54"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
