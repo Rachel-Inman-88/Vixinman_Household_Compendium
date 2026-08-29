@@ -2688,6 +2688,115 @@ jumping off point for me before going to the Child account UI." Scoped via
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 79 (v0.56): Child/Assistant UI review — done.** User's original
+request (Piece 76): "beginning with the Parent Dashboard... after a
+complete run through of the parent UI, we'll verify the Child and
+Assistant UIs respectively." This is that round — a continuous
+screenshot-driven session on `feature/child-ui-review`, same "one branch,
+ship when the user says they're done" pattern as Piece 76.
+- **Child dashboard reworked**: the old day-by-day "🗓 My schedule" glance
+  (Piece 53) is replaced by two cards, per the user's explicit request —
+  a personal **"🙋 My Overview"** card (Appointments, Chores, Habits,
+  Tasks, their own field Notes, Wishlist, all reusing data the dashboard
+  route already computed for other roles) and full visibility into
+  **every active household project** by stage, not just ones they have a
+  task on (Piece 53's original restriction, explicitly lifted after
+  confirming via AskUserQuestion). Appointments were folded into My
+  Overview on my own call (not asked) since removing My schedule would
+  otherwise have silently dropped a Child's only view of upcoming
+  appointments.
+- **Notifications scoped to what's actually a Child's**: reported via a
+  screenshot of a Child's notification inbox full of pipeline-turnover
+  and chore-due pings for things they had no stake in. `notify_stage_
+  turnover()` now only includes a Child recipient if they have a task on
+  that specific project; `ensure_routine_task_reminders`/`ensure_
+  appointment_reminders`/`ensure_requirement_reminders` now exclude Child
+  accounts from the "notify everyone" broadcast fallback for an
+  *unassigned* item (a Child assigned directly to the item still gets
+  notified — that's genuinely theirs). Household idea Backlog reminders
+  were deliberately left alone — no per-item assignment concept for a
+  Child to be "added to" there either way.
+- **AI Assistant: a parent-safety notification.** When a Child talks to
+  the assistant (global 💬 Assistant page or a project's 🧠 Plan tab) and
+  the conversation goes idle 15+ minutes, every Parent gets one
+  notification: hours spent (floored at 1 per the user's own call — a
+  coarse signal, not a precise timer), message count, and which page.
+  Child-only, confirmed via AskUserQuestion (not Parent/Assistant-role
+  usage). Runs from the same dashboard+scheduler cadence as every other
+  `ensure_*` reminder function, with a `safety_reported` flag per message
+  so a conversation is never folded into two notifications.
+- **AI Assistant: a persistent draft panel**, reworking Piece 76's
+  one-off inline "Send as draft" bubble — now a single always-visible
+  panel above the chat showing the current project proposal, updated as
+  the conversation refines it and rehydrated from conversation history on
+  page load (a new `_extract_new_project_proposal()` helper mirrors the
+  front-end regex). Lets a Child working through an idea with the
+  assistant (planning a science project, say) see what's been captured
+  so far. The Drafts page's `project.new` summary now also shows
+  category/subcategory, not just the bare project name, so a parent isn't
+  approving blind.
+- **Habit Tracker: Child self-assignment lock.** A Child creating or
+  editing a habit gets no assignment dropdown at all — `_habit_form_
+  values()` forces `household_member_id` to the Child's own id server-side
+  regardless of what's submitted, closing off a spoofed-form path to
+  assigning a habit to someone else.
+- **Habit Tracker: interval tracking.** A habit's `frequency_type` is now
+  `daily` (unchanged), `count` (a target number of check-ins per day —
+  each tap adds one, capped server-side at the target), or `times` (a
+  fixed list of specific times, each its own checkable slot). New
+  `habit_interval_checkins` table (kept separate from the original
+  `habit_checkins` rather than reshaping its UNIQUE constraint, which
+  would have needed a full-table-rebuild migration against real,
+  already-shipped Piece 78 data). A `times` habit shows a next-up/overdue
+  indicator computed live — confirmed via AskUserQuestion this is
+  **visual only, no push notification**, keeping Piece 78's original
+  no-reminders design intact. `_habit_streak()`/`_habit_recent_days()`
+  were consolidated into one `_habit_progress()` that handles all three
+  types; verified the original plain-daily edge cases (today-not-yet-
+  checked-but-yesterday-was, a gap breaking a streak) still hold exactly
+  after the refactor.
+- **Child nav lockdown**: the whole 🏠 Household dropdown (everything
+  inside it was already permission-gated to things a Child never has by
+  default, so it only ever showed up empty for them) plus Backlog and
+  Contacts under 🗄 Databases are hidden from a Child — and genuinely
+  blocked at the route level via a new `@child_forbidden` decorator
+  (redirects with a flash message), not just a hidden nav link, matching
+  this app's existing pattern for Family/Household Files/Requirements
+  Editor (Piece 53).
+- **Wishlist locked to a Child's own requests** — `wishlist_page()` forces
+  `who = "mine"` server-side for a Child regardless of a tampered
+  `?who=all`, and the "Whose" filter toggle doesn't render for them at
+  all.
+- **Inventory's top blurb removed** (for everyone, not Child-specific) —
+  a small decluttering ask alongside the rest of this round.
+- **Piece-numbering note**: several sub-features above were drafted under
+  provisional piece numbers (80/81/82) while the review was still
+  in-progress and their final scope wasn't yet settled; once the whole
+  round shipped as one piece (matching the Piece 76 precedent — one
+  continuous review session ships as one version bump), every code
+  comment was swept back to **Piece 79** for consistency. If a future
+  session finds a stray "Piece 80/81/82" reference anywhere, it's a
+  leftover that should read 79.
+- **Mid-deploy discovery, handled the same careful way as Piece 78**: a
+  previously-flagged background task's uncommitted `DRAFT_KINDS` payload-
+  shape fix (see Piece 76's note) surfaced again mid-session in the
+  shared working tree. Isolated it out via targeted reverts before
+  committing this piece's own changes, confirmed the diff was clean, then
+  restored it untouched on `main` afterward — still not this piece's to
+  commit.
+- Verified via five dedicated test scripts against **copies** of the real
+  household database (`piece79_child_dashboard_test.py`,
+  `piece80_assistant_safety_test.py` — Assistant safety notifications +
+  draft panel + Drafts summary, `piece81_habit_child_lock_test.py`,
+  `piece81_interval_habits_test.py`, `piece82_child_nav_lockdown_test.py`
+  — all still named for their provisional numbers, all still valid), a
+  fresh-DB double-boot, and a migration test against a copy of the real
+  household database confirming all 5 real household members and all 7
+  real projects survive untouched with the new columns/tables present.
+- Merged `feature/child-ui-review` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -2701,19 +2810,21 @@ jumping off point for me before going to the Child account UI." Scoped via
   row, and remind the user to hand it over next time this comes up. Also
   build a flexible column-mapping fallback alongside the NFCU-specific
   matching, so a format change or a second bank doesn't need a rebuild.
-- **Child and Assistant UI review — not started.** User's original request
-  (start of Piece 76): "beginning with the Parent Dashboard... after a
-  complete run through of the parent UI, we'll verify the Child and
-  Assistant UIs respectively." The Parent-UI round is done (see Piece 76
-  above); logging in as a Child-role and Assistant-role household member
-  and repeating the same screenshot-driven button/layout review for each
-  has not happened yet — expect this to surface its own set of
-  role-specific findings (hidden nav items, gated tabs, the Child
-  dashboard's separate "My schedule" widget, etc.) distinct from what
-  Piece 76 already covered for Parent/admin accounts. The user explicitly
-  slotted Piece 78 (Habit Tracker) in ahead of this as its own "jumping
-  off point" before starting the Child UI review — that's now done, so
-  this is next up.
+- **Assistant-role account UI review — not started.** User's original
+  request (start of Piece 76): "beginning with the Parent Dashboard...
+  after a complete run through of the parent UI, we'll verify the Child
+  and Assistant UIs respectively." The Parent round (Piece 76) and the
+  Child round (Piece 79, above) are both done. **Piece 79 improved the AI
+  Assistant chat feature itself** (parent-safety notifications, the
+  persistent draft panel) but that's a different thing from reviewing
+  what an **Assistant-role household member's own account** looks like —
+  logging in as one (Gremory, the real household's Assistant-role
+  account) and screenshot-reviewing their dashboard/nav/gated-tab
+  experience has not happened yet. Expect this to surface its own
+  findings distinct from both the Parent and Child rounds, given
+  Assistant's fairly narrow permission bundle (`rules.manage`/
+  `inventory.manage`/`approvals`/`projects.manage`, see Piece 51) and the
+  drafts-based write-interception layer that role uniquely goes through.
 - **Budget reporting — 2 more items still open.** Piece 55 built the pie
   chart, cash-flow projection, and both trend charts the user asked for by
   name; the user's own "among others" phrasing implied more might be

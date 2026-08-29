@@ -204,6 +204,12 @@ stay available as a backup even once a VPS is running.
   computed live from the check-in log, never stored, so they can't drift
   out of sync. A **🔥 Habits** card on the dashboard's Productivity
   Overview lists today's not-yet-checked-in habits with a one-tap ✓.
+  **Interval tracking**: a habit can also be tracked as **a target count
+  per day** (tap to increment, e.g. drink water x8) or **specific times
+  of day** (each its own checkable slot, e.g. 08:00/20:00 for
+  medication) — a scheduled time only ever shows a visual next-up/overdue
+  indicator, never a push notification. A Child can only ever make a
+  habit for themselves (no reassignment control).
 - **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboard. It opens on a **projects landing** that lists just the projects in the
@@ -306,12 +312,15 @@ stay available as a backup even once a VPS is running.
   into Today with its badge instead of disappearing), Chores, Boards
   (assignee or collaborator), and Tasks into one card, alongside a real
   **Month Calendar** grid with markers for every due date and prev/next
-  navigation. **A Child gets a different dashboard instead** (Piece 53):
-  the household overview, Procurement, Backlog, and Productivity Overview
-  are replaced by a personal **🗓 My schedule** widget (Today / Tomorrow /
-  Next 2 weeks, merging their own tasks, chores, and appointments), and
-  the stage-listing cards only show projects they actually have a task
-  on. Every section is **collapsible**.
+  navigation. **A Child gets a different dashboard instead** (Piece 53,
+  reworked Piece 79): the household overview, Procurement, and
+  Productivity Overview are replaced by a personal **🙋 My Overview**
+  card — Appointments, Chores, Habits, Tasks, their own field Notes, and
+  Wishlist, all in one place. The project stage-listing cards show
+  **every active household project**, not just ones they have a task on
+  (Piece 53's original restriction was lifted) — a Child sees what's
+  going on in the house project-wise, same as everyone else. Every
+  section is **collapsible**.
 - **Inventory database** (🗄 Databases → Inventory): ships **empty** on a fresh
   install — no pre-seeded solar catalog, vendor list, tool kit, or vehicle
   fleet; items get added as the household actually needs them. Per-category
@@ -340,7 +349,11 @@ stay available as a backup even once a VPS is running.
   only the items the user may reach and collapses to a plain link when only
   one applies. **Family, Household Files, and the Requirements Editor are
   genuinely gated** (Piece 53), not just hidden links — a Child can't reach
-  them by direct URL either.
+  them by direct URL either. **The whole 🏠 Household dropdown, plus
+  Backlog and Contacts under 🗄 Databases, are hidden from a Child
+  entirely** (Piece 79) — also route-level, not just a hidden nav link.
+  The Wishlist is locked to a Child's own requests only, even by editing
+  the URL directly.
 - **Permissions**: a flat **`is_admin`** flag — admins get every tool except
   **Delete**, which always needs an explicit grant even for an admin.
   Non-admins get only what's individually checked off for them on the
@@ -518,11 +531,23 @@ above, independent of it the whole time.
   from each one's first question) or start a fresh one — starting a 6th
   quietly drops the oldest, keeping this a quick-reference tool rather than
   an open-ended chat log.
-- **📝 Propose a new project (Piece 76).** If a conversation clearly shapes up
-  a real new project, the assistant can suggest creating it; a **Send as
-  draft** button appears, and clicking it adds a Pending entry to the same
-  🗒 Drafts page described below for a parent to approve or discard — nothing
-  is created until then.
+- **📝 Propose a new project (Piece 76, reworked Piece 79).** If a
+  conversation clearly shapes up a real new project — a Child working
+  through a school science project with the assistant's help, say — a
+  persistent **draft panel** sits above the chat showing the current
+  proposal (name/category/subcategory), updating as the conversation
+  refines it and surviving a page reload. A **Send as draft** button adds
+  a Pending entry to the same 🗒 Drafts page described below for a parent
+  to approve or discard — nothing is created until then, and the Drafts
+  page itself now shows the category/subcategory alongside the name so a
+  parent isn't approving blind.
+- **👀 Parent safety notification (Piece 79).** When a Child talks to the
+  assistant — the global 💬 Assistant page or a project's 🧠 Plan tab —
+  and the conversation goes idle, every Parent gets a notification: how
+  long it ran (a coarse ~1hr-floored estimate, not a precise timer), how
+  many messages the Child sent, and which page it happened on. Parent and
+  Assistant-role usage never triggers this — it's specifically about
+  visibility into a Child's own AI conversations.
 - **🔁 Retry on failure.** If a question fails (dropped connection, provider
   hiccup), a Retry button appears next to the error and resends the exact
   same question — no retyping or copy/pasting it back in. The per-project
@@ -625,6 +650,29 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.56** — **Child/Assistant UI review pass.** A screenshot-driven
+  round covering the Child dashboard, Habit Tracker, and the AI Assistant:
+  the Child dashboard replaced its day-by-day "My schedule" glance with
+  two cards — a "🙋 My Overview" personal card (appointments, chores,
+  habits, tasks, notes, wishlist) and full visibility into every active
+  household project by stage (previously limited to just their own).
+  Notifications for a Child are now scoped to what's actually theirs — no
+  more pings for a project they have no task on or a chore/appointment
+  that isn't assigned to them. A Child can only ever create/edit a habit
+  for themselves (no reassignment dropdown), and habits gained interval
+  tracking: "a number of times per day" (a target count, tap to
+  increment) or "specific times of day" (each its own checkable slot,
+  with a next-up/overdue indicator — visual only, no push notification).
+  The AI Assistant gained a parent-safety notification (a Child's idle
+  conversation — global page or a project's Plan tab — notifies every
+  Parent with hours spent, message count, and which page) and a
+  persistent draft panel that survives a page reload, so a Child planning
+  a project with the assistant's help can see what's been captured so
+  far and a Parent reviewing it on the Drafts page sees more than a bare
+  project name. A Child's nav no longer shows the Household menu or
+  Backlog/Contacts (blocked at the route level too, not just hidden); the
+  Wishlist is locked to a Child's own requests; Inventory's top blurb is
+  gone.
 - **v0.55** — **Habit Tracker** (`/habits`), a new feature separate from
   Chores — a chore is task-oriented (due again later), a habit is about
   daily consistency (streak + a 14-day history strip, no due dates or
