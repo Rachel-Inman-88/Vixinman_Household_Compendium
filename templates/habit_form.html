@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit habit" if eh else "New habit" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "✎ Edit habit" if eh else "＋ New habit" }}</h1>
+  <a href="{{ url_for('habits_page') }}" class="btn btn-secondary">← Habit Tracker</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('habit_edit', habit_id=eh['id']) if eh else url_for('habit_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Habit *</label>
+        <input id="title" name="title" required value="{{ eh['title'] if eh else '' }}" placeholder="e.g. Drink 8 glasses of water"></div>
+      <div class="field"><label for="household_member_id">Assign to (optional)</label>
+        <select id="household_member_id" name="household_member_id">
+          <option value="">— unassigned —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if eh and eh['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field wide"><label for="notes">Notes (optional)</label>
+        <input id="notes" name="notes" value="{{ eh['notes'] if eh else '' }}" placeholder="anything else about it"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add habit" }}</button>
+      <a href="{{ url_for('habits_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

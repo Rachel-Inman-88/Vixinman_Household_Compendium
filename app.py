@@ -482,7 +482,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.54"
+VERSION = "0.55"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1330,6 +1330,9 @@ TRASH_REGISTRY = {
     "routine_task": {"table": "routine_tasks", "label": lambda r: r["title"],
                      "found_in": lambda db, r: "Chores",
                      "in_use": lambda db, r: []},
+    "habit": {"table": "habits", "label": lambda r: r["title"],
+              "found_in": lambda db, r: "Habit Tracker",
+              "in_use": lambda db, r: []},
     "appointment": {"table": "appointments", "label": lambda r: r["title"],
                     "found_in": lambda db, r: "Appointments",
                     "in_use": lambda db, r: []},
@@ -3039,6 +3042,181 @@ def chore_delete(chore_id):
     return redirect(url_for("chores_page"))
 
 
+# --------------------------------------------------------- Piece 78: habits
+def _habit_streak(db, habit_id, today_str):
+    """Consecutive days ending today, or ending yesterday if today hasn't
+    been checked in yet -- a streak doesn't reset just because the current
+    day isn't over. Computed live from habit_checkins every time, never
+    stored, so it can't drift out of sync with the actual history."""
+    dates = {r["checkin_date"] for r in db.execute(
+        "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
+        (habit_id,)).fetchall()}
+    cursor = datetime.strptime(today_str, "%Y-%m-%d")
+    if today_str not in dates:
+        cursor -= timedelta(days=1)
+    streak = 0
+    while cursor.strftime("%Y-%m-%d") in dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
+def _habit_recent_days(db, habit_id, today_str, n=14):
+    """Oldest-to-newest {date, checked} for the last n days (today
+    included) -- a compact contribution-graph-style history strip."""
+    dates = {r["checkin_date"] for r in db.execute(
+        "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
+        (habit_id,)).fetchall()}
+    today = datetime.strptime(today_str, "%Y-%m-%d")
+    return [{"date": (today - timedelta(days=i)).strftime("%Y-%m-%d"),
+             "checked": (today - timedelta(days=i)).strftime("%Y-%m-%d") in dates}
+            for i in range(n - 1, -1, -1)]
+
+
+@app.route("/habits")
+def habits_page():
+    """The Habit Tracker -- daily-consistency habits, not tied to a project.
+    Filter by assignee (mine / unassigned / a person / all), same shape as
+    the Chores filter."""
+    db = get_db()
+    me = current_user()
+    who = request.args.get("who", "mine" if me else "all")
+    sql = ("SELECT h.*, e.name AS assignee_name FROM habits h"
+           " LEFT JOIN household_members e ON e.id = h.household_member_id WHERE 1 = 1")
+    params = []
+    if who == "mine" and me:
+        sql += " AND h.household_member_id = ?"
+        params.append(me["id"])
+    elif who == "unassigned":
+        sql += " AND h.household_member_id IS NULL"
+    elif who.isdigit():
+        sql += " AND h.household_member_id = ?"
+        params.append(int(who))
+    sql += " ORDER BY h.title"
+    today = datetime.now().strftime("%Y-%m-%d")
+    habits = []
+    for h in db.execute(sql, params).fetchall():
+        h = dict(h)
+        h["streak"] = _habit_streak(db, h["id"], today)
+        h["recent"] = _habit_recent_days(db, h["id"], today)
+        h["checked_today"] = h["recent"][-1]["checked"]
+        habits.append(h)
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("habits.html", habits=habits, employees=employees,
+                           who=who, today=today)
+
+
+def _habit_form_values():
+    assignee = request.form.get("household_member_id", "")
+    return {
+        "title": request.form.get("title", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "household_member_id": int(assignee) if assignee.isdigit() else None,
+    }
+
+
+@app.route("/habits/new")
+def habit_new_form():
+    """A standalone New/Edit habit page, matching the Chores form pattern
+    (Piece 76) rather than an inline card -- reached via a "+ New habit"
+    button at the top of the list, not buried inside a section that only
+    exists once a habit is already there (the exact Inventory bug Piece 76
+    fixed, avoided here from the start)."""
+    db = get_db()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("habit_form.html", eh=None, employees=employees)
+
+
+@app.route("/habits/new", methods=["POST"])
+def habit_new():
+    values = _habit_form_values()
+    if not values["title"]:
+        flash("A habit needs a title.", "error")
+        return redirect(url_for("habits_page"))
+    db = get_db()
+    me = current_user()
+    db.execute(
+        "INSERT INTO habits (title, notes, household_member_id, created_by)"
+        " VALUES (?, ?, ?, ?)",
+        (values["title"], values["notes"], values["household_member_id"],
+         me["name"] if me else ""))
+    db.commit()
+    flash(f"Habit added: {values['title']}")
+    return redirect(url_for("habits_page"))
+
+
+@app.route("/habits/<int:habit_id>/edit")
+def habit_edit_form(habit_id):
+    db = get_db()
+    eh = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
+    if eh is None:
+        abort(404)
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("habit_form.html", eh=eh, employees=employees)
+
+
+@app.route("/habits/<int:habit_id>/edit", methods=["POST"])
+def habit_edit(habit_id):
+    db = get_db()
+    habit = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
+    if habit is None:
+        abort(404)
+    values = _habit_form_values()
+    if not values["title"]:
+        flash("A habit needs a title.", "error")
+        return redirect(url_for("habit_edit_form", habit_id=habit_id))
+    db.execute(
+        "UPDATE habits SET title = ?, notes = ?, household_member_id = ? WHERE id = ?",
+        (values["title"], values["notes"], values["household_member_id"], habit_id))
+    db.commit()
+    flash(f"Habit updated: {values['title']}")
+    return redirect(url_for("habits_page"))
+
+
+@app.route("/habits/<int:habit_id>/checkin", methods=["POST"])
+def habit_checkin(habit_id):
+    """Mark today done for this habit. UNIQUE(habit_id, checkin_date) makes
+    a repeat check-in for the same day a harmless no-op rather than a
+    second row -- idempotent by construction, unlike the reminder flags
+    Piece 77 had to fix after the fact."""
+    db = get_db()
+    habit = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
+    if habit is None:
+        abort(404)
+    me = current_user()
+    today = datetime.now().strftime("%Y-%m-%d")
+    db.execute(
+        "INSERT INTO habit_checkins (habit_id, checkin_date, checked_by)"
+        " VALUES (?, ?, ?) ON CONFLICT(habit_id, checkin_date) DO NOTHING",
+        (habit_id, today, me["id"] if me else None))
+    db.commit()
+    flash(f"Checked in: {habit['title']}.")
+    # Same pattern as chore_done/appointment_done/board_status/set_task_status
+    # (Piece 76): the dashboard passes ?next= so this returns there instead
+    # of jumping to /habits.
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
+    return redirect(url_for("habits_page"))
+
+
+@app.route("/habits/<int:habit_id>/delete", methods=["POST"])
+@delete_required
+def habit_delete(habit_id):
+    db = get_db()
+    # habit_checkins has no FK enforcement on habit_id (see schema.sql), so
+    # this won't crash on its own -- cleared explicitly anyway so a deleted
+    # habit doesn't leave true orphans sitting in the checkins table.
+    db.execute("DELETE FROM habit_checkins WHERE habit_id = ?", (habit_id,))
+    ok, msg = trash_item("habit", habit_id)
+    db.commit()
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("habits_page"))
+
+
 # ------------------------------------------------------------- appointments
 # Piece 42: a scheduled date+time, not tied to a project and not always-
 # recurring like Chores. "One-time" (0 days) is the default — most
@@ -3605,6 +3783,20 @@ def dashboard():
             "SELECT * FROM routine_tasks WHERE household_member_id = ?"
             " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
 
+    # Piece 78: this member's own habits, with today's check-in state so the
+    # dashboard can show only the ones still needing today's ✓.
+    my_habits = []
+    if user is not None:
+        for h in db.execute(
+                "SELECT * FROM habits WHERE household_member_id = ? ORDER BY title",
+                (user["id"],)).fetchall():
+            h = dict(h)
+            h["streak"] = _habit_streak(db, h["id"], today_s)
+            h["checked_today"] = bool(db.execute(
+                "SELECT 1 FROM habit_checkins WHERE habit_id = ? AND checkin_date = ?",
+                (h["id"], today_s)).fetchone())
+            my_habits.append(h)
+
     # Piece 42: this member's upcoming appointments (assigned to them or
     # whole-household), soonest first.
     my_appointments = []
@@ -3810,7 +4002,7 @@ def dashboard():
 
     return render_template(
         "dashboard.html", user=user,
-        task_groups=task_groups, my_chores=my_chores,
+        task_groups=task_groups, my_chores=my_chores, my_habits=my_habits,
         my_appointments=my_appointments,
         sections=sections, my_tasks=my_tasks,
         upcoming_payments=upcoming_payments,

@@ -343,6 +343,38 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
     created_by           TEXT DEFAULT '',
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 78: Habit Tracker -- a separate feature from Chores above. A chore
+-- is task-oriented (do this, then it's due again later); a habit is about
+-- daily consistency, tracked as a streak + short history instead of a
+-- single next-due date. Shared like Chores: household_member_id nullable,
+-- same "assigned to one person, or visible to everyone with a login" model.
+CREATE TABLE IF NOT EXISTS habits (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_member_id  INTEGER REFERENCES household_members(id),   -- NULL = unassigned
+    title                TEXT NOT NULL,
+    notes                TEXT DEFAULT '',
+    created_by           TEXT DEFAULT '',
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per calendar day a habit was checked off -- the source of truth
+-- for both the streak count and the history strip (both computed live in
+-- app.py, never stored, so they can't drift out of sync). No REFERENCES
+-- enforcement on habit_id (matches this schema's existing convention for
+-- log-shaped child tables, e.g. project_versions) -- deleting a habit
+-- explicitly clears its own checkins first rather than relying on FK
+-- cascade, which nothing else in this schema uses. UNIQUE makes a repeat
+-- check-in for the same day a no-op instead of a second row.
+CREATE TABLE IF NOT EXISTS habit_checkins (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    habit_id     INTEGER NOT NULL,
+    checkin_date TEXT NOT NULL,                            -- YYYY-MM-DD
+    checked_by   INTEGER REFERENCES household_members(id),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (habit_id, checkin_date)
+);
+
 -- Piece 42: Appointments -- a scheduled date+time, not tied to a project and
 -- not always-recurring like Chores. recurrence_days NULL/0 = one-time (marks
 -- completed_at when done); a positive value advances when_date the same way

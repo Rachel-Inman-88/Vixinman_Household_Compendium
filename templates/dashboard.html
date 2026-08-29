@@ -221,6 +221,28 @@
       <p class="empty" style="margin:0;">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
       {% endif %}
 
+      {% set open_habits = my_habits|rejectattr("checked_today")|list %}
+      <div style="font-weight:700; margin:0.8rem 0 0.3rem;">🔥 Habits</div>
+      {% if open_habits %}
+      <ul style="list-style:none; margin:0; padding:0;">
+        {% for h in open_habits %}
+        <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+          <span style="flex:1 1 auto;">{{ h["title"] }}</span>
+          {% if h["streak"] %}<span class="badge warn" style="font-size:0.68rem;">🔥 {{ h["streak"] }}</span>{% endif %}
+          <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif my_habits %}
+      <p class="empty" style="margin:0;">All caught up — every habit is checked in for today. 🎉</p>
+      {% else %}
+      <p class="empty" style="margin:0;">No habits assigned to you. <a href="{{ url_for('habits_page') }}">Set one up →</a></p>
+      {% endif %}
+
       <div style="font-weight:700; margin:0.8rem 0 0.3rem;">📋 Boards</div>
       {% if my_boards %}
       <ul style="list-style:none; margin:0; padding:0;">

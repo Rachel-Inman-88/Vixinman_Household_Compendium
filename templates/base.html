@@ -494,6 +494,7 @@
         <a href="/tasks">✅ Tasks</a>
         <a href="{{ url_for('boards_page') }}">📋 Boards</a>
         <a href="{{ url_for('chores_page') }}">🔁 Chores</a>
+        <a href="{{ url_for('habits_page') }}">🔥 Habits</a>
         <a href="{{ url_for('notifications_page') }}">🔔 Notifications{% if unread_notifications %} ({{ unread_notifications if unread_notifications < 100 else '99+' }}){% endif %}</a>
         <a href="{{ url_for('appointments_page') }}">📅 Appointments</a>
       </div>
