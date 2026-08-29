@@ -2622,6 +2622,72 @@ chores, don't stack the notification."
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 78 (v0.55): Habit Tracker — done.** User: "I also want to add a
+Habit Tracker into the app in a way that makes sense. it would be a good
+jumping off point for me before going to the Child account UI." Scoped via
+3 questions before writing anything:
+- **A new, separate feature from Chores**, not an extension of it — a
+  chore is task-oriented (do it, it's due again later); a habit is about
+  **consistency over time**, tracked as a streak + short history instead
+  of a single next-due date.
+- **Simple daily yes/no check-in**, no notes-per-check-in — a streak
+  counter plus a compact 14-day "contribution graph" strip is enough to
+  see consistency at a glance.
+- **Shared like Chores**, not personal-by-default (the recommended
+  option) — same nullable `household_member_id` model as `routine_tasks`:
+  assign to one person, or leave unassigned and visible to anyone with a
+  login.
+- New `habits` / `habit_checkins` tables. `habit_checkins` deliberately
+  has **no FK `REFERENCES` enforcement** on `habit_id` (matches this
+  schema's existing convention for log-shaped child tables like
+  `project_versions`, rather than introducing a never-before-used
+  cascade-delete pattern) — `habit_delete()` explicitly clears a habit's
+  own check-ins first. A `UNIQUE (habit_id, checkin_date)` constraint
+  makes a repeat check-in for the same day a harmless no-op by
+  construction, rather than needing a Piece-77-style fix later.
+- **Streak and 14-day history are computed live** from `habit_checkins`
+  every call (`_habit_streak()` / `_habit_recent_days()`), never stored —
+  matches this app's general preference for deriving values on read (e.g.
+  project progress bars) so they can't drift out of sync. A streak
+  doesn't reset just because today isn't over yet: it counts backward
+  from today if today's already checked in, or from yesterday otherwise,
+  and only actually breaks on a real missed day.
+- **Deliberately no reminder/notification system** for habits in this
+  first build — a call I made, not something asked for, specifically to
+  avoid reintroducing the exact class of race-condition bug just fixed in
+  Piece 77, and because habit-tracker UX conventions typically show
+  streak state visually rather than nagging with due-reminders the way
+  Chores/Appointments/Requirements do.
+- New `/habits` list page (per-habit card: title, streak, 14-day strip,
+  ✓ check-in / edit / delete) and a standalone `/habits/new` /
+  `/habits/<id>/edit` form, mirroring Chores' own dedicated-form pattern
+  from Piece 76. A new "🔥 Habits" card on the dashboard's Productivity
+  Overview lists today's not-yet-checked-in habits with a one-tap ✓,
+  matching the existing Chores/Boards widgets there exactly (including
+  the `next=` hidden field so checking in stays on the dashboard).
+- **Caught and corrected a workflow gap before shipping**: work started
+  directly on `deploy/production-hosting-security` (left checked out from
+  Piece 77's deploy cycle) instead of a fresh branch off `main` — moved
+  onto a proper `feature/habit-tracker` branch (carrying the uncommitted
+  work with it) before committing, restoring the standing "every piece
+  gets its own branch" workflow.
+- Verified via a fresh-DB double-boot (schema idempotent, both new tables
+  present), a migration test against a **copy** of the real household
+  database (never the original — confirmed all 5 real household members
+  survive untouched), a dedicated `piece78_habit_tracker_test.py` covering
+  streak math (including the today-not-yet-checked-but-yesterday-was case
+  and a gap correctly breaking a streak), the 14-day strip's exact
+  contents, and deletion leaving no orphaned check-ins; and a Flask
+  `test_client()`-driven, real-data-copy route test
+  (`piece78_route_test.py`) exercising every new route end-to-end —
+  create, list, check in (including the no-op repeat), the dashboard
+  widget rendering, edit, and delete (confirmed delete stays a
+  grant-only action, matching this app's soft-delete safety rail — not
+  automatic even for admins).
+- Merged `feature/habit-tracker` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -2644,7 +2710,10 @@ chores, don't stack the notification."
   has not happened yet — expect this to surface its own set of
   role-specific findings (hidden nav items, gated tabs, the Child
   dashboard's separate "My schedule" widget, etc.) distinct from what
-  Piece 76 already covered for Parent/admin accounts.
+  Piece 76 already covered for Parent/admin accounts. The user explicitly
+  slotted Piece 78 (Habit Tracker) in ahead of this as its own "jumping
+  off point" before starting the Child UI review — that's now done, so
+  this is next up.
 - **Budget reporting — 2 more items still open.** Piece 55 built the pie
   chart, cash-flow projection, and both trend charts the user asked for by
   name; the user's own "among others" phrasing implied more might be

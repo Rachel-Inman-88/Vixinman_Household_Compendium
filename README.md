@@ -193,6 +193,17 @@ stay available as a backup even once a VPS is running.
   **linked to a Contact** (a person or organization) — a "＋ Add
   appointment" quick-link on a contact's row starts a new one already
   linked to it.
+- **🔥 Habit Tracker** (`/habits`): a separate feature from Chores — Chores
+  are task-oriented (do it, then it's due again later); habits are about
+  daily **consistency**. No due dates or reminders: a simple **✓ check in
+  today** button, a **streak** counter (a streak doesn't reset just
+  because today isn't over yet — it only breaks once a day is actually
+  missed), and a 14-day history strip at a glance. Shared the same way as
+  Chores — assign a habit to one household member, or leave it unassigned
+  and visible to everyone with a login. Streak and history are always
+  computed live from the check-in log, never stored, so they can't drift
+  out of sync. A **🔥 Habits** card on the dashboard's Productivity
+  Overview lists today's not-yet-checked-in habits with a one-tap ✓.
 - **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboard. It opens on a **projects landing** that lists just the projects in the
@@ -614,6 +625,13 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.55** — **Habit Tracker** (`/habits`), a new feature separate from
+  Chores — a chore is task-oriented (due again later), a habit is about
+  daily consistency (streak + a 14-day history strip, no due dates or
+  reminders). Simple daily ✓ check-in, idempotent per day. Shared like
+  Chores (assign to one person, or leave unassigned for the whole
+  household). A dashboard Productivity Overview card lists today's
+  not-yet-checked-in habits.
 - **v0.54** — **Fixed duplicate reminder notifications.** A daily chore
   ("Cook Dinner") rang twice for the same missed day instead of once —
   root cause: the reminder check ("has this already been sent?") and the
