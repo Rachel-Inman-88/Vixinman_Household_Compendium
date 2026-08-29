@@ -15,11 +15,15 @@ it's Approved; approving doesn't buy it or add it to Inventory automatically.</p
     <a href="{{ url_for('wishlist_page', who=who, show='pending') }}" class="btn {{ '' if show == 'pending' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Pending</a>
     <a href="{{ url_for('wishlist_page', who=who, show='all') }}" class="btn {{ '' if show == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
   </div>
+  {# Piece 79: a Child only ever sees their own requests -- no "Whose"
+     toggle to switch away from that at all. #}
+  {% if not lock_who %}
   <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
     <span class="muted" style="font-size:0.85rem;">Whose:</span>
     <a href="{{ url_for('wishlist_page', who='mine', show=show) }}" class="btn {{ '' if who == 'mine' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
     <a href="{{ url_for('wishlist_page', who='all', show=show) }}" class="btn {{ '' if who == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
   </div>
+  {% endif %}
 </div>
 
 {# ---- list ---- #}

@@ -500,6 +500,10 @@
       </div>
     </details>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
+    {# Piece 79: a Child gets no Household menu at all -- every link inside
+       it is already permission-gated to something a Child never has by
+       default, so it would only ever show up empty for them anyway. #}
+    {% if not (current_user and current_user["role"] == "Child") %}
     <details class="navdrop">
       <summary>🏠 Household{% if can('approvals') and (pending_submissions + pending_drafts) %} ({{ pending_submissions + pending_drafts }}){% endif %}</summary>
       <div class="navdrop-menu">
@@ -509,13 +513,20 @@
         {% if can('household.manage') %}<a href="/household-members">👨‍👩‍👧 Family</a>{% endif %}
       </div>
     </details>
+    {% endif %}
     <details class="navdrop">
       <summary>🗄 Databases</summary>
       <div class="navdrop-menu">
         <a href="{{ url_for('projects_list') }}">🗂 Projects</a>
+        {# Piece 79: Backlog and Contacts are household-admin territory --
+           not shown to a Child. #}
+        {% if not (current_user and current_user["role"] == "Child") %}
         <a href="{{ url_for('backlog_page') }}">🗂 Backlog</a>
+        {% endif %}
         {% if can('household.manage') %}<a href="{{ url_for('household_files_page') }}">📁 Household Files</a>{% endif %}
+        {% if not (current_user and current_user["role"] == "Child") %}
         <a href="{{ url_for('external_helpers_page') }}">🧰 Contacts</a>
+        {% endif %}
         {% if can('rules.manage') %}<a href="/rules">⚙️ Requirements Editor</a>{% endif %}
         <a href="/directory">📖 Requirements Library</a>
         <a href="/inventory">📦 Inventory</a>

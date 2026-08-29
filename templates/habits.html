@@ -25,9 +25,18 @@ running, and the strip below it shows the last two weeks at a glance.</p>
       <div style="font-weight:700; font-size:1.05rem;">{{ h["title"] }}</div>
       <div class="muted" style="font-size:0.85rem;">{{ h["assignee_name"] or "— unassigned —" }}{% if h["notes"] %} · {{ h["notes"] }}{% endif %}</div>
     </div>
-    <span class="badge {{ 'warn' if h['streak'] else 'neutral' }}" style="font-size:0.85rem; white-space:nowrap;">
-      🔥 {{ h["streak"] }} day{{ "s" if h["streak"] != 1 }}{% if h["streak"] %} streak{% endif %}
-    </span>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.25rem;">
+      <span class="badge {{ 'warn' if h['streak'] else 'neutral' }}" style="font-size:0.85rem; white-space:nowrap;">
+        🔥 {{ h["streak"] }} day{{ "s" if h["streak"] != 1 }}{% if h["streak"] %} streak{% endif %}
+      </span>
+      {% if h["frequency_type"] == "times" %}
+        {% if h["overdue_times"] %}
+        <span class="badge danger" style="font-size:0.72rem; white-space:nowrap;">overdue: {{ h["overdue_times"]|join(", ") }}</span>
+        {% elif h["next_time"] %}
+        <span class="muted" style="font-size:0.75rem; white-space:nowrap;">next: {{ h["next_time"] }}</span>
+        {% endif %}
+      {% endif %}
+    </div>
   </div>
 
   {# 14-day contribution-graph-style history, oldest to newest, today last. #}
@@ -39,7 +48,32 @@ running, and the strip below it shows the last two weeks at a glance.</p>
     {% endfor %}
   </div>
 
-  <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+  <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+    {% if h["frequency_type"] == "count" %}
+    {# A running count toward the daily target -- each tap adds one, capped
+       server-side at target_count so repeat taps past it are harmless. #}
+    <span class="muted" style="font-size:0.85rem;">{{ h["today_count"] }}/{{ h["target_count"] }} today</span>
+    <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn {{ 'btn-secondary' if h['checked_today'] else '' }}"
+              style="padding:0.2rem 0.6rem; font-size:0.85rem;" {{ "disabled" if h["checked_today"] }}>
+        {{ "✓ Done for today" if h["checked_today"] else "+1" }}
+      </button>
+    </form>
+    {% elif h["frequency_type"] == "times" %}
+    {# Each scheduled time is its own slot -- tap one off as it happens. #}
+    {% for t in h["scheduled_times"] %}
+    {% set done = t in h["today_checked_times"] %}
+    <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="slot" value="{{ t }}">
+      <button type="submit" class="btn {{ 'btn-secondary' if done else '' }}"
+              style="padding:0.2rem 0.6rem; font-size:0.85rem;" {{ "disabled" if done }}>
+        {{ "✓ " if done }}{{ t }}
+      </button>
+    </form>
+    {% endfor %}
+    {% else %}
     <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn {{ 'btn-secondary' if h['checked_today'] else '' }}"
@@ -47,6 +81,7 @@ running, and the strip below it shows the last two weeks at a glance.</p>
         {{ "✓ Checked in today" if h["checked_today"] else "✓ Check in today" }}
       </button>
     </form>
+    {% endif %}
     <a href="{{ url_for('habit_edit_form', habit_id=h['id']) }}"
        class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.85rem;">✎ Edit</a>
     {% if can('delete') %}

@@ -12,8 +12,8 @@
 </div>
 
 {# ---- Executive (household) overview: whole-household snapshot. A Child gets
-       the 🗓 My schedule widget below instead (Piece 53) — individually
-       focused, not the whole household's pipeline/money/approvals. ---- #}
+       the 🙋 My Overview widget below instead (Piece 53, reworked Piece 79) —
+       individually focused, not the whole household's pipeline/money/approvals. ---- #}
 {% if gm and not (user and user["role"] == "Child") %}
 <details class="card sect" style="border-left:4px solid var(--brand);">
   <summary>🏠 Household overview</summary>
@@ -165,8 +165,8 @@
 
 {# ---- Piece 61: Productivity Overview — Appointments/Chores/Boards/Tasks
        consolidated into one card (a list pane + a Month Calendar pane).
-       Not shown on a Child's dashboard (Piece 53) -- they get 🗓 My
-       schedule below instead. Placed directly under Household overview
+       Not shown on a Child's dashboard (Piece 53) -- they get 🙋 My
+       Overview below instead. Placed directly under Household overview
        per the user's explicit request. ---- #}
 {% if not (user and user["role"] == "Child") %}
 <details class="card sect">
@@ -227,13 +227,20 @@
       <ul style="list-style:none; margin:0; padding:0;">
         {% for h in open_habits %}
         <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
-          <span style="flex:1 1 auto;">{{ h["title"] }}</span>
+          <span style="flex:1 1 auto;">{{ h["title"] }}
+            {% if h["frequency_type"] == "count" %}<span class="muted" style="font-size:0.72rem;">({{ h["today_count"] }}/{{ h["target_count"] }})</span>{% endif %}
+            {% if h["frequency_type"] == "times" and h["overdue_times"] %}<span class="badge danger" style="font-size:0.65rem;">overdue</span>{% endif %}
+          </span>
           {% if h["streak"] %}<span class="badge warn" style="font-size:0.68rem;">🔥 {{ h["streak"] }}</span>{% endif %}
+          {% if h["frequency_type"] == "times" %}
+          <a href="{{ url_for('habits_page') }}" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">Open →</a>
+          {% else %}
           <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
-            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">{{ "+1" if h["frequency_type"] == "count" else "✓" }}</button>
           </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>
@@ -340,30 +347,147 @@
 </details>
 {% endif %}
 
-{# ---- My schedule: a Child's day-by-day glance, replacing the household
-       overview above (Piece 53). Read-only -- the My tasks/My chores/My
-       appointments cards below still carry the mark-done actions. ---- #}
+{# ---- My Overview: a Child's personal card -- appointments, chores,
+       habits, tasks, notes, and wishlist all in one place (Piece 79,
+       replacing the old day-by-day "My schedule" glance). Everything
+       here is already scoped to this person by dashboard()'s own
+       queries, same data the Productivity Overview card below uses for
+       everyone else. ---- #}
 {% if user and user["role"] == "Child" %}
-<details class="card sect" style="border-left:4px solid var(--brand);">
-  <summary>🗓 My schedule</summary>
+<details class="card sect" style="border-left:4px solid var(--brand);" open>
+  <summary>🙋 My Overview</summary>
+
+  <div style="font-weight:700; margin-bottom:0.3rem;">📅 Appointments</div>
   {% for key, heading in [("today", "Today"), ("tomorrow", "Tomorrow"), ("soon", "Next 2 weeks")] %}
-  <section style="margin-bottom:0.75rem;">
-    <div style="font-weight:700; margin:0 0 0.4rem; font-size:0.95rem;">{{ heading }}</div>
-    {% if schedule_buckets[key] %}
-    <ul style="list-style:none; margin:0; padding:0;">
-      {% for i in schedule_buckets[key] %}
-      <li style="padding:0.3rem 0; border-bottom:1px solid var(--border);">
-        {{ i.icon }} <a href="{{ i.href }}">{{ i.title }}</a>
-        {% if i.subtitle %}<span class="muted" style="font-size:0.82rem;"> — {{ i.subtitle }}</span>{% endif %}
-        <span class="badge neutral" style="font-size:0.7rem;">{{ i.kind }}</span>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="empty" style="margin:0;">Nothing {{ heading|lower }}.</p>
-    {% endif %}
-  </section>
+  <div style="font-size:0.8rem; font-weight:600; color:var(--muted); margin:0.5rem 0 0.15rem;">{{ heading }}</div>
+  {% if appt_buckets[key] %}
+  <ul style="list-style:none; margin:0 0 0.4rem; padding:0;">
+    {% for item in appt_buckets[key] %}
+    {% set a = item.appt %}
+    <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+      <span style="flex:1 1 auto;">{{ a["title"] }}{% if a["location"] %} <span class="muted" style="font-size:0.8rem;">— {{ a["location"] }}</span>{% endif %}</span>
+      {% if item.overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+      <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ a["when_date"] }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}</span>
+      <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+        <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted" style="margin:0 0 0.4rem; font-size:0.82rem;">Nothing due.</p>
+  {% endif %}
   {% endfor %}
+
+  <div style="font-weight:700; margin:0.8rem 0 0.3rem;">🔁 Chores</div>
+  {% if my_chores %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for c in my_chores %}
+    {% set overdue = c["next_due"] and c["next_due"] < today %}
+    <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+      <span style="flex:1 1 auto;">{{ c["title"] }}</span>
+      {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+      <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ c["next_due"] or "—" }}</span>
+      <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+        <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="margin:0;">No chores assigned to you. <a href="{{ url_for('chores_page') }}">Set one up →</a></p>
+  {% endif %}
+
+  {% set open_habits = my_habits|rejectattr("checked_today")|list %}
+  <div style="font-weight:700; margin:0.8rem 0 0.3rem;">🔥 Habits</div>
+  {% if open_habits %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for h in open_habits %}
+    <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+      <span style="flex:1 1 auto;">{{ h["title"] }}
+        {% if h["frequency_type"] == "count" %}<span class="muted" style="font-size:0.72rem;">({{ h["today_count"] }}/{{ h["target_count"] }})</span>{% endif %}
+        {% if h["frequency_type"] == "times" and h["overdue_times"] %}<span class="badge danger" style="font-size:0.65rem;">overdue</span>{% endif %}
+      </span>
+      {% if h["streak"] %}<span class="badge warn" style="font-size:0.68rem;">🔥 {{ h["streak"] }}</span>{% endif %}
+      {% if h["frequency_type"] == "times" %}
+      <a href="{{ url_for('habits_page') }}" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">Open →</a>
+      {% else %}
+      <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+        <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">{{ "+1" if h["frequency_type"] == "count" else "✓" }}</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif my_habits %}
+  <p class="empty" style="margin:0;">All caught up — every habit is checked in for today. 🎉</p>
+  {% else %}
+  <p class="empty" style="margin:0;">No habits assigned to you. <a href="{{ url_for('habits_page') }}">Set one up →</a></p>
+  {% endif %}
+
+  <div style="font-weight:700; margin:0.8rem 0 0.3rem;">✅ Tasks</div>
+  {% if my_tasks %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for t in my_tasks %}
+    {% set overdue = t["due_date"] and t["due_date"] < today %}
+    <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+      <a href="{{ url_for('project_detail', project_id=t['project_id']) }}#tasks" style="flex:1 1 auto;">{{ t["title"] }}</a>
+      <span class="muted" style="font-size:0.8rem;">{{ t["job_name"] }}</span>
+      {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
+      {% if t["due_date"] %}<span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ t["due_date"] }}</span>{% endif %}
+      <span class="badge {{ sc[t['status']] }}" style="font-size:0.68rem;">{{ t["status"] }}</span>
+      <form method="post" action="{{ url_for('set_task_status', project_id=t['project_id'], task_id=t['id']) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="Done">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+        <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="margin:0;">No open tasks assigned to you. 🎉</p>
+  {% endif %}
+
+  <div style="font-weight:700; margin:0.8rem 0 0.3rem;">📝 Notes</div>
+  {% if my_notes %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for n in my_notes %}
+    <li style="padding:0.3rem 0; border-bottom:1px solid var(--border);">
+      <div style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap;">
+        <a href="{{ url_for('project_detail', project_id=n['project_id']) }}" style="font-size:0.8rem; font-weight:600;">{{ n["job_name"] or "Project #" ~ n["project_id"] }}</a>
+        <span class="muted" style="font-size:0.72rem;">{{ n["created_at"] }}</span>
+      </div>
+      <div style="font-size:0.85rem;">{{ n["note"] }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="margin:0;">No notes yet.</p>
+  {% endif %}
+
+  <div style="font-weight:700; margin:0.8rem 0 0.3rem;">🎁 Wishlist</div>
+  {% if my_wishlist %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for w in my_wishlist %}
+    <li style="display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+      <span style="flex:1 1 auto;">{{ w["title"] }}</span>
+      <span class="badge {{ 'warn' if w['status'] == 'Pending' else ('' if w['status'] == 'Approved' else 'danger') }}" style="font-size:0.68rem;">{{ w["status"] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="margin:0;">Nothing on your wishlist yet.</p>
+  {% endif %}
+  <p style="margin:0.6rem 0 0;">
+    <a href="{{ url_for('wishlist_page') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🎁 Open Wishlist</a>
+  </p>
 </details>
 {% endif %}
 
@@ -409,7 +533,10 @@
        "Next to-do" there (a project this early rarely has requirements
        filed yet, and the immediate next step is more actionable), and its
        Progress bar drops the redundant "▶ Next: ..." caption since that
-       same text now has its own column. ---- #}
+       same text now has its own column. Piece 79: this is now the
+       Child's "what's going on in the house" household-project view too
+       -- Piece 53's filter down to just their own projects was dropped,
+       so `sections` carries every active project for every role. ---- #}
 {% for s in sections %}
 {% set proposals = s.name == "Planning" %}
 <details class="card sect">

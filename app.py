@@ -102,23 +102,36 @@ def ensure_backlog_reminders(db):
         db.commit()
 
 
+def _shared_reminder_audience(db):
+    """Piece 79: the audience for a reminder that isn't assigned to anyone
+    in particular (an unassigned chore/appointment/requirement) -- everyone
+    with a login EXCEPT Child accounts. An unassigned item is a shared
+    household thing, not something a Child was "added to"; a Child who IS
+    the assignee still gets notified through the normal assignee-only
+    branch each of these functions already has, this only affects the
+    broadcast fallback."""
+    return [r["id"] for r in db.execute(
+        "SELECT id FROM household_members"
+        " WHERE COALESCE(username,'') != '' AND role != 'Child'").fetchall()]
+
+
 # ------------------------------------------------------------------- chores
 def ensure_routine_task_reminders(db):
     """Piece 37: due-date reminders for recurring chores (routine_tasks),
     through the same notifications inbox as ensure_backlog_reminders. Each
     chore reminds once per cycle (reminder_sent flag), to whoever it's
-    assigned to — or every member with a login, if unassigned. Called both
-    on dashboard load and from the background scheduler (run_maintenance) --
-    Piece 77: those two callers (plus gunicorn running multiple worker
-    processes, each with its own connection) could both pass the
-    reminder_sent check before either wrote it back, stacking a duplicate
-    notification for the same chore. The UPDATE is now the atomic claim --
-    it runs FIRST, and only a caller whose UPDATE actually flips the flag
-    (rowcount 1, since SQLite serializes writes) goes on to notify; a
-    caller that loses the race sees rowcount 0 and skips it entirely."""
+    assigned to — or every non-Child member with a login, if unassigned
+    (Piece 79 -- see _shared_reminder_audience). Called both on dashboard
+    load and from the background scheduler (run_maintenance) -- Piece 77:
+    those two callers (plus gunicorn running multiple worker processes,
+    each with its own connection) could both pass the reminder_sent check
+    before either wrote it back, stacking a duplicate notification for the
+    same chore. The UPDATE is now the atomic claim -- it runs FIRST, and
+    only a caller whose UPDATE actually flips the flag (rowcount 1, since
+    SQLite serializes writes) goes on to notify; a caller that loses the
+    race sees rowcount 0 and skips it entirely."""
     today = datetime.now().strftime("%Y-%m-%d")
-    all_members = [r["id"] for r in db.execute(
-        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    all_members = _shared_reminder_audience(db)
     for chore in db.execute(
             "SELECT * FROM routine_tasks WHERE next_due != '' AND next_due <= ?"
             " AND COALESCE(reminder_sent, '') != '1'", (today,)).fetchall():
@@ -144,13 +157,13 @@ def ensure_appointment_reminders(db):
     """Piece 42: due-date reminders for appointments, through the same
     notifications inbox as ensure_routine_task_reminders. Each appointment
     reminds once per when_date (reminder_sent flag), to whoever it's
-    assigned to — or every member with a login, if unassigned. Called both
-    on dashboard load and from the background scheduler (run_maintenance) --
-    Piece 77: the UPDATE is the atomic claim, run before notifying (see
+    assigned to — or every non-Child member with a login, if unassigned
+    (Piece 79 -- see _shared_reminder_audience). Called both on dashboard
+    load and from the background scheduler (run_maintenance) -- Piece 77:
+    the UPDATE is the atomic claim, run before notifying (see
     ensure_routine_task_reminders' docstring for why)."""
     today = datetime.now().strftime("%Y-%m-%d")
-    all_members = [r["id"] for r in db.execute(
-        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    all_members = _shared_reminder_audience(db)
     for appt in db.execute(
             "SELECT * FROM appointments WHERE when_date != '' AND when_date <= ?"
             " AND COALESCE(completed_at, '') = '' AND COALESCE(reminder_sent, '') != '1'",
@@ -177,13 +190,13 @@ def ensure_appointment_reminders(db):
 def ensure_requirement_reminders(db):
     """Due-date reminders for standalone recurring requirements (resource_rules
     rows with no project field_name) — the same mechanics as
-    ensure_routine_task_reminders, just against a different table. Called both
-    on dashboard load and from the background scheduler (run_maintenance) --
+    ensure_routine_task_reminders (including the non-Child broadcast
+    fallback, Piece 79), just against a different table. Called both on
+    dashboard load and from the background scheduler (run_maintenance) --
     Piece 77: the UPDATE is the atomic claim, run before notifying (see
     ensure_routine_task_reminders' docstring for why)."""
     today = datetime.now().strftime("%Y-%m-%d")
-    all_members = [r["id"] for r in db.execute(
-        "SELECT id FROM household_members WHERE COALESCE(username,'') != ''").fetchall()]
+    all_members = _shared_reminder_audience(db)
     for req in db.execute(
             "SELECT * FROM resource_rules WHERE field_name = '' AND next_due != ''"
             " AND next_due <= ? AND COALESCE(reminder_sent, '') != '1'",
@@ -203,6 +216,108 @@ def ensure_requirement_reminders(db):
             db, recipients, f"📋 Requirement due: {req['label']}",
             link="/rules", kind="requirement")
         db.commit()
+
+
+ASSISTANT_SAFETY_IDLE_MINUTES = 15
+
+
+def _safety_hours_label(oldest_str, newest_str):
+    """Piece 79: elapsed time between a Child's first and most recent
+    unreported Assistant message, floored at 1 hour -- a coarse safety
+    signal (this conversation happened, roughly this long), not a precise
+    timer. A two-message, two-minute exchange still reads as "~1 hr" on
+    purpose (per the user's own call) rather than implying false precision."""
+    try:
+        oldest = datetime.strptime(oldest_str, "%Y-%m-%d %H:%M:%S")
+        newest = datetime.strptime(newest_str, "%Y-%m-%d %H:%M:%S")
+        hours = max(1, math.ceil((newest - oldest).total_seconds() / 3600))
+    except ValueError:
+        hours = 1
+    return f"~{hours} hr" if hours == 1 else f"~{hours} hrs"
+
+
+def ensure_assistant_safety_notifications(db):
+    """Piece 79: a parent-safety feature -- when a Child talks to the AI
+    Assistant (the global 💬 Assistant page, or a project's 🧠 Plan tab)
+    and then goes quiet for ASSISTANT_SAFETY_IDLE_MINUTES, every Parent
+    gets one notification summarizing that conversation: how long it ran
+    (floored at 1 hour, see _safety_hours_label), how many messages the
+    Child sent (their own messages only -- the assistant's replies don't
+    count), and which page it happened on. Deliberately Child-only (not
+    Parent/Assistant-role usage) and deliberately NOT per-message -- this
+    fires once a conversation has actually gone idle, same cadence as
+    every other ensure_*_reminders function (called from both the
+    dashboard route and the background scheduler, which already ticks
+    every 15 minutes -- see SCHEDULER_INTERVAL_SECONDS). A safety_reported
+    flag on each message (assistant_messages / project_plan_messages)
+    keeps an already-reported message from being folded into a second
+    notification later."""
+    cutoff = (datetime.now() - timedelta(minutes=ASSISTANT_SAFETY_IDLE_MINUTES)
+              ).strftime("%Y-%m-%d %H:%M:%S")
+    parents = [r["id"] for r in db.execute(
+        "SELECT id FROM household_members"
+        " WHERE role = 'Parent' AND COALESCE(username,'') != ''").fetchall()]
+    if not parents:
+        return
+
+    # ---- Global Assistant page, grouped by conversation ----
+    groups = {}
+    for r in db.execute(
+            "SELECT m.id, m.conversation_id, m.created_at, hm.name AS child_name"
+            " FROM assistant_messages m"
+            " JOIN assistant_conversations c ON c.id = m.conversation_id"
+            " JOIN household_members hm ON hm.id = c.household_member_id"
+            " WHERE m.role = 'user' AND COALESCE(m.safety_reported, '') != '1'"
+            " AND hm.role = 'Child'"
+            " ORDER BY m.conversation_id, m.created_at").fetchall():
+        groups.setdefault(r["conversation_id"],
+                           {"child_name": r["child_name"], "rows": []})["rows"].append(r)
+    for g in groups.values():
+        rows = g["rows"]
+        newest = max(r["created_at"] for r in rows)
+        if newest > cutoff:
+            continue   # still active -- not idle yet
+        ids = [r["id"] for r in rows]
+        hours = _safety_hours_label(min(r["created_at"] for r in rows), newest)
+        notify_employees(
+            db, parents,
+            f"👀 {g['child_name']} spent {hours} on the 💬 Assistant "
+            f"({len(rows)} message{'s' if len(rows) != 1 else ''}).",
+            link="/assistant", kind="assistant_safety")
+        db.execute(
+            f"UPDATE assistant_messages SET safety_reported = '1'"
+            f" WHERE id IN ({','.join('?' * len(ids))})", ids)
+    db.commit()
+
+    # ---- Plan tab, grouped by (project, child) ----
+    groups2 = {}
+    for r in db.execute(
+            "SELECT n.id, n.project_id, n.created_at, n.author, p.job_name"
+            " FROM project_plan_messages n"
+            " JOIN projects p ON p.id = n.project_id"
+            " JOIN household_members hm ON hm.name = n.author"
+            " WHERE n.role = 'user' AND COALESCE(n.safety_reported, '') != '1'"
+            " AND hm.role = 'Child'"
+            " ORDER BY n.project_id, n.author, n.created_at").fetchall():
+        key = (r["project_id"], r["author"])
+        groups2.setdefault(key, {"job_name": r["job_name"], "rows": []})["rows"].append(r)
+    for (project_id, author), g in groups2.items():
+        rows = g["rows"]
+        newest = max(r["created_at"] for r in rows)
+        if newest > cutoff:
+            continue
+        ids = [r["id"] for r in rows]
+        hours = _safety_hours_label(min(r["created_at"] for r in rows), newest)
+        job_name = g["job_name"] or f"Project #{project_id}"
+        notify_employees(
+            db, parents,
+            f"👀 {author} spent {hours} on the 🧠 Plan tab for '{job_name}' "
+            f"({len(rows)} message{'s' if len(rows) != 1 else ''}).",
+            link=f"/projects/{project_id}", kind="assistant_safety")
+        db.execute(
+            f"UPDATE project_plan_messages SET safety_reported = '1'"
+            f" WHERE id IN ({','.join('?' * len(ids))})", ids)
+    db.commit()
 
 
 # Project profile columns. Piece 38: project_category/project_type are the
@@ -482,7 +597,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.55"
+VERSION = "0.56"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -879,11 +994,22 @@ def notify_stage_turnover(db, project, new_status, exclude_id=None):
     """Piece 29.4 (revised Piece 35): when a project turns over to a pipeline
     stage, notify every household member with a login. The recipient's copy
     clears once they open it (or open the project). The person who triggered
-    the move is skipped."""
+    the move is skipped. Piece 79: a Child is only included if they actually
+    have a task on this project -- a household project they have no stake in
+    isn't something they were "added to," so it shouldn't page them."""
     own = STATUS_OWNERSHIP.get(new_status)
     if not own:
         return
     recipients = household_member_ids_with_login(db, exclude_id=exclude_id)
+    child_ids = {r["id"] for r in db.execute(
+        "SELECT id FROM household_members WHERE role = 'Child'").fetchall()}
+    if child_ids:
+        involved_child_ids = {r["household_member_id"] for r in db.execute(
+            "SELECT DISTINCT household_member_id FROM project_tasks"
+            " WHERE project_id = ? AND household_member_id IS NOT NULL",
+            (project["id"],)).fetchall()}
+        recipients = [rid for rid in recipients
+                      if rid not in child_ids or rid in involved_child_ids]
     if not recipients:
         return
     jobname = project["job_name"] or f"Project #{project['id']}"
@@ -1082,6 +1208,21 @@ def admin_required(view):
     def wrapped(*args, **kwargs):
         if not has_permission(VIEW_PERMISSION.get(view.__name__)):
             flash("You don't have access to that. Ask an admin.", "error")
+            return redirect(url_for("home"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def child_forbidden(view):
+    """Piece 79: block a Child account from a view outright (not a
+    permission -- Backlog and Contacts are open info for every other role,
+    this is specifically "a Child doesn't need this," not "needs a
+    grant"). Everyone else passes through unchanged."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if user is not None and user["role"] == "Child":
+            flash("That's not part of your account.", "error")
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
@@ -2330,6 +2471,23 @@ def init_db():
                    " ('legacy_artifact_sweep_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+
+    # Piece 79: a Child's Assistant/Plan-tab messages get folded into a
+    # parent safety notification once idle -- see ensure_assistant_safety_
+    # notifications(). '1' once a message has been included in one.
+    ensure_columns(db, "assistant_messages", ["safety_reported"])
+    ensure_columns(db, "project_plan_messages", ["safety_reported"])
+
+    # Piece 79: interval-tracked habits (a count-per-day target, or a list
+    # of specific times) alongside the original simple daily habit.
+    # target_count needs to be a real INTEGER (ensure_columns always adds
+    # TEXT) -- same fix as Piece 41's quantity-column lesson.
+    ensure_columns(db, "habits", ["frequency_type", "scheduled_times"])
+    try:
+        db.execute("ALTER TABLE habits ADD COLUMN target_count INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
     db.close()
 
 
@@ -3043,34 +3201,85 @@ def chore_delete(chore_id):
 
 
 # --------------------------------------------------------- Piece 78: habits
-def _habit_streak(db, habit_id, today_str):
-    """Consecutive days ending today, or ending yesterday if today hasn't
-    been checked in yet -- a streak doesn't reset just because the current
-    day isn't over. Computed live from habit_checkins every time, never
-    stored, so it can't drift out of sync with the actual history."""
-    dates = {r["checkin_date"] for r in db.execute(
-        "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
-        (habit_id,)).fetchall()}
+def _habit_scheduled_times(habit):
+    """A 'times'-type habit's scheduled_times column, parsed into a clean
+    list of "HH:MM" strings."""
+    raw = habit["scheduled_times"] if habit["scheduled_times"] else ""
+    return [t.strip() for t in raw.split(",") if t.strip()]
+
+
+def _habit_progress(db, habit, today_str=None):
+    """Piece 79: everything the UI needs about a habit's current state and
+    history, computed live every call from habit_checkins (frequency_type
+    'daily', unchanged since Piece 78) or habit_interval_checkins
+    ('count'/'times') -- never stored, so it can't drift out of sync.
+    Fetches each table once and does the day-by-day math in Python rather
+    than a query per day, same efficiency shape as Piece 78's original."""
+    today_str = today_str or datetime.now().strftime("%Y-%m-%d")
+    ftype = habit["frequency_type"] or "daily"
+    daily_dates = set()
+    interval_by_date = {}
+    if ftype == "daily":
+        daily_dates = {r["checkin_date"] for r in db.execute(
+            "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
+            (habit["id"],)).fetchall()}
+    else:
+        for r in db.execute(
+                "SELECT checkin_date, slot FROM habit_interval_checkins WHERE habit_id = ?",
+                (habit["id"],)).fetchall():
+            interval_by_date.setdefault(r["checkin_date"], set()).add(r["slot"])
+
+    times = _habit_scheduled_times(habit) if ftype == "times" else []
+    target = (habit["target_count"] or 1) if ftype == "count" else None
+
+    def day_done(date_str):
+        if ftype == "daily":
+            return date_str in daily_dates
+        if ftype == "count":
+            return len(interval_by_date.get(date_str, set())) >= target
+        return bool(times) and all(t in interval_by_date.get(date_str, set()) for t in times)
+
+    # Streak: consecutive days ending today, or ending yesterday if today
+    # isn't done yet -- a streak doesn't reset just because the day isn't
+    # over. Same rule Piece 78 established, now routed through day_done().
     cursor = datetime.strptime(today_str, "%Y-%m-%d")
-    if today_str not in dates:
+    if not day_done(today_str):
         cursor -= timedelta(days=1)
     streak = 0
-    while cursor.strftime("%Y-%m-%d") in dates:
+    while day_done(cursor.strftime("%Y-%m-%d")):
         streak += 1
         cursor -= timedelta(days=1)
-    return streak
 
+    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    recent = [{"date": (today_dt - timedelta(days=i)).strftime("%Y-%m-%d"),
+               "checked": day_done((today_dt - timedelta(days=i)).strftime("%Y-%m-%d"))}
+              for i in range(13, -1, -1)]
 
-def _habit_recent_days(db, habit_id, today_str, n=14):
-    """Oldest-to-newest {date, checked} for the last n days (today
-    included) -- a compact contribution-graph-style history strip."""
-    dates = {r["checkin_date"] for r in db.execute(
-        "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
-        (habit_id,)).fetchall()}
-    today = datetime.strptime(today_str, "%Y-%m-%d")
-    return [{"date": (today - timedelta(days=i)).strftime("%Y-%m-%d"),
-             "checked": (today - timedelta(days=i)).strftime("%Y-%m-%d") in dates}
-            for i in range(n - 1, -1, -1)]
+    today_slots = interval_by_date.get(today_str, set())
+    # Piece 79: a 'times' habit's card shows the next unchecked time today
+    # (or flags one as overdue) purely as a visual cue -- no reminder or
+    # notification fires for it, matching Piece 78's original "no
+    # reminders on Habits" call.
+    next_time, overdue_times = None, []
+    if ftype == "times":
+        now_hm = datetime.now().strftime("%H:%M")
+        unchecked = [t for t in times if t not in today_slots]
+        overdue_times = [t for t in unchecked if t <= now_hm]
+        later = [t for t in unchecked if t > now_hm]
+        next_time = min(later) if later else None
+
+    return {
+        "frequency_type": ftype,
+        "streak": streak,
+        "recent": recent,
+        "checked_today": day_done(today_str),
+        "today_count": len(today_slots) if ftype == "count" else None,
+        "target_count": target,
+        "scheduled_times": times,
+        "today_checked_times": today_slots if ftype == "times" else set(),
+        "next_time": next_time,
+        "overdue_times": overdue_times,
+    }
 
 
 @app.route("/habits")
@@ -3097,9 +3306,7 @@ def habits_page():
     habits = []
     for h in db.execute(sql, params).fetchall():
         h = dict(h)
-        h["streak"] = _habit_streak(db, h["id"], today)
-        h["recent"] = _habit_recent_days(db, h["id"], today)
-        h["checked_today"] = h["recent"][-1]["checked"]
+        h.update(_habit_progress(db, h, today))
         habits.append(h)
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
@@ -3107,13 +3314,50 @@ def habits_page():
                            who=who, today=today)
 
 
-def _habit_form_values():
-    assignee = request.form.get("household_member_id", "")
-    return {
+HABIT_SCHEDULED_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def _habit_form_values(me):
+    """Piece 79: a Child can only ever assign a habit to themselves -- the
+    submitted household_member_id is ignored entirely for a Child and
+    forced to their own id, regardless of what the (locked, but not
+    trusted) form field says. Everyone else keeps free assignment.
+
+    Also parses the frequency_type ('daily' / 'count' / 'times') and its
+    matching field -- target_count for 'count', a comma-separated
+    scheduled_times list for 'times' -- with the other type's field always
+    cleared, so switching a habit's type on edit doesn't leave stale data
+    behind from the type it used to be. A 'times' habit with no valid
+    times left after parsing falls back to plain 'daily' rather than
+    silently creating an uncheckable habit."""
+    ftype = request.form.get("frequency_type", "daily").strip()
+    if ftype not in ("daily", "count", "times"):
+        ftype = "daily"
+    target_count = None
+    scheduled_times = ""
+    if ftype == "count":
+        raw = request.form.get("target_count", "").strip()
+        target_count = int(raw) if raw.isdigit() and int(raw) > 0 else 1
+    elif ftype == "times":
+        times = [t.strip() for t in request.form.get("scheduled_times", "").split(",")
+                 if HABIT_SCHEDULED_TIME_RE.match(t.strip())]
+        if times:
+            scheduled_times = ",".join(sorted(set(times)))
+        else:
+            ftype = "daily"
+    values = {
         "title": request.form.get("title", "").strip(),
         "notes": request.form.get("notes", "").strip(),
-        "household_member_id": int(assignee) if assignee.isdigit() else None,
+        "frequency_type": ftype,
+        "target_count": target_count,
+        "scheduled_times": scheduled_times,
     }
+    if me is not None and me["role"] == "Child":
+        values["household_member_id"] = me["id"]
+    else:
+        assignee = request.form.get("household_member_id", "")
+        values["household_member_id"] = int(assignee) if assignee.isdigit() else None
+    return values
 
 
 @app.route("/habits/new")
@@ -3122,25 +3366,30 @@ def habit_new_form():
     (Piece 76) rather than an inline card -- reached via a "+ New habit"
     button at the top of the list, not buried inside a section that only
     exists once a habit is already there (the exact Inventory bug Piece 76
-    fixed, avoided here from the start)."""
+    fixed, avoided here from the start). Piece 79: a Child gets no
+    assignment dropdown at all -- their habits are always their own."""
     db = get_db()
-    employees = db.execute(
+    me = current_user()
+    lock_to_self = me is not None and me["role"] == "Child"
+    employees = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("habit_form.html", eh=None, employees=employees)
+    return render_template("habit_form.html", eh=None, employees=employees,
+                            lock_to_self=lock_to_self, me=me)
 
 
 @app.route("/habits/new", methods=["POST"])
 def habit_new():
-    values = _habit_form_values()
+    me = current_user()
+    values = _habit_form_values(me)
     if not values["title"]:
         flash("A habit needs a title.", "error")
         return redirect(url_for("habits_page"))
     db = get_db()
-    me = current_user()
     db.execute(
-        "INSERT INTO habits (title, notes, household_member_id, created_by)"
-        " VALUES (?, ?, ?, ?)",
+        "INSERT INTO habits (title, notes, household_member_id, frequency_type,"
+        " target_count, scheduled_times, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (values["title"], values["notes"], values["household_member_id"],
+         values["frequency_type"], values["target_count"], values["scheduled_times"],
          me["name"] if me else ""))
     db.commit()
     flash(f"Habit added: {values['title']}")
@@ -3153,9 +3402,12 @@ def habit_edit_form(habit_id):
     eh = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
     if eh is None:
         abort(404)
-    employees = db.execute(
+    me = current_user()
+    lock_to_self = me is not None and me["role"] == "Child"
+    employees = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("habit_form.html", eh=eh, employees=employees)
+    return render_template("habit_form.html", eh=eh, employees=employees,
+                            lock_to_self=lock_to_self, me=me)
 
 
 @app.route("/habits/<int:habit_id>/edit", methods=["POST"])
@@ -3164,13 +3416,16 @@ def habit_edit(habit_id):
     habit = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
     if habit is None:
         abort(404)
-    values = _habit_form_values()
+    me = current_user()
+    values = _habit_form_values(me)
     if not values["title"]:
         flash("A habit needs a title.", "error")
         return redirect(url_for("habit_edit_form", habit_id=habit_id))
     db.execute(
-        "UPDATE habits SET title = ?, notes = ?, household_member_id = ? WHERE id = ?",
-        (values["title"], values["notes"], values["household_member_id"], habit_id))
+        "UPDATE habits SET title = ?, notes = ?, household_member_id = ?,"
+        " frequency_type = ?, target_count = ?, scheduled_times = ? WHERE id = ?",
+        (values["title"], values["notes"], values["household_member_id"],
+         values["frequency_type"], values["target_count"], values["scheduled_times"], habit_id))
     db.commit()
     flash(f"Habit updated: {values['title']}")
     return redirect(url_for("habits_page"))
@@ -3178,20 +3433,49 @@ def habit_edit(habit_id):
 
 @app.route("/habits/<int:habit_id>/checkin", methods=["POST"])
 def habit_checkin(habit_id):
-    """Mark today done for this habit. UNIQUE(habit_id, checkin_date) makes
-    a repeat check-in for the same day a harmless no-op rather than a
-    second row -- idempotent by construction, unlike the reminder flags
-    Piece 77 had to fix after the fact."""
+    """Mark today's progress for this habit. UNIQUE constraints on both
+    habit_checkins and habit_interval_checkins make a repeat check-in a
+    harmless no-op rather than a second row -- idempotent by construction,
+    unlike the reminder flags Piece 77 had to fix after the fact.
+
+    'daily': one plain check-in, unchanged since Piece 78.
+    'count': each POST adds one more toward target_count for today (a
+      no-op past the target -- the button is disabled client-side once
+      met, this is just the server-side backstop).
+    'times': the POST names which scheduled slot it's satisfying (a plain
+      "HH:MM" from scheduled_times); unrecognized/missing slots are
+      ignored rather than erroring, since this only ever happens from a
+      tampered request (the form always submits a real slot)."""
     db = get_db()
     habit = db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
     if habit is None:
         abort(404)
     me = current_user()
     today = datetime.now().strftime("%Y-%m-%d")
-    db.execute(
-        "INSERT INTO habit_checkins (habit_id, checkin_date, checked_by)"
-        " VALUES (?, ?, ?) ON CONFLICT(habit_id, checkin_date) DO NOTHING",
-        (habit_id, today, me["id"] if me else None))
+    checked_by = me["id"] if me else None
+    ftype = habit["frequency_type"] or "daily"
+    if ftype == "count":
+        current = db.execute(
+            "SELECT COUNT(*) FROM habit_interval_checkins"
+            " WHERE habit_id = ? AND checkin_date = ?", (habit_id, today)).fetchone()[0]
+        target = habit["target_count"] or 1
+        if current < target:
+            db.execute(
+                "INSERT INTO habit_interval_checkins (habit_id, checkin_date, slot, checked_by)"
+                " VALUES (?, ?, ?, ?) ON CONFLICT(habit_id, checkin_date, slot) DO NOTHING",
+                (habit_id, today, str(current + 1), checked_by))
+    elif ftype == "times":
+        slot = (request.form.get("slot") or "").strip()
+        if slot in _habit_scheduled_times(habit):
+            db.execute(
+                "INSERT INTO habit_interval_checkins (habit_id, checkin_date, slot, checked_by)"
+                " VALUES (?, ?, ?, ?) ON CONFLICT(habit_id, checkin_date, slot) DO NOTHING",
+                (habit_id, today, slot, checked_by))
+    else:
+        db.execute(
+            "INSERT INTO habit_checkins (habit_id, checkin_date, checked_by)"
+            " VALUES (?, ?, ?) ON CONFLICT(habit_id, checkin_date) DO NOTHING",
+            (habit_id, today, checked_by))
     db.commit()
     flash(f"Checked in: {habit['title']}.")
     # Same pattern as chore_done/appointment_done/board_status/set_task_status
@@ -3207,10 +3491,11 @@ def habit_checkin(habit_id):
 @delete_required
 def habit_delete(habit_id):
     db = get_db()
-    # habit_checkins has no FK enforcement on habit_id (see schema.sql), so
-    # this won't crash on its own -- cleared explicitly anyway so a deleted
-    # habit doesn't leave true orphans sitting in the checkins table.
+    # Neither checkins table has FK enforcement on habit_id (see
+    # schema.sql), so this won't crash on its own -- cleared explicitly
+    # anyway so a deleted habit doesn't leave true orphans behind.
     db.execute("DELETE FROM habit_checkins WHERE habit_id = ?", (habit_id,))
+    db.execute("DELETE FROM habit_interval_checkins WHERE habit_id = ?", (habit_id,))
     ok, msg = trash_item("habit", habit_id)
     db.commit()
     flash(msg, "" if ok else "error")
@@ -3411,6 +3696,11 @@ def wishlist_page():
     db = get_db()
     me = current_user()
     who = request.args.get("who", "mine" if me else "all")
+    # Piece 79: a Child only ever sees their own wishlist requests -- forced
+    # server-side regardless of a tampered ?who= param, not just a hidden
+    # toggle in the template.
+    if me is not None and me["role"] == "Child":
+        who = "mine"
     show = request.args.get("show", "pending")
     sql = ("SELECT w.*, e.name AS assignee_name, i.category AS inv_category,"
            " i.make AS inv_make, i.model AS inv_model,"
@@ -3459,7 +3749,8 @@ def wishlist_page():
     return render_template(
         "wishlist.html", items=items, employees=employees,
         inventory_items=inventory_items, projects=projects, contacts=contacts,
-        who=who, show=show, edit_item=edit_item, prefill=prefill)
+        who=who, show=show, edit_item=edit_item, prefill=prefill,
+        lock_who=(me is not None and me["role"] == "Child"))
 
 
 def _wishlist_form_values():
@@ -3594,51 +3885,12 @@ def _closing_worklist(db):
 STAGE_ICON = {"Planning": "💬", "Prep": "📦", "In Progress": "🔧", "Wrap-up": "🏁"}
 
 
-def _bucket_schedule(my_tasks, my_chores, my_appointments, today_d):
-    """Piece 53: Child-dashboard widget. Merges this signed-in member's own
-    open tasks, chores, and appointments (already fetched + already
-    filtered to them by dashboard()'s existing queries) into Today /
-    Tomorrow / Next 2 weeks buckets by due/next-due/when date. Undated
-    items and anything outside that 14-day window are dropped -- this is a
-    glance, not a worklist; the My tasks/My chores/My appointments cards
-    below still show everything, including overdue."""
-    tomorrow_d = today_d + timedelta(days=1)
-    horizon_d = today_d + timedelta(days=14)
-    buckets = {"today": [], "tomorrow": [], "soon": []}
-
-    def _add(date_str, icon, kind, title, href, subtitle=""):
-        if not date_str:
-            return
-        try:
-            d = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            return
-        if d < today_d or d > horizon_d:
-            return
-        bucket = "today" if d == today_d else "tomorrow" if d == tomorrow_d else "soon"
-        buckets[bucket].append({"date": date_str, "icon": icon, "kind": kind,
-                                 "title": title, "href": href, "subtitle": subtitle})
-
-    for t in my_tasks:
-        _add(t["due_date"], "✅", "Task", t["title"],
-             url_for("project_detail", project_id=t["project_id"], _anchor="tasks"),
-             t["job_name"] or "")
-    for c in my_chores:
-        _add(c["next_due"], "🔁", "Chore", c["title"], url_for("chores_page"))
-    for a in my_appointments:
-        _add(a["when_date"], "📅", "Appointment", a["title"],
-             url_for("appointments_page"), a["location"] or "")
-    for key in buckets:
-        buckets[key].sort(key=lambda i: i["date"])
-    return buckets
-
-
 def _bucket_appointments_with_overdue(my_appointments, today_d):
-    """Piece 61: like _bucket_schedule()'s appointment handling, but for
-    the Productivity Overview card an overdue appointment folds into
-    "today" (with its own overdue flag) instead of being dropped --
-    unlike the Child glance widget, this card is meant to be a complete
-    near-term worklist, not just a quick look-ahead."""
+    """Piece 61: buckets appointments into Today / Tomorrow / Next 2 weeks
+    for the Productivity Overview card. An overdue appointment folds into
+    "today" (with its own overdue flag) instead of being dropped -- this
+    card is meant to be a complete near-term worklist, not just a
+    look-ahead."""
     tomorrow_d = today_d + timedelta(days=1)
     horizon_d = today_d + timedelta(days=14)
     buckets = {"today": [], "tomorrow": [], "soon": []}
@@ -3755,6 +4007,7 @@ def dashboard():
     ensure_routine_task_reminders(db)
     ensure_requirement_reminders(db)
     ensure_appointment_reminders(db)
+    ensure_assistant_safety_notifications(db)
 
     my_tasks = []
     if user is not None:
@@ -3791,10 +4044,7 @@ def dashboard():
                 "SELECT * FROM habits WHERE household_member_id = ? ORDER BY title",
                 (user["id"],)).fetchall():
             h = dict(h)
-            h["streak"] = _habit_streak(db, h["id"], today_s)
-            h["checked_today"] = bool(db.execute(
-                "SELECT 1 FROM habit_checkins WHERE habit_id = ? AND checkin_date = ?",
-                (h["id"], today_s)).fetchone())
+            h.update(_habit_progress(db, h, today_s))
             my_habits.append(h)
 
     # Piece 42: this member's upcoming appointments (assigned to them or
@@ -3817,14 +4067,30 @@ def dashboard():
             " ORDER BY (due_date = ''), due_date, due_time, id DESC",
             (user["id"], user["id"])).fetchall()
 
-    # Piece 53: Child-only day-by-day schedule widget, replacing the
-    # household-wide overview on their dashboard.
-    schedule_buckets = _bucket_schedule(my_tasks, my_chores, my_appointments, today_d)
-
     # Piece 61: Productivity Overview card -- appointment tiers (overdue
-    # folded into "today" rather than dropped, unlike the Child glance
-    # widget above) and the Month Calendar's day-by-day item index.
+    # folded into "today" rather than dropped) and the Month Calendar's
+    # day-by-day item index. Piece 79 reuses the same buckets for a
+    # Child's "My Overview" card.
     appt_buckets = _bucket_appointments_with_overdue(my_appointments, today_d)
+
+    # Piece 79: this member's own recent field notes (across any project)
+    # and their own wishlist items, for the Child dashboard's "My Overview"
+    # card -- mirrors the "author = this person's name" scoping the Work
+    # Bag's own notes view already uses (project_notes.author is a plain
+    # name string, not a household_member_id FK).
+    my_notes = []
+    if user is not None:
+        my_notes = db.execute(
+            "SELECT n.*, p.job_name FROM project_notes n"
+            " JOIN projects p ON p.id = n.project_id"
+            " WHERE n.author = ? ORDER BY n.created_at DESC LIMIT 8",
+            (user["name"],)).fetchall()
+    my_wishlist = []
+    if user is not None:
+        my_wishlist = db.execute(
+            "SELECT * FROM wishlist_items WHERE household_member_id = ?"
+            " ORDER BY (status = 'Pending') DESC, created_at DESC",
+            (user["id"],)).fetchall()
 
     cal_month_str, cal_month_label = _household_month_bounds(request.args.get("cal"))
     cal_prev = _recent_months(2, ending=cal_month_str)[0][0]
@@ -3859,15 +4125,6 @@ def dashboard():
     sections = [{"name": stage, "icon": STAGE_ICON.get(stage, "📋"),
                  "projects": by_stage[stage]}
                 for stage in STAGE_ORDER[:-1] if stage in by_stage]
-    # Piece 53: a Child only sees stage-listing cards for projects they
-    # actually have a task on -- everyone else sees every active project.
-    if user is not None and user["role"] == "Child":
-        child_project_ids = {r["project_id"] for r in db.execute(
-            "SELECT DISTINCT project_id FROM project_tasks"
-            " WHERE household_member_id = ?", (user["id"],)).fetchall()}
-        for s in sections:
-            s["projects"] = [j for j in s["projects"] if j["id"] in child_project_ids]
-
     # Piece 59: which active projects this member has explicitly loaded
     # into their Work Bag, for the per-stage cards' 🎒 toggle button.
     my_bag_project_ids = set()
@@ -4011,7 +4268,7 @@ def dashboard():
         permits_by_job=permits_by_job,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
         gm=gm, closing_jobs=closing_jobs,
-        schedule_buckets=schedule_buckets,
+        my_notes=my_notes, my_wishlist=my_wishlist,
         job_status_class=PROJECT_STATUS_CLASS,
         my_bag_project_ids=my_bag_project_ids,
         my_boards=my_boards, appt_buckets=appt_buckets,
@@ -4197,6 +4454,7 @@ BACKLOG_STATUSES = ["Backlog", "Started", "Abandoned"]
 
 
 @app.route("/backlog")
+@child_forbidden
 def backlog_page():
     """The household idea backlog — someday/maybe projects. Filter by status
     (open = Backlog, defaults to that; or all)."""
@@ -4220,6 +4478,7 @@ def backlog_page():
 
 
 @app.route("/backlog/new", methods=["POST"])
+@child_forbidden
 def backlog_new():
     name = request.form.get("name", "").strip()
     if not name:
@@ -4241,6 +4500,7 @@ def backlog_new():
 
 
 @app.route("/backlog/<int:idea_id>")
+@child_forbidden
 def backlog_detail(idea_id):
     db = get_db()
     idea = db.execute(
@@ -4256,6 +4516,7 @@ def backlog_detail(idea_id):
 
 
 @app.route("/backlog/<int:idea_id>/edit", methods=["POST"])
+@child_forbidden
 def backlog_edit(idea_id):
     db = get_db()
     if db.execute("SELECT 1 FROM household_ideas WHERE id = ?",
@@ -4281,6 +4542,7 @@ def backlog_edit(idea_id):
 
 
 @app.route("/backlog/<int:idea_id>/status", methods=["POST"])
+@child_forbidden
 def backlog_status(idea_id):
     status = request.form.get("status", "")
     if status not in BACKLOG_STATUSES:
@@ -4299,6 +4561,7 @@ def backlog_status(idea_id):
 
 
 @app.route("/backlog/<int:idea_id>/start", methods=["POST"])
+@child_forbidden
 def backlog_start(idea_id):
     """Turn an idea into a real project/project — a bare row the user fills in
     via the normal project form."""
@@ -4321,6 +4584,7 @@ def backlog_start(idea_id):
 
 @app.route("/backlog/<int:idea_id>/delete", methods=["POST"])
 @delete_required
+@child_forbidden
 def backlog_delete(idea_id):
     ok, msg = trash_item("household_idea", idea_id)
     flash(msg, "" if ok else "error")
@@ -4349,6 +4613,7 @@ def _helper_form_values():
 
 
 @app.route("/external-helpers")
+@child_forbidden
 def external_helpers_page():
     """Contacts: a reusable roster for people (a contractor, tutor, coach) and
     organizations (a subscription service, co-op, utility) that touch the
@@ -4382,6 +4647,7 @@ def external_helpers_page():
 
 
 @app.route("/external-helpers/new", methods=["POST"])
+@child_forbidden
 def new_external_helper():
     v = _helper_form_values()
     if not v["name"]:
@@ -4401,6 +4667,7 @@ def new_external_helper():
 
 
 @app.route("/external-helpers/<int:helper_id>/edit", methods=["POST"])
+@child_forbidden
 def edit_external_helper(helper_id):
     db = get_db()
     if db.execute("SELECT 1 FROM external_helpers WHERE id = ?",
@@ -4425,6 +4692,7 @@ def edit_external_helper(helper_id):
 
 @app.route("/external-helpers/<int:helper_id>/delete", methods=["POST"])
 @delete_required
+@child_forbidden
 def delete_external_helper(helper_id):
     ok, msg = trash_item("external_helper", helper_id)
     flash(msg, "" if ok else "error")
@@ -8348,7 +8616,12 @@ DRAFT_KINDS = {
     "project.new": {
         "label": "New project", "capture": lambda **_: read_project_form(),
         "apply": _apply_new_project,
-        "summarize": lambda p: p["values"]["job_name"] or "(untitled project)"},
+        # Piece 79: include category/subcategory so a parent reviewing a
+        # Child's chat-drafted project (same "project.new" kind, via
+        # /assistant/draft-project) sees more than just a bare name.
+        "summarize": lambda p: (p["values"]["job_name"] or "(untitled project)")
+            + (f" — {p['values']['project_category']}" if p["values"].get("project_category") else "")
+            + (f" / {p['values']['project_type']}" if p["values"].get("project_type") else "")},
     "project.edit": {
         "label": "Project edit", "capture": lambda **_: read_project_form(),
         "apply": _apply_edit_project,
@@ -8785,6 +9058,7 @@ def run_maintenance():
         ensure_routine_task_reminders(conn)
         ensure_requirement_reminders(conn)
         ensure_appointment_reminders(conn)
+        ensure_assistant_safety_notifications(conn)
     finally:
         conn.close()
 
@@ -9028,6 +9302,24 @@ def build_project_plan_context(db, project):
     return "\n".join(lines)
 
 
+NEW_PROJECT_LINE_RE = re.compile(r"^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$", re.MULTILINE)
+
+
+def _extract_new_project_proposal(text):
+    """Piece 79: pulls the last "NEW_PROJECT: name | category | subcategory"
+    line out of an assistant reply, if present -- mirrors the JS regex in
+    assistant.html exactly. Used to rehydrate the persistent draft panel
+    from conversation history on page load (the panel otherwise only
+    updates live, from a freshly-received reply)."""
+    match = None
+    for match in NEW_PROJECT_LINE_RE.finditer(text or ""):
+        pass   # keep the LAST match -- a later message supersedes an earlier proposal
+    if not match:
+        return None
+    return {"name": match.group(1).strip(), "category": match.group(2).strip(),
+            "subcategory": match.group(3).strip()}
+
+
 @app.route("/assistant")
 def assistant_page():
     db = get_db()
@@ -9055,10 +9347,22 @@ def assistant_page():
             active_messages = db.execute(
                 "SELECT * FROM assistant_messages WHERE conversation_id = ? ORDER BY id",
                 (active_id,)).fetchall()
+    # Piece 79: rehydrate the persistent draft panel from history -- the
+    # most recent NEW_PROJECT proposal anywhere in this conversation, so
+    # reloading the page (or coming back later) doesn't lose track of what
+    # was being drafted, e.g. a Child mid-way through planning a project
+    # with the assistant's help.
+    initial_draft = None
+    for m in reversed(active_messages):
+        if m["role"] == "assistant":
+            initial_draft = _extract_new_project_proposal(m["content"])
+            if initial_draft:
+                break
     return render_template(
         "assistant.html", configured=assistant_configured(cfg),
         is_admin=_is_admin(), conversations=conversations,
-        active_conversation_id=active_id, active_messages=active_messages)
+        active_conversation_id=active_id, active_messages=active_messages,
+        initial_draft=initial_draft)
 
 
 def _assist_money(n):

@@ -38,6 +38,21 @@
      title="{{ 'Starting a new one will drop your oldest saved conversation (5 max).' if conversations|length >= 5 else '' }}">＋ New</a>
 </div>
 
+{# ---- Piece 79: a persistent draft panel, always in view for this
+       conversation -- shows the project the assistant is currently
+       proposing (name/category/subcategory), updated every time a new
+       NEW_PROJECT: line comes back, and rehydrated from history on load
+       so it survives a page refresh. Nothing is created until "Send as
+       draft" is clicked; nothing is real until a parent approves it on
+       the Drafts page. Gives a Child working through an idea with the
+       assistant (e.g. planning a science project) one place to see
+       what's actually been captured so far, instead of it being buried
+       as a one-off note under a single chat bubble. ---- #}
+<div class="card" id="draft-panel" style="border-left:4px solid var(--brand);">
+  <div style="font-weight:700; margin-bottom:0.3rem;">📝 Project draft</div>
+  <div id="draft-body"></div>
+</div>
+
 <div class="card">
   <div id="chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
     {% if not active_messages %}
@@ -109,23 +124,27 @@
     return wrap;
   }
 
-  // Piece 76: pull a "NEW_PROJECT: <name> | <category> | <subcategory>" line
-  // out of the reply (if present), leaving the rest of the text to display
-  // normally, and turn it into a real "propose as a draft" button -- nothing
-  // is created until that's clicked, and nothing is real until a parent
-  // approves it on the Drafts page.
+  // Piece 76 (reworked Piece 79): pull a "NEW_PROJECT: <name> | <category> |
+  // <subcategory>" line out of a reply (if present), leaving the rest of the
+  // text to display normally. Piece 79 moved the "propose as a draft"
+  // control out of a one-off bubble and into the persistent #draft-panel
+  // above the chat -- a later proposal overwrites an earlier one there,
+  // and it survives a page reload (seeded from {{ initial_draft|tojson }}).
   var NEW_PROJECT_RE = /^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$/m;
-  function renderAssistantReply(wrap, text) {
-    var match = NEW_PROJECT_RE.exec(text);
-    var shown = match ? (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim() : text;
-    wrap.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">Claude</div>' + esc(shown);
-    if (!match) return;
-    var name = match[1].trim(), category = match[2].trim(), subcategory = match[3].trim();
-    var box2 = document.createElement("div");
-    box2.style.cssText = "margin-top:0.5rem; padding:0.5rem 0.6rem; border:1px dashed var(--border); border-radius:8px; background:var(--card);";
-    box2.innerHTML = '<div style="font-size:0.82rem; margin-bottom:0.35rem;">📝 Propose starting <strong>' +
-      esc(name) + '</strong>' + (category ? esc(' (' + category + (subcategory ? ' — ' + subcategory : '') + ')') : '') +
-      ' as a new project?</div>';
+
+  var draftBody = document.getElementById("draft-body");
+  var draftSent = false;
+  function renderDraftPanel(draft) {
+    if (!draft) {
+      draftBody.innerHTML = '<p class="empty" style="margin:0;">Nothing proposed yet — ' +
+        'ask the assistant to help plan a project and a draft will show up here.</p>';
+      return;
+    }
+    draftSent = false;
+    var label = esc(draft.name) + (draft.category
+      ? esc(' (' + draft.category + (draft.subcategory ? ' — ' + draft.subcategory : '') + ')') : '');
+    draftBody.innerHTML = '<div style="font-size:0.9rem; margin-bottom:0.4rem;"><strong>' +
+      label + '</strong></div>';
     var sendBtn = document.createElement("button");
     sendBtn.type = "button";
     sendBtn.className = "btn";
@@ -134,7 +153,8 @@
     sendBtn.addEventListener("click", function () {
       sendBtn.disabled = true; sendBtn.textContent = "Sending…";
       var data = new URLSearchParams();
-      data.append("name", name); data.append("category", category); data.append("subcategory", subcategory);
+      data.append("name", draft.name); data.append("category", draft.category);
+      data.append("subcategory", draft.subcategory);
       fetch("{{ url_for('assistant_draft_project') }}", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
@@ -142,17 +162,28 @@
         body: data.toString()
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (d.ok) {
-          box2.innerHTML = '<div style="font-size:0.82rem;">✓ Sent — a parent will approve or discard it on the 🗒 Drafts page.</div>';
+          draftSent = true;
+          draftBody.innerHTML = '<div style="font-size:0.9rem; margin-bottom:0.3rem;"><strong>' + label + '</strong></div>' +
+            '<div style="font-size:0.82rem;">✓ Sent — a parent will approve or discard it on the 🗒 Drafts page.</div>';
         } else {
           sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
-          box2.appendChild(document.createTextNode(" " + (d.error || "Something went wrong.")));
+          draftBody.appendChild(document.createTextNode(" " + (d.error || "Something went wrong.")));
         }
       }).catch(function () {
         sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
       });
     });
-    box2.appendChild(sendBtn);
-    wrap.appendChild(box2);
+    draftBody.appendChild(sendBtn);
+  }
+  renderDraftPanel({{ initial_draft | tojson }});
+
+  function renderAssistantReply(wrap, text) {
+    var match = NEW_PROJECT_RE.exec(text);
+    var shown = match ? (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim() : text;
+    wrap.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">Claude</div>' + esc(shown);
+    if (!match) return;
+    renderDraftPanel({ name: match[1].trim(), category: match[2].trim(), subcategory: match[3].trim() });
+    draftBody.parentNode.scrollIntoView({ block: "nearest" });
   }
 
   // A failed send's question, kept so "Retry" can resend it without the

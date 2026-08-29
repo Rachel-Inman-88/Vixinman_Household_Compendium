@@ -12,6 +12,14 @@
     <div class="form-grid">
       <div class="field wide"><label for="title">Habit *</label>
         <input id="title" name="title" required value="{{ eh['title'] if eh else '' }}" placeholder="e.g. Drink 8 glasses of water"></div>
+      {% if lock_to_self %}
+      {# Piece 79: a Child can only ever make habits for themselves -- no
+         dropdown to tamper with, just a fixed display. household_member_id
+         is forced server-side regardless, but there's no reason to even
+         show a control that wouldn't do anything. #}
+      <div class="field"><label>Assign to</label>
+        <div style="padding:0.4rem 0;">{{ me["name"] }} (you)</div></div>
+      {% else %}
       <div class="field"><label for="household_member_id">Assign to (optional)</label>
         <select id="household_member_id" name="household_member_id">
           <option value="">— unassigned —</option>
@@ -19,8 +27,30 @@
           <option value="{{ e['id'] }}" {% if eh and eh['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select></div>
+      {% endif %}
       <div class="field wide"><label for="notes">Notes (optional)</label>
         <input id="notes" name="notes" value="{{ eh['notes'] if eh else '' }}" placeholder="anything else about it"></div>
+
+      {# Piece 79: how the habit is tracked -- a plain once-a-day check
+         (the original Piece 78 shape), a target count of check-ins per
+         day, or a fixed list of specific times to check off. No
+         reminder/notification is attached to any of these -- a scheduled
+         time only ever shows as a visual next-due/overdue indicator on
+         the card, matching Piece 78's original no-reminders call. #}
+      <div class="field wide"><label for="frequency_type">Track as</label>
+        <select id="frequency_type" name="frequency_type">
+          <option value="daily" {% if not eh or (eh['frequency_type'] or 'daily') == 'daily' %}selected{% endif %}>Once a day (simple check-off)</option>
+          <option value="count" {% if eh and eh['frequency_type'] == 'count' %}selected{% endif %}>A number of times per day</option>
+          <option value="times" {% if eh and eh['frequency_type'] == 'times' %}selected{% endif %}>Specific times of day</option>
+        </select></div>
+      <div class="field" id="field-target-count" style="display:none;">
+        <label for="target_count">Times per day</label>
+        <input id="target_count" name="target_count" type="number" min="1" step="1"
+               value="{{ eh['target_count'] if eh and eh['target_count'] else 8 }}"></div>
+      <div class="field wide" id="field-scheduled-times" style="display:none;">
+        <label for="scheduled_times">Times (comma-separated, 24-hour HH:MM)</label>
+        <input id="scheduled_times" name="scheduled_times"
+               value="{{ eh['scheduled_times'] if eh else '' }}" placeholder="e.g. 08:00, 14:00, 20:00"></div>
     </div>
     <div class="actions">
       <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add habit" }}</button>
@@ -28,4 +58,17 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  var sel = document.getElementById("frequency_type");
+  var countField = document.getElementById("field-target-count");
+  var timesField = document.getElementById("field-scheduled-times");
+  function sync() {
+    countField.style.display = sel.value === "count" ? "" : "none";
+    timesField.style.display = sel.value === "times" ? "" : "none";
+  }
+  sel.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

@@ -349,11 +349,24 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
 -- daily consistency, tracked as a streak + short history instead of a
 -- single next-due date. Shared like Chores: household_member_id nullable,
 -- same "assigned to one person, or visible to everyone with a login" model.
+-- Piece 79: frequency_type distinguishes three shapes of habit --
+-- 'daily' (default/blank, the original Piece 78 shape: one plain yes/no
+-- per day, tracked in habit_checkins below), 'count' (a target number of
+-- check-ins per day, e.g. "drink water" x8, tracked as individual rows in
+-- habit_interval_checkins), and 'times' (a fixed list of specific times
+-- of day, e.g. "08:00,14:00,20:00", each its own slot in
+-- habit_interval_checkins). No reminder/notification is attached to
+-- 'times' habits -- a scheduled time is shown on the card as a visual
+-- next-due/overdue indicator only (same "no reminders" call Piece 78
+-- made for the original daily habit, kept consistent here).
 CREATE TABLE IF NOT EXISTS habits (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     household_member_id  INTEGER REFERENCES household_members(id),   -- NULL = unassigned
     title                TEXT NOT NULL,
     notes                TEXT DEFAULT '',
+    frequency_type       TEXT DEFAULT '',        -- '' or 'daily' / 'count' / 'times'
+    target_count         INTEGER,                -- used when frequency_type = 'count'
+    scheduled_times      TEXT DEFAULT '',         -- comma-separated "HH:MM" list, frequency_type = 'times'
     created_by           TEXT DEFAULT '',
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -373,6 +386,26 @@ CREATE TABLE IF NOT EXISTS habit_checkins (
     checked_by   INTEGER REFERENCES household_members(id),
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (habit_id, checkin_date)
+);
+
+-- Piece 79: one row per individual check-in for a 'count' or 'times'
+-- habit -- a plain 'daily' habit never touches this table, it keeps using
+-- habit_checkins above unchanged. slot is either a sequence number
+-- ("1","2",...) for a 'count' habit, or the specific "HH:MM" time it
+-- satisfies for a 'times' habit -- either way UNIQUE keeps a repeat tap
+-- on the same slot/day a no-op, same idempotency guarantee as
+-- habit_checkins. Kept as its own table rather than reshaping
+-- habit_checkins' UNIQUE constraint, which would need a full-table
+-- rebuild migration for the real (already-shipped, Piece 78) production
+-- data -- a new, empty table is zero-risk by comparison.
+CREATE TABLE IF NOT EXISTS habit_interval_checkins (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    habit_id     INTEGER NOT NULL,
+    checkin_date TEXT NOT NULL,
+    slot         TEXT NOT NULL,
+    checked_by   INTEGER REFERENCES household_members(id),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (habit_id, checkin_date, slot)
 );
 
 -- Piece 42: Appointments -- a scheduled date+time, not tied to a project and
