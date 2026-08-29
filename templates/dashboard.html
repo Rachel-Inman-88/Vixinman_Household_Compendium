@@ -268,7 +268,10 @@
       <p style="margin:0 0 0.4rem; text-align:center;"><a href="{{ url_for('dashboard') }}" style="font-size:0.8rem;">This month</a></p>
       {% endif %}
       <div style="overflow-x:auto;">
-      <table style="table-layout:fixed; width:100%;">
+      {# no-rstack: this is a day grid, not a data table -- restacking it into
+         labelled Sun/Mon/.../Sat rows on phones (base.html's generic table
+         auto-tagger) would destroy the calendar layout, not simplify it. #}
+      <table class="no-rstack" style="table-layout:fixed; width:100%;">
         <thead><tr>
           {% for wd in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}<th style="text-align:center; font-size:0.75rem;">{{ wd }}</th>{% endfor %}
         </tr></thead>

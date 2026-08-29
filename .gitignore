@@ -236,3 +236,6 @@ uploads/
 
 # Keep the Compendium desktop PyInstaller recipe (overrides *.spec above)
 !desktop/compendium.spec
+
+# Claude Code local tooling config (dev-server launch presets, machine-local)
+.claude/

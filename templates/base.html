@@ -666,10 +666,14 @@
     // has a proper header with 3+ columns, tagged so it can restack into labelled
     // rows on phones (see .rstack CSS) — the label for each cell is copied from
     // that table's own header, so no template needs per-cell markup.
+    // Piece 75: a table marked "no-rstack" (e.g. the dashboard's month-calendar
+    // grid) opts out entirely -- restacking a day grid into labelled Sun/Mon/
+    // .../Sat rows breaks the layout instead of simplifying it.
     (function () {
       var tables = document.querySelectorAll("main table");
       for (var i = 0; i < tables.length; i++) {
         var t = tables[i];
+        if (t.classList.contains("no-rstack")) continue;
         if (!t.closest(".table-scroll")) {
           var wrap = document.createElement("div");
           wrap.className = "table-scroll";
