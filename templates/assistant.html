@@ -13,20 +13,47 @@
   is <strong>read-only</strong> — it can explain and summarize, but never changes anything.
   Needs an internet connection.</p>
 
-{% if not providers %}
+{% if not configured %}
 <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
   🔌 <strong>No AI provider is set up yet.</strong>
-  {% if is_admin %}Add a Claude or Gemini API key under
+  {% if is_admin %}Add a Claude API key under
     <a href="{{ url_for('assistant_settings_page') }}">AI settings</a> to switch it on.
-  {% else %}Ask an admin to add a Claude or Gemini API key in AI settings.{% endif %}
+  {% else %}Ask an admin to add a Claude API key in AI settings.{% endif %}
 </div>
 {% else %}
+
+{# Piece 76: up to 5 saved conversations, newest-active first, capped so
+   this stays a quick-reference tool rather than an open-ended chat log --
+   starting a 6th quietly drops the oldest one. #}
+<div class="card" style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0.9rem;">
+  <span class="muted" style="font-size:0.85rem;">Conversations:</span>
+  {% for c in conversations %}
+  <a href="{{ url_for('assistant_page', conversation=c['id']) }}"
+     class="btn {{ '' if c['id'] == active_conversation_id else 'btn-secondary' }}"
+     style="padding:0.2rem 0.6rem; font-size:0.82rem; max-width:12rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+     title="{{ c['title'] }}">{{ c['title'] or 'Untitled' }}</a>
+  {% endfor %}
+  <a href="{{ url_for('assistant_page', conversation='new') }}"
+     class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;"
+     title="{{ 'Starting a new one will drop your oldest saved conversation (5 max).' if conversations|length >= 5 else '' }}">＋ New</a>
+</div>
+
 <div class="card">
   <div id="chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
+    {% if not active_messages %}
     <div class="muted" id="chat-empty" style="font-size:0.9rem;">
       Try: “Which projects are in Prep?”, “What are my open tasks?”, or
       “How many overdue tasks are there?”
     </div>
+    {% else %}
+    {% for m in active_messages %}
+    <div style="max-width:92%; padding:0.55rem 0.8rem; border-radius:10px; white-space:pre-wrap; line-height:1.4;
+      {{ 'align-self:flex-end; background:var(--brand); color:#fff;' if m['role'] == 'user' else 'align-self:flex-start; background:var(--bg); border:1px solid var(--border);' }}">
+      <div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">{{ 'You' if m['role'] == 'user' else 'Claude' }}</div>
+      {{ m["content"] }}
+    </div>
+    {% endfor %}
+    {% endif %}
   </div>
   <div id="status" class="flash" style="display:none;"></div>
   <form id="ask-form" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
@@ -35,19 +62,6 @@
       <textarea id="question" name="question" rows="2"
                 placeholder="Ask about projects, tasks…" required></textarea>
     </div>
-    {% if providers|length > 1 %}
-    <div class="field" style="flex:0 0 auto;">
-      <label for="provider">Model</label>
-      <select id="provider" name="provider">
-        {% for p in providers %}
-        <option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>
-          {{ 'Claude' if p == 'claude' else 'Gemini' }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% else %}
-    <input type="hidden" id="provider" name="provider" value="{{ default_provider }}">
-    {% endif %}
     <div class="field" style="flex:0 0 auto;">
       <label>&nbsp;</label>
       <div style="display:flex; gap:0.4rem;">
@@ -68,6 +82,9 @@
   var btn = document.getElementById("ask-btn");
   var repeatBtn = document.getElementById("repeat-btn");
   var status = document.getElementById("status");
+  // Set once the server creates/loads a conversation; kept across messages in
+  // this page view so a whole back-and-forth lands in the same saved slot.
+  var conversationId = {{ active_conversation_id or "null" }};
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]);
@@ -91,17 +108,65 @@
     wrap.scrollIntoView({ block: "nearest" });
     return wrap;
   }
-  // A failed send's question/provider, kept so "Retry" can resend it
-  // without the user having to retype or copy/paste anything.
+
+  // Piece 76: pull a "NEW_PROJECT: <name> | <category> | <subcategory>" line
+  // out of the reply (if present), leaving the rest of the text to display
+  // normally, and turn it into a real "propose as a draft" button -- nothing
+  // is created until that's clicked, and nothing is real until a parent
+  // approves it on the Drafts page.
+  var NEW_PROJECT_RE = /^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$/m;
+  function renderAssistantReply(wrap, text) {
+    var match = NEW_PROJECT_RE.exec(text);
+    var shown = match ? (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim() : text;
+    wrap.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">Claude</div>' + esc(shown);
+    if (!match) return;
+    var name = match[1].trim(), category = match[2].trim(), subcategory = match[3].trim();
+    var box2 = document.createElement("div");
+    box2.style.cssText = "margin-top:0.5rem; padding:0.5rem 0.6rem; border:1px dashed var(--border); border-radius:8px; background:var(--card);";
+    box2.innerHTML = '<div style="font-size:0.82rem; margin-bottom:0.35rem;">📝 Propose starting <strong>' +
+      esc(name) + '</strong>' + (category ? esc(' (' + category + (subcategory ? ' — ' + subcategory : '') + ')') : '') +
+      ' as a new project?</div>';
+    var sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.className = "btn";
+    sendBtn.style.cssText = "padding:0.2rem 0.6rem; font-size:0.82rem;";
+    sendBtn.textContent = "Send as draft";
+    sendBtn.addEventListener("click", function () {
+      sendBtn.disabled = true; sendBtn.textContent = "Sending…";
+      var data = new URLSearchParams();
+      data.append("name", name); data.append("category", category); data.append("subcategory", subcategory);
+      fetch("{{ url_for('assistant_draft_project') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
+                   "X-CSRFToken": window.CSRF_TOKEN },
+        body: data.toString()
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) {
+          box2.innerHTML = '<div style="font-size:0.82rem;">✓ Sent — a parent will approve or discard it on the 🗒 Drafts page.</div>';
+        } else {
+          sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
+          box2.appendChild(document.createTextNode(" " + (d.error || "Something went wrong.")));
+        }
+      }).catch(function () {
+        sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
+      });
+    });
+    box2.appendChild(sendBtn);
+    wrap.appendChild(box2);
+  }
+
+  // A failed send's question, kept so "Retry" can resend it without the
+  // user having to retype or copy/paste anything.
   var lastAttempt = null;
 
   // Piece 67: "Repeat last" -- unlike Retry, always available (not just
   // after a failure) and always a fresh send, not a resend of a failed
-  // one. This page has no persisted history, so it starts disabled each
-  // load and only enables once something's been asked this session.
-  var lastQuestion = null;
+  // one. Starts enabled when a conversation was resumed with history.
+  {% set user_msgs = active_messages | selectattr("role", "equalto", "user") | list %}
+  var lastQuestion = {{ (user_msgs[-1]["content"] | tojson) if user_msgs else "null" }};
+  if (lastQuestion) repeatBtn.disabled = false;
   repeatBtn.addEventListener("click", function () {
-    if (lastQuestion) send(lastQuestion.q, lastQuestion.provider, false);
+    if (lastQuestion) send(lastQuestion, false);
   });
 
   function showError(text) {
@@ -116,23 +181,23 @@
       retry.style.cssText = "margin-left:0.6rem; padding:0.15rem 0.6rem; font-size:0.8rem;";
       retry.textContent = "🔁 Retry";
       retry.addEventListener("click", function () {
-        if (lastAttempt) send(lastAttempt.q, lastAttempt.provider, true);
+        if (lastAttempt) send(lastAttempt, true);
       });
       status.appendChild(retry);
     }
   }
 
-  function send(q, provider, isRetry) {
+  function send(q, isRetry) {
     msg("", "");
     if (!isRetry) bubble("You", q, "you");
-    lastAttempt = { q: q, provider: provider };
-    lastQuestion = { q: q, provider: provider };
+    lastAttempt = q;
+    lastQuestion = q;
     repeatBtn.disabled = false;
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "ai");
     var data = new URLSearchParams();
     data.append("question", q);
-    data.append("provider", provider);
+    if (conversationId) data.append("conversation_id", String(conversationId));
     fetch("{{ url_for('assistant_ask') }}", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
@@ -140,13 +205,13 @@
       body: data.toString()
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
+        if (res.d.conversation_id) conversationId = res.d.conversation_id;
         if (!res.ok || res.d.error) {
           thinking.remove();
           showError(res.d.error || "Something went wrong.");
         } else {
           lastAttempt = null;
-          thinking.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">' +
-            esc(res.d.provider === "gemini" ? "Gemini" : "Claude") + '</div>' + esc(res.d.answer);
+          renderAssistantReply(thinking, res.d.answer);
         }
       }).catch(function () {
         thinking.remove();
@@ -162,7 +227,7 @@
     if (!q) return;
     if (!navigator.onLine) { msg("You're offline — the assistant needs an internet connection.", "error"); return; }
     box.value = "";
-    send(q, document.getElementById("provider").value, false);
+    send(q, false);
   });
 })();
 </script>

@@ -654,6 +654,27 @@ CREATE TABLE IF NOT EXISTS project_plan_messages (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 76: the general 💬 Assistant page's own conversation history --
+-- distinct from project_plan_messages above (which is scoped to one
+-- project's Plan tab). Capped at 5 per person (app.py enforces the cap by
+-- deleting the oldest when a 6th is started) "to encourage using the
+-- actual app features" rather than this becoming an open-ended chat log.
+CREATE TABLE IF NOT EXISTS assistant_conversations (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_member_id INTEGER NOT NULL REFERENCES household_members(id),
+    title               TEXT NOT NULL DEFAULT '',
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES assistant_conversations(id),
+    role            TEXT NOT NULL DEFAULT 'user',   -- 'user' / 'assistant'
+    content         TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 52: a write an Assistant-role account attempted, held for a
 -- Parent/Admin to Approve (apply for real) or Discard. kind identifies which
 -- DRAFT_KINDS entry (app.py) knows how to apply it; ref_id is the existing

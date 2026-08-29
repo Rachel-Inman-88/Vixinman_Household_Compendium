@@ -8,53 +8,69 @@
 subscription service, a co-op, or a utility. Each can have appointments linked to it; use
 <strong>＋ Add appointment</strong> on a row to schedule one.</p>
 
-<div class="card">
-  {% if helpers %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Name</th><th>Type</th><th>Specialty / service</th><th>Phone</th><th>Email</th><th>Appointments</th><th></th></tr></thead>
-    <tbody>
-      {% for h in helpers %}
-      <tr>
-        <td>{{ h["name"] }}
-          {% if h["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ h["notes"] }}</span>{% endif %}
-          {% if h["kind"] == "Organization" %}
-          <br><span class="muted" style="font-size:0.78rem;">
-            {% if h["website"] %}🌐 <a href="{{ h['website'] }}" target="_blank" rel="noopener">{{ h["website"] }}</a>{% endif %}
-            {% if h["account_number"] %}{% if h["website"] %} · {% endif %}Acct #{{ h["account_number"] }}{% endif %}
-            {% if h["contact_person"] %}{% if h["website"] or h["account_number"] %} · {% endif %}Contact: {{ h["contact_person"] }}{% if h["contact_phone"] %} ({{ h["contact_phone"] }}){% endif %}{% endif %}
-            {% if h["renewal_date"] %}{% if h["website"] or h["account_number"] or h["contact_person"] %} · {% endif %}Renews {{ h["renewal_date"] }}{% endif %}
-          </span>
-          {% endif %}
-        </td>
-        <td class="muted">{{ h["kind"] or "Person" }}</td>
-        <td class="muted">{{ h["specialty"] or "—" }}</td>
-        <td>{{ h["phone"] or "—" }}</td>
-        <td>{{ h["email"] or "—" }}</td>
-        <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
-          {% if h["upcoming_count"] %}📅 {{ h["upcoming_count"] }} upcoming{% if h["upcoming_next"] %} · next {{ h["upcoming_next"] }}{% endif %}{% else %}—{% endif %}
-        </td>
-        <td style="white-space:nowrap;">
-          <a href="{{ url_for('appointments_page', prefill_contact=h['id']) }}#appt-form"
-             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Add appointment">＋📅</a>
-          <a href="{{ url_for('external_helpers_page', edit=h['id']) }}#helper-form"
-             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
-          {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_external_helper', helper_id=h['id']) }}"
-                onsubmit="return confirm('Send this contact to the trash?');" style="margin:0; display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% macro contact_table(rows, empty_text) %}
+{% if rows %}
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Name</th><th>Specialty / service</th><th>Phone</th><th>Email</th><th>Appointments</th><th></th></tr></thead>
+  <tbody>
+    {% for h in rows %}
+    <tr>
+      <td>{{ h["name"] }}
+        {% if h["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ h["notes"] }}</span>{% endif %}
+        {% if h["kind"] == "Organization" %}
+        <br><span class="muted" style="font-size:0.78rem;">
+          {% if h["website"] %}🌐 <a href="{{ h['website'] }}" target="_blank" rel="noopener">{{ h["website"] }}</a>{% endif %}
+          {% if h["account_number"] %}{% if h["website"] %} · {% endif %}Acct #{{ h["account_number"] }}{% endif %}
+          {% if h["contact_person"] %}{% if h["website"] or h["account_number"] %} · {% endif %}Contact: {{ h["contact_person"] }}{% if h["contact_phone"] %} ({{ h["contact_phone"] }}){% endif %}{% endif %}
+          {% if h["renewal_date"] %}{% if h["website"] or h["account_number"] or h["contact_person"] %} · {% endif %}Renews {{ h["renewal_date"] }}{% endif %}
+        </span>
+        {% endif %}
+      </td>
+      <td class="muted">{{ h["specialty"] or "—" }}</td>
+      <td>{{ h["phone"] or "—" }}</td>
+      <td>{{ h["email"] or "—" }}</td>
+      <td class="muted" style="font-size:0.85rem; white-space:nowrap;">
+        {% if h["upcoming_count"] %}📅 {{ h["upcoming_count"] }} upcoming{% if h["upcoming_next"] %} · next {{ h["upcoming_next"] }}{% endif %}{% else %}—{% endif %}
+      </td>
+      <td style="white-space:nowrap;">
+        <a href="{{ url_for('appointments_page', prefill_contact=h['id']) }}#appt-form"
+           class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Add appointment">＋📅</a>
+        <a href="{{ url_for('external_helpers_page', edit=h['id']) }}#helper-form"
+           class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+        {% if can('delete') %}
+        <form method="post" action="{{ url_for('delete_external_helper', helper_id=h['id']) }}"
+              onsubmit="return confirm('Send this contact to the trash?');" style="margin:0; display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">{{ empty_text }}</p>
+{% endif %}
+{% endmacro %}
+
+<div class="tab-bar">
+  <button class="tab-btn" data-tab="people">👤 Individuals ({{ people|length }})</button>
+  <button class="tab-btn" data-tab="orgs">🏢 Organizations ({{ orgs|length }})</button>
+</div>
+
+<div class="tab-panel" id="tab-people">
+  <div class="card">
+    {{ contact_table(people, "No individual contacts on file yet — add one below.") }}
   </div>
-  {% else %}
-  <p class="empty">No contacts on file yet — add one below.</p>
-  {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-orgs">
+  <div class="card">
+    {{ contact_table(orgs, "No organization contacts on file yet — add one below.") }}
+  </div>
 </div>
 
 <div class="card" id="helper-form">
@@ -109,5 +125,21 @@ subscription service, a co-op, or a utility. Each can have appointments linked t
     kind.addEventListener("change", sync);
     sync();
   })();
+
+  // Tabs remember state through the URL hash, matching project_detail.html's pattern.
+  const TABS = ["people", "orgs"];
+  function activateTab(name, updateHash) {
+    if (!TABS.includes(name)) name = "people";
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.id === "tab-" + name));
+    if (updateHash) history.replaceState(null, "", "#" + name);
+  }
+  document.querySelectorAll(".tab-btn").forEach(b =>
+    b.addEventListener("click", () => activateTab(b.dataset.tab, true)));
+  window.addEventListener("hashchange", () =>
+    activateTab(location.hash.slice(1) || "people", false));
+  activateTab(location.hash.slice(1) || "people", false);
 </script>
 {% endblock %}

@@ -3,10 +3,10 @@
 {% block content %}
 <div class="toolbar">
   <h1>💰 Money <span class="muted" style="font-size:0.95rem; font-weight:400;">— a financial overview</span></h1>
-  <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-    <a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary">💵 Budget</a>
-    <a href="{{ url_for('loans_page') }}" class="btn btn-secondary">💳 Loans</a>
-    <a href="{{ url_for('savings_page') }}" class="btn btn-secondary">🐷 Savings</a>
+  <div style="display:flex; gap:0.4rem;">
+    <a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.85rem; white-space:nowrap;">💵 Budget</a>
+    <a href="{{ url_for('loans_page') }}" class="btn btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.85rem; white-space:nowrap;">💳 Loans</a>
+    <a href="{{ url_for('savings_page') }}" class="btn btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.85rem; white-space:nowrap;">🐷 Savings</a>
   </div>
 </div>
 

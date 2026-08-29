@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_widgets.html" import job_progress %}
 {% block title %}Projects{% endblock %}
 {% block content %}
 <div class="toolbar">
@@ -12,24 +13,34 @@
 active ones first. See <a href="{{ url_for('closed_jobs_page') }}">Closed
 projects</a> for cancellation reasons and reopen actions.</p>
 
+{% if projects %}
+{% for p in projects %}
 <div class="card">
-  {% if projects %}
+  {# Piece 76: a real card header (name + category) in place of the old
+     "Project" data row -- the name is now the prominent element, and its
+     category sits where the name used to sit as a plain value. #}
+  <div style="display:flex; justify-content:space-between; align-items:baseline; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.6rem;">
+    <a href="{{ url_for('project_detail', project_id=p['id']) }}"
+       style="font-size:1.15rem; font-weight:800; text-decoration:none;">{{ p["job_name"] or "Project #" ~ p["id"] }}</a>
+    <span class="muted" style="font-size:0.85rem; font-weight:600; white-space:nowrap;">{{ p["project_category"] or "Uncategorized" }}</span>
+  </div>
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Project</th><th>Stage</th><th>Target date</th></tr></thead>
+    <thead><tr><th>Stage</th><th>Target date</th><th style="min-width:160px;">Progress</th></tr></thead>
     <tbody>
-      {% for p in projects %}
       <tr>
-        <td><a href="{{ url_for('project_detail', project_id=p['id']) }}">{{ p["job_name"] or "Project #" ~ p["id"] }}</a></td>
         <td><span class="badge {{ job_status_class.get(p['status'], 'neutral') }}">{{ p["status"] }}</span></td>
         <td class="muted">{{ p["install_date"] or "—" }}</td>
+        <td>{{ job_progress(progress_by_job[p['id']], compact=true) }}</td>
       </tr>
-      {% endfor %}
     </tbody>
   </table>
   </div>
-  {% else %}
-  <p class="empty">No projects yet — <a href="{{ url_for('new_project') }}">create the first one</a>.</p>
-  {% endif %}
 </div>
+{% endfor %}
+{% else %}
+<div class="card">
+  <p class="empty">No projects yet — <a href="{{ url_for('new_project') }}">create the first one</a>.</p>
+</div>
+{% endif %}
 {% endblock %}

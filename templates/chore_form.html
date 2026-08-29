@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit chore" if ec else "New chore" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "✎ Edit chore" if ec else "＋ New chore" }}</h1>
+  <a href="{{ url_for('chores_page') }}" class="btn btn-secondary">← Chores</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('chore_edit', chore_id=ec['id']) if ec else url_for('chore_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Chore *</label>
+        <input id="title" name="title" required value="{{ ec['title'] if ec else '' }}" placeholder="e.g. Take out the trash"></div>
+      <div class="field"><label for="household_member_id">Assign to (optional)</label>
+        <select id="household_member_id" name="household_member_id">
+          <option value="">— unassigned —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if ec and ec['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="recurrence_preset">Repeats every</label>
+        <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
+          {% for days, label in recurrence_presets %}
+          <option value="{{ days }}" {% if (ec['recurrence_days'] if ec else 7) == days %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="">Custom — enter days →</option>
+        </select>
+      </div>
+      <div class="field"><label for="recurrence_days">…or custom (days)</label>
+        <input id="recurrence_days" name="recurrence_days" type="number" min="1"
+               value="{{ ec['recurrence_days'] if ec else 7 }}"></div>
+      <div class="field"><label for="next_due">Next due</label>
+        <input id="next_due" name="next_due" type="date" value="{{ ec['next_due'] if ec else today }}"></div>
+      <div class="field wide"><label for="notes">Notes (optional)</label>
+        <input id="notes" name="notes" value="{{ ec['notes'] if ec else '' }}" placeholder="anything else about it"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ec else "＋ Add chore" }}</button>
+      <a href="{{ url_for('chores_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

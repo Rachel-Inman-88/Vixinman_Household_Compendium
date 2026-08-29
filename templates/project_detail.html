@@ -201,12 +201,12 @@
   {% if project["status"] in ("Done", "Abandoned") %}
   <p class="muted" style="margin:0;">Planning chat is turned off for a
     {{ "finished" if project["status"] == "Done" else "cancelled" }} project.</p>
-  {% elif not plan_providers %}
+  {% elif not plan_configured %}
   <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
     🔌 <strong>No AI provider is set up yet.</strong>
-    {% if is_admin %}Add a Claude or Gemini API key under
+    {% if is_admin %}Add a Claude API key under
       <a href="{{ url_for('assistant_settings_page') }}">AI settings</a> to switch it on.
-    {% else %}Ask an admin to add a Claude or Gemini API key in AI settings.{% endif %}
+    {% else %}Ask an admin to add a Claude API key in AI settings.{% endif %}
   </div>
   {% else %}
   <p class="muted" style="margin-top:0;">Think through how to finish this project — the assistant
@@ -233,19 +233,6 @@
       <label for="plan-message">Message</label>
       <textarea id="plan-message" name="message" rows="2" placeholder="Ask about this project…" required></textarea>
     </div>
-    {% if plan_providers|length > 1 %}
-    <div class="field" style="flex:0 0 auto;">
-      <label for="plan-provider">Model</label>
-      <select id="plan-provider" name="provider">
-        {% for p in plan_providers %}
-        <option value="{{ p }}" {% if p == plan_default_provider %}selected{% endif %}>
-          {{ 'Claude' if p == 'claude' else 'Gemini' }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% else %}
-    <input type="hidden" id="plan-provider" name="provider" value="{{ plan_default_provider }}">
-    {% endif %}
     <div class="field" style="flex:0 0 auto;">
       <label>&nbsp;</label>
       <div style="display:flex; gap:0.4rem;">
@@ -856,13 +843,12 @@
 (function () {
   var chat = document.getElementById("plan-chat");
   var form = document.getElementById("plan-ask-form");
-  if (!chat || !form) return; // gated off (no provider / Done / Abandoned)
+  if (!chat || !form) return; // gated off (no AI key / Done / Abandoned)
   var empty = document.getElementById("plan-chat-empty");
   var box = document.getElementById("plan-message");
   var btn = document.getElementById("plan-ask-btn");
   var repeatBtn = document.getElementById("plan-repeat-btn");
   var status = document.getElementById("plan-status");
-  var providerEl = document.getElementById("plan-provider");
   var askUrl = "{{ url_for('project_plan_ask', project_id=project['id']) }}";
   var addTaskUrl = "{{ url_for('add_task', project_id=project['id']) }}";
   var addNoteUrl = "{{ url_for('add_project_note') }}";
@@ -1085,13 +1071,13 @@
     if (userBubbles.length) {
       var lastText = userBubbles[userBubbles.length - 1].querySelector(".plan-bubble-text");
       if (lastText) {
-        lastQuestion = { q: lastText.textContent, provider: providerEl.value };
+        lastQuestion = { q: lastText.textContent };
         repeatBtn.disabled = false;
       }
     }
   })();
   repeatBtn.addEventListener("click", function () {
-    if (lastQuestion) doSend(lastQuestion.q, lastQuestion.provider, false);
+    if (lastQuestion) doSend(lastQuestion.q, false);
   });
 
   function showError(text) {
@@ -1106,23 +1092,22 @@
       retry.style.cssText = "margin-left:0.6rem; padding:0.15rem 0.6rem; font-size:0.8rem;";
       retry.textContent = "🔁 Retry";
       retry.addEventListener("click", function () {
-        if (lastAttempt) doSend(lastAttempt.q, lastAttempt.provider, true, lastAttempt.messageId);
+        if (lastAttempt) doSend(lastAttempt.q, true, lastAttempt.messageId);
       });
       status.appendChild(retry);
     }
   }
 
-  function doSend(q, provider, isRetry, retryMessageId) {
+  function doSend(q, isRetry, retryMessageId) {
     msg("", "");
     if (!isRetry) bubble("You", q, "user");
-    lastAttempt = { q: q, provider: provider, messageId: retryMessageId || null };
-    lastQuestion = { q: q, provider: provider };
+    lastAttempt = { q: q, messageId: retryMessageId || null };
+    lastQuestion = { q: q };
     repeatBtn.disabled = false;
     btn.disabled = true; btn.textContent = "Thinking…";
     var thinking = bubble("Assistant", "…", "assistant", true);
     var data = new URLSearchParams();
     data.append("message", q);
-    data.append("provider", provider);
     if (retryMessageId) data.append("retry_of", String(retryMessageId));
     fetch(askUrl, {
       method: "POST",
@@ -1153,7 +1138,7 @@
     if (!q) return;
     if (!navigator.onLine) { msg("You're offline — the planning chat needs an internet connection.", "error"); return; }
     box.value = "";
-    doSend(q, providerEl.value, false);
+    doSend(q, false);
   });
 })();
 </script>

@@ -19,13 +19,15 @@
 
 <div class="toolbar">
   <h1>📦 Inventory</h1>
-  <div style="display:flex; align-items:center; gap:0.7rem;">
+  <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap;">
     <span class="muted" style="font-size:0.9rem;">{{ item_total }} item{{ "s" if item_total != 1 }}</span>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_item_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New item</a>{% endif %}
     <a href="{{ url_for('wishlist_page') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🎁 Wishlist</a>
   </div>
 </div>
 <p class="muted" style="margin-top:0;">Household stock, tools, and vehicles. Use
-<strong>＋ New item</strong> to add something, or 🎁 on a row to ask for more of it.</p>
+<strong>＋ New item</strong> to add something (pick any category — typing a new one
+creates it), or 🎁 on a row to ask for more of it.</p>
 
 {# Piece 28.4: search across every inventory item (products, tools, vehicles). #}
 <div class="card" style="padding:0.7rem 0.9rem;">
@@ -36,7 +38,46 @@
 </div>
 <p id="inv-nomatch" class="empty" style="display:none;">No inventory items match your search.</p>
 
+{% macro items_table(rows, table_id) %}
+<div class="inv-scrolltop" data-scrollfor="{{ table_id }}"><div></div></div>
+<div class="inv-scroll" style="overflow-x:auto;">
+<table class="inv-table" id="{{ table_id }}">
+  <thead><tr>
+    <th>Qty</th>
+    <th>Description</th>
+    <th>Make</th><th>Model</th><th>Purchased from</th>
+    <th style="text-align:right;">Cost</th><th>Docs</th><th></th>
+  </tr></thead>
+  <tbody>
+    {% for it in rows %}
+    <tr>
+      <td style="white-space:nowrap; font-size:0.82rem;">{{ it["quantity"] }}</td>
+      <td>{{ it["description"] or "—" }}
+        {% if it["notes"] %}<span title="{{ it['notes'] }}" style="cursor:help;">ℹ️</span>{% endif %}</td>
+      <td style="white-space:nowrap;">{{ it["make"] or "—" }}</td>
+      <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
+      <td class="muted" style="white-space:nowrap;">{{ it["purchased_from"] or "—" }}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        {% if it["cost"] is not none %}${{ (it["cost"])|money }}{% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td style="white-space:nowrap;">
+        {% if it["purchase_url"] %}<a class="inv-ico" href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / buy">🛒</a>{% endif %}
+        {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
+        {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td style="white-space:nowrap;">
+        <a class="inv-edit" style="margin-right:0.35rem;" href="{{ url_for('wishlist_page', prefill_item=it['id']) }}#wishlist-form" title="Add to wishlist">🎁</a>
+        {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
 {% for s in sections %}
+{% set cat_loop = loop %}
 <details class="card sect"{% if loop.first %} open{% endif %}>
   <summary>{{ s.category }} <span class="sect-count">{{ s.count }}</span></summary>
 
@@ -45,42 +86,18 @@
     {% if can('inventory.manage') %}<a href="{{ url_for('inventory_item_new', category=s.category) }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New item</a>{% endif %}
   </div>
 
-  {# Top horizontal scrollbar, synced with the table below. #}
-  <div class="inv-scrolltop" data-scrollfor="tbl-{{ loop.index }}"><div></div></div>
-  <div class="inv-scroll" style="overflow-x:auto;">
-  <table class="inv-table" id="tbl-{{ loop.index }}">
-    <thead><tr>
-      <th>Qty</th>
-      <th>Description</th>
-      <th>Make</th><th>Model</th><th>Purchased from</th>
-      <th style="text-align:right;">Cost</th><th>Docs</th><th></th>
-    </tr></thead>
-    <tbody>
-      {% for it in s['items'] %}
-      <tr>
-        <td style="white-space:nowrap; font-size:0.82rem;">{{ it["quantity"] }}</td>
-        <td>{{ it["description"] or "—" }}
-          {% if it["notes"] %}<span title="{{ it['notes'] }}" style="cursor:help;">ℹ️</span>{% endif %}</td>
-        <td style="white-space:nowrap;">{{ it["make"] or "—" }}</td>
-        <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
-        <td class="muted" style="white-space:nowrap;">{{ it["purchased_from"] or "—" }}</td>
-        <td style="text-align:right; white-space:nowrap;">
-          {% if it["cost"] is not none %}${{ (it["cost"])|money }}{% else %}<span class="muted">—</span>{% endif %}
-        </td>
-        <td style="white-space:nowrap;">
-          {% if it["purchase_url"] %}<a class="inv-ico" href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / buy">🛒</a>{% endif %}
-          {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
-          {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
-        </td>
-        <td style="white-space:nowrap;">
-          <a class="inv-edit" style="margin-right:0.35rem;" href="{{ url_for('wishlist_page', prefill_item=it['id']) }}#wishlist-form" title="Add to wishlist">🎁</a>
-          {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  {% if s.subgroups %}
+  {# Piece 76: this category has 2+ distinct subcategories in use -- nest
+     each as its own collapsible group instead of one flat table. #}
+  {% for g in s.subgroups %}
+  <details class="card sect" style="box-shadow:none; border:1px solid var(--border);">
+    <summary style="font-size:1rem;">{{ g.subcategory }} <span class="sect-count">{{ g['items']|length }}</span></summary>
+    {{ items_table(g['items'], "tbl-" ~ cat_loop.index ~ "-" ~ loop.index) }}
+  </details>
+  {% endfor %}
+  {% else %}
+  {{ items_table(s['items'], "tbl-" ~ cat_loop.index) }}
+  {% endif %}
 </details>
 {% endfor %}
 

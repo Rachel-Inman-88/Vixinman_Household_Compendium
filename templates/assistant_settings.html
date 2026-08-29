@@ -5,10 +5,9 @@
   <a href="{{ url_for('assistant_page') }}" class="btn btn-secondary">← Back to Assistant</a>
 </div>
 <h1>⚙️ AI assistant settings</h1>
-<p class="muted" style="margin-top:0;">Compendium can use <strong>Claude</strong> (Anthropic)
-  and/or <strong>Gemini</strong> (Google). Add a key for either — or both, and let whoever's
-  asking pick per question. Keys are stored on this machine (in your Compendium data folder) and are
-  only ever sent to the provider you choose. The assistant is read-only.</p>
+<p class="muted" style="margin-top:0;">Compendium uses <strong>Claude</strong> (Anthropic) to
+  power the assistant. The key is stored on this machine (in your Compendium data folder) and is
+  only ever sent to Anthropic. The assistant is read-only.</p>
 
 <div class="flash" style="background:#eef6ff; border-color:#bcdcff; color:#0b4a8f;">
   🔐 <strong>What leaves the building:</strong> when someone asks a question, Compendium sends
@@ -19,15 +18,7 @@
 
 <form method="post" class="card">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="field wide" style="max-width:26rem;">
-    <label for="default_provider">Default provider</label>
-    <select id="default_provider" name="default_provider">
-      <option value="claude" {% if cfg.default_provider == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
-      <option value="gemini" {% if cfg.default_provider == 'gemini' %}selected{% endif %}>Gemini (Google)</option>
-    </select>
-  </div>
-
-  <fieldset class="section" style="margin-top:1rem;">
+  <fieldset class="section">
     <legend>Claude (Anthropic)</legend>
     <div class="form-grid">
       <div class="field wide">
@@ -55,30 +46,6 @@
     <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Get a key at
       console.anthropic.com. Sonnet is a good balance for everyday questions; Opus is the
       most capable (and priciest), Haiku the cheapest.</p>
-  </fieldset>
-
-  <fieldset class="section" style="margin-top:1rem;">
-    <legend>Gemini (Google)</legend>
-    <div class="form-grid">
-      <div class="field wide">
-        <label for="gemini_key">API key
-          {% if cfg.gemini_key %}<span class="badge" style="vertical-align:middle;">✓ set</span>{% endif %}</label>
-        <input id="gemini_key" name="gemini_key" type="password" autocomplete="off"
-               placeholder="{% if cfg.gemini_key %}leave blank to keep the saved key{% else %}AIza…{% endif %}">
-        {% if cfg.gemini_key %}
-        <label class="check" style="margin-top:0.35rem; color:var(--text);">
-          <input type="checkbox" name="clear_gemini_key" value="1"> Remove the saved Gemini key</label>
-        {% endif %}
-      </div>
-      <div class="field">
-        <label for="gemini_model">Model</label>
-        <input id="gemini_model" name="gemini_model" value="{{ cfg.gemini_model }}"
-               placeholder="{{ gemini_default }}">
-      </div>
-    </div>
-    <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Get a key at
-      aistudio.google.com (or your Google Cloud project). Set the model to whatever your
-      account provides (e.g. <code>{{ gemini_default }}</code>).</p>
   </fieldset>
 
   <div class="actions">

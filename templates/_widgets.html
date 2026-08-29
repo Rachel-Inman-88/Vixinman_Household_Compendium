@@ -1,8 +1,10 @@
 {# Piece 20.2: per-project pipeline progress widget. Pass a dict built by
    build_project_progress(db, project). Set compact=true for a slim bar in
    lists/rows (segment labels are dropped; the stage name moves into the
-   caption). #}
-{% macro job_progress(p, compact=false) %}
+   caption). Set show_next=false to drop the "▶ Next: ..." caption entirely
+   (Piece 76: the dashboard's Planning card shows the next to-do in its own
+   column instead, so repeating it here would be redundant). #}
+{% macro job_progress(p, compact=false, show_next=true) %}
 <div class="jobprog{% if compact %} jobprog--compact{% endif %}">
   <div class="jobprog-track" role="img"
        aria-label="Pipeline stage {{ p.status }}, {{ p.pct }} percent through the project.{% if not (p.lost or p.complete) %} Next step: {{ p.next_label }}.{% endif %}">
@@ -18,6 +20,8 @@
       <span class="jobprog-done">✓ Project complete</span>
     {% elif p.lost %}
       <span class="jobprog-lostlbl">✕ Marked Abandoned</span>
+    {% elif not show_next %}
+      {% if compact %}<span class="jobprog-stage">{{ p.status }}</span>{% endif %}
     {% else %}
       {% if compact %}<span class="jobprog-stage">{{ p.status }}</span> · {% endif %}
       <span class="jobprog-arrow">▶ Next:</span> {{ p.next_label }}{% if p.next_who and not compact %} <span class="muted">· {{ p.next_who }}</span>{% endif %}

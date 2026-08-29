@@ -4,11 +4,8 @@
 <div class="toolbar">
   <h1>📅 Appointments <span class="muted" style="font-size:0.95rem; font-weight:400;">— scheduled dates &amp; times, not tied to a project</span></h1>
 </div>
-<p class="muted" style="margin-top:0;">Anything with a date and time — a doctor's visit, a
-delivery window, a trip. Most are one-time; mark one done and it's off your upcoming list.
-A recurring one (a checkup, say) comes back due after its interval instead.</p>
-
-{# ---- filters ---- #}
+{# ---- filters -- two independent groups, color-coded like Boards: who
+       (blue/accent2) vs show (green/brand). ---- #}
 <div class="card" style="display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0.9rem;">
   <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
     <span class="muted" style="font-size:0.85rem;">Show:</span>
@@ -17,9 +14,9 @@ A recurring one (a checkup, say) comes back due after its interval instead.</p>
   </div>
   <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
     <span class="muted" style="font-size:0.85rem;">Who:</span>
-    <a href="{{ url_for('appointments_page', who='mine', show=show) }}" class="btn {{ '' if who == 'mine' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
-    <a href="{{ url_for('appointments_page', who='all', show=show) }}" class="btn {{ '' if who == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
-    <a href="{{ url_for('appointments_page', who='unassigned', show=show) }}" class="btn {{ '' if who == 'unassigned' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
+    <a href="{{ url_for('appointments_page', who='mine', show=show) }}" class="btn-accent2 {{ '' if who == 'mine' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
+    <a href="{{ url_for('appointments_page', who='all', show=show) }}" class="btn-accent2 {{ '' if who == 'all' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+    <a href="{{ url_for('appointments_page', who='unassigned', show=show) }}" class="btn-accent2 {{ '' if who == 'unassigned' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
   </div>
 </div>
 

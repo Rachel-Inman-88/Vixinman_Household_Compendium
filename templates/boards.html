@@ -5,17 +5,16 @@
   <h1>📋 Boards <span class="muted" style="font-size:0.95rem; font-weight:400;">— to-dos not tied to a project</span></h1>
   <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} open</span>
 </div>
-<p class="muted" style="margin-top:0;">Standalone tasks for the team (clean the bathroom, call a vendor, …).
-Assign one to a teammate, log time on it, and keep a running notes log.</p>
 
-{# ---- filters ---- #}
+{# ---- filters -- two independent groups, color-coded so they read as
+       separate controls: who (blue/accent2) vs status (green/brand). ---- #}
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0.9rem;">
-  <span class="muted" style="font-size:0.85rem;">Show:</span>
-  {% set base = {'show': show} %}
-  <a href="{{ url_for('boards_page', who='mine', show=show) }}" class="btn {{ '' if who == 'mine' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
-  <a href="{{ url_for('boards_page', who='all', show=show) }}" class="btn {{ '' if who == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
-  <a href="{{ url_for('boards_page', who='unassigned', show=show) }}" class="btn {{ '' if who == 'unassigned' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
+  <span class="muted" style="font-size:0.85rem;">Who:</span>
+  <a href="{{ url_for('boards_page', who='mine', show=show) }}" class="btn-accent2 {{ '' if who == 'mine' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Mine</a>
+  <a href="{{ url_for('boards_page', who='all', show=show) }}" class="btn-accent2 {{ '' if who == 'all' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+  <a href="{{ url_for('boards_page', who='unassigned', show=show) }}" class="btn-accent2 {{ '' if who == 'unassigned' else 'btn-accent2-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
   <span style="width:1px; height:1.2rem; background:var(--border); margin:0 0.2rem;"></span>
+  <span class="muted" style="font-size:0.85rem;">Status:</span>
   <a href="{{ url_for('boards_page', who=who, show='open') }}" class="btn {{ '' if show == 'open' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Open</a>
   <a href="{{ url_for('boards_page', who=who, show='all') }}" class="btn {{ '' if show == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All statuses</a>
 </div>
@@ -25,7 +24,7 @@ Assign one to a teammate, log time on it, and keep a running notes log.</p>
   {% if boards %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>To-do</th><th>Assigned to</th><th>Collaborators</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead>
+    <thead><tr><th>To-do</th><th>Assigned to</th><th>Collaborators</th><th>Priority</th><th>Due</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for b in boards %}
       {% set overdue = b["due_date"] and b["due_date"] < today and b["status"] != "Done" %}
@@ -36,6 +35,16 @@ Assign one to a teammate, log time on it, and keep a running notes log.</p>
         <td>{% if b["priority"] == "High" %}<span class="badge danger">High</span>{% elif b["priority"] %}<span class="badge neutral">{{ b["priority"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td style="white-space:nowrap;">{% if b["due_date"] %}{{ b["due_date"] }}{% if b["due_time"] %} · {{ b["due_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}<span class="badge {{ sc.get(b['status'],'neutral') }}">{{ b["status"] }}</span></td>
+        <td style="white-space:nowrap;">
+          {% if b["status"] != "Done" %}
+          <form method="post" action="{{ url_for('board_status', board_id=b['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="Done">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.5rem; font-size:0.85rem;" title="Mark done">✓</button>
+          </form>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

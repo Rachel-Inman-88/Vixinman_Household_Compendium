@@ -6,31 +6,33 @@
   <h1>✅ Task board</h1>
   <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">🎒 My Work Bag</a>
 </div>
-<p class="muted">Every task across every project in one place. Filter to a person
-to see just their work — the “my tasks” view for the whole team.
-<strong>Work Bag</strong> is your own offline-capable field list.</p>
 
-<form method="get" class="card" id="filter_form">
-  <div class="form-grid">
-    <div class="field">
-      <label for="employee">Who</label>
-      <select id="employee" name="employee">
-        <option value="" {% if who == "" %}selected{% endif %}>Everyone</option>
-        <option value="unassigned" {% if who == "unassigned" %}selected{% endif %}>— Unassigned —</option>
-        {% for e in employees %}
-        <option value="{{ e['id'] }}" {% if who == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
-        {% endfor %}
-      </select>
+{# Piece 76: the filter tucks away collapsed by default -- it earns its
+   space back only when someone actually wants to narrow the view. #}
+<details class="card sect">
+  <summary>🔍 Filter</summary>
+  <form method="get" id="filter_form">
+    <div class="form-grid">
+      <div class="field">
+        <label for="employee">Who</label>
+        <select id="employee" name="employee">
+          <option value="" {% if who == "" %}selected{% endif %}>Everyone</option>
+          <option value="unassigned" {% if who == "unassigned" %}selected{% endif %}>— Unassigned —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if who == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="show">Show</label>
+        <select id="show" name="show">
+          <option value="open" {% if show == "open" %}selected{% endif %}>Open (not done)</option>
+          <option value="all" {% if show == "all" %}selected{% endif %}>All, including done</option>
+        </select>
+      </div>
     </div>
-    <div class="field">
-      <label for="show">Show</label>
-      <select id="show" name="show">
-        <option value="open" {% if show == "open" %}selected{% endif %}>Open (not done)</option>
-        <option value="all" {% if show == "all" %}selected{% endif %}>All, including done</option>
-      </select>
-    </div>
-  </div>
-</form>
+  </form>
+</details>
 
 <div class="card">
   <p style="margin:0;">
@@ -42,10 +44,18 @@ to see just their work — the “my tasks” view for the whole team.
 </div>
 
 {% for g in groups %}
-<details class="card sect" open{% if g.overdue %} style="border-left:4px solid #b02a2a;"{% endif %}>
-  <summary>
-    <a href="{{ url_for('project_detail', project_id=g.project_id) }}#tasks" onclick="event.stopPropagation();">{{ g.job_name or "Project #" ~ g.project_id }}</a>
-    <span class="sect-count">{{ g.open }} open{% if g.overdue %} · <span class="badge danger">{{ g.overdue }} overdue</span>{% endif %}</span>
+{% set next_task = g.tasks[0] if g.tasks and g.tasks[0]["status"] != "Done" else none %}
+<details class="card sect"{% if g.overdue %} style="border-left:4px solid #b02a2a;"{% endif %}>
+  <summary style="align-items:flex-start;">
+    <div style="display:flex; flex-direction:column; gap:0.15rem; flex:1 1 auto; min-width:0;">
+      <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{{ url_for('project_detail', project_id=g.project_id) }}#tasks" onclick="event.stopPropagation();">{{ g.job_name or "Project #" ~ g.project_id }}</a>
+        <span class="sect-count">{{ g.open }} open{% if g.overdue %} · <span class="badge danger">{{ g.overdue }} overdue</span>{% endif %}</span>
+      </div>
+      {% if next_task %}
+      <div class="muted" style="font-size:0.82rem; font-weight:400;">▶ Next: {{ next_task["title"] }}</div>
+      {% endif %}
+    </div>
   </summary>
   <div style="overflow-x:auto;">
   <table>

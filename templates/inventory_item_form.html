@@ -19,6 +19,15 @@
           {% for c in categories %}<option value="{{ c }}">{% endfor %}
         </datalist>
       </div>
+      <div class="field">
+        <label for="subcategory">Subcategory (optional)</label>
+        <input id="subcategory" name="subcategory" list="subcategory_list"
+               value="{{ item['subcategory'] if item else '' }}"
+               placeholder="e.g. Sewing, Clay, Beading">
+        <datalist id="subcategory_list">
+          {% for s in subcategories %}<option value="{{ s }}">{% endfor %}
+        </datalist>
+      </div>
       <div class="field"><label>Make</label><input name="make" value="{{ item['make'] if item else '' }}"></div>
       <div class="field"><label>Model</label><input name="model" value="{{ item['model'] if item else '' }}"></div>
       <div class="field wide"><label>Description</label><input name="description" value="{{ item['description'] if item else '' }}"></div>

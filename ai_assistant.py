@@ -1,11 +1,11 @@
 """Piece 32.0: Compendium AI assistant — provider layer.
 
-A tiny, dependency-free client for the two chat providers Vixinman has access to:
-Anthropic (Claude) and Google (Gemini). Kept in pure stdlib on purpose — Compendium
-ships as a frozen PyInstaller exe, so adding SDKs would bloat the bundle and
-complicate packaging. Both providers are reduced to the same shape:
+A tiny, dependency-free client for Anthropic (Claude), the only chat provider
+Vixinman uses (Piece 76 removed Gemini support — never used). Kept in pure
+stdlib on purpose — Compendium ships as a frozen PyInstaller exe, so adding
+an SDK would bloat the bundle and complicate packaging.
 
-    ask(provider, api_key, model, system, user_message) -> answer text
+    ask(api_key, model, system, user_message) -> answer text
 
 The request/response *builders* and *parsers* are separated from the network
 call so they can be unit-tested without hitting the internet (the app is
@@ -26,14 +26,8 @@ CLAUDE_MODELS = [
 CLAUDE_MODEL_IDS = [m for _label, m in CLAUDE_MODELS]
 CLAUDE_DEFAULT_MODEL = "claude-sonnet-5"
 
-# Gemini model IDs move around as Google ships new versions, so this is a plain
-# editable setting rather than a fixed list — default to a widely-available one.
-GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
-
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
-GEMINI_URL_TMPL = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   "{model}:generateContent")
 
 REQUEST_TIMEOUT = 45  # seconds — a single interactive question
 
@@ -70,39 +64,6 @@ def parse_claude_response(data):
     text = "".join(parts).strip()
     if not text:
         raise AssistantError("Claude returned an empty response.")
-    return text
-
-
-# ----------------------------------------------------------------------------
-# Gemini (Google Generative Language API)
-# ----------------------------------------------------------------------------
-def build_gemini_request(api_key, model, system, user_message):
-    """Return (url, headers, body_dict) for one Gemini generateContent call."""
-    url = GEMINI_URL_TMPL.format(model=model or GEMINI_DEFAULT_MODEL)
-    # The key rides as a header (x-goog-api-key) rather than a query string so it
-    # never lands in logs or the URL.
-    headers = {"content-type": "application/json", "x-goog-api-key": api_key}
-    body = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user_message}]}],
-    }
-    return url, headers, body
-
-
-def parse_gemini_response(data):
-    """Pull the assistant's text out of a Gemini generateContent response."""
-    if "error" in data:
-        raise AssistantError(_provider_error_text(data["error"]))
-    candidates = data.get("candidates") or []
-    if not candidates:
-        # Often a safety block — surface the reason if present.
-        fb = (data.get("promptFeedback") or {}).get("blockReason")
-        raise AssistantError(
-            f"Gemini declined to answer{f' ({fb})' if fb else ''}.")
-    parts = (candidates[0].get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts).strip()
-    if not text:
-        raise AssistantError("Gemini returned an empty response.")
     return text
 
 
@@ -146,16 +107,12 @@ def _post_json(url, headers, body, timeout=REQUEST_TIMEOUT):
         raise AssistantError(f"Unexpected error talking to the AI provider: {e}")
 
 
-def ask(provider, api_key, model, system, user_message):
-    """Ask one question of the chosen provider and return the answer text.
-    `provider` is 'claude' or 'gemini'. Raises AssistantError on any problem."""
+def ask(api_key, model, system, user_message):
+    """Ask one question of Claude and return the answer text.
+    Raises AssistantError on any problem."""
     if not (api_key or "").strip():
         raise AssistantError(
-            "No API key is set for this provider — add one in AI settings.")
-    if provider == "gemini":
-        url, headers, body = build_gemini_request(api_key, model, system, user_message)
-        return parse_gemini_response(_post_json(url, headers, body))
-    # default: claude
+            "No API key is set — add one in AI settings.")
     url, headers, body = build_claude_request(api_key, model, system, user_message)
     return parse_claude_response(_post_json(url, headers, body))
 
@@ -166,8 +123,8 @@ def ask(provider, api_key, model, system, user_message):
 #
 # A tool is a dict: {"name", "description", "parameters" (JSON-schema object),
 # "run" (callable(args_dict) -> str)}. The caller (app.py) defines the tools and
-# their permission-scoped implementations; this module only drives the provider
-# request/response loop for each of Claude and Gemini.
+# their permission-scoped implementations; this module only drives Claude's
+# request/response loop.
 # ----------------------------------------------------------------------------
 MAX_AGENT_STEPS = 6  # tool round-trips before we force a final answer
 
@@ -185,20 +142,17 @@ def _dispatch(registry, name, args):
         return f"Error running {name}: {e}"
 
 
-def run_agent(provider, api_key, model, system, user_message, tools,
+def run_agent(api_key, model, system, user_message, tools,
               max_steps=MAX_AGENT_STEPS):
     """Answer a question, letting the model call read-only tools as needed.
     Returns the final answer text. Raises AssistantError on transport/provider
     failure. Falls back to a plain (tool-less) call if `tools` is empty."""
     if not (api_key or "").strip():
         raise AssistantError(
-            "No API key is set for this provider — add one in AI settings.")
+            "No API key is set — add one in AI settings.")
     if not tools:
-        return ask(provider, api_key, model, system, user_message)
+        return ask(api_key, model, system, user_message)
     registry = {t["name"]: t for t in tools}
-    if provider == "gemini":
-        return _gemini_agent(api_key, model, system, user_message, tools,
-                             registry, max_steps)
     return _claude_agent(api_key, model, system, user_message, tools,
                          registry, max_steps)
 
@@ -230,39 +184,3 @@ def _claude_agent(api_key, model, system, user_message, tools, registry, max_ste
     body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 1024,
             "system": system, "messages": messages}
     return parse_claude_response(_post_json(ANTHROPIC_URL, headers, body))
-
-
-def _gemini_agent(api_key, model, system, user_message, tools, registry, max_steps):
-    decls = []
-    for t in tools:
-        d = {"name": t["name"], "description": t["description"]}
-        # Gemini rejects an empty parameters object — include it only when there
-        # are properties to describe.
-        if (t["parameters"].get("properties") or {}):
-            d["parameters"] = t["parameters"]
-        decls.append(d)
-    url = GEMINI_URL_TMPL.format(model=model or GEMINI_DEFAULT_MODEL)
-    headers = {"content-type": "application/json", "x-goog-api-key": api_key}
-    gem_tools = [{"function_declarations": decls}]
-    contents = [{"role": "user", "parts": [{"text": user_message}]}]
-    for _ in range(max_steps):
-        body = {"system_instruction": {"parts": [{"text": system}]},
-                "contents": contents, "tools": gem_tools}
-        data = _post_json(url, headers, body)
-        if "error" in data:
-            raise AssistantError(_provider_error_text(data["error"]))
-        cand = (data.get("candidates") or [{}])[0]
-        parts = (cand.get("content") or {}).get("parts") or []
-        calls = [p["functionCall"] for p in parts if p.get("functionCall")]
-        if not calls:  # final answer
-            return parse_gemini_response(data)
-        contents.append({"role": "model", "parts": parts})
-        resp_parts = []
-        for call in calls:
-            out = _dispatch(registry, call.get("name"), call.get("args"))
-            resp_parts.append({"functionResponse": {
-                "name": call.get("name"), "response": {"result": out}}})
-        contents.append({"role": "user", "parts": resp_parts})
-    # Ran out of steps — force a final answer with tools withheld.
-    body = {"system_instruction": {"parts": [{"text": system}]}, "contents": contents}
-    return parse_gemini_response(_post_json(url, headers, body))

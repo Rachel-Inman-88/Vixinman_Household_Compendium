@@ -39,7 +39,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-import ai_assistant  # Piece 32.0: Compendium AI assistant (Claude / Gemini)
+import ai_assistant  # Piece 32.0: Compendium AI assistant (Claude)
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -461,7 +461,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.52"
+VERSION = "0.53"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -495,6 +495,27 @@ MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
 # (distinct from a project's requirement categories — these aren't tied to a
 # specific project).
 HOUSEHOLD_FILE_CATEGORIES = ["Insurance", "Warranty", "Correspondence", "Other"]
+# Piece 76: coarse format buckets for filtering the Household Files list --
+# grouped from ALLOWED_EXTENSIONS rather than a separate stored column, so a
+# file's format is always derived from its own extension, never out of sync.
+HOUSEHOLD_FILE_FORMATS = [
+    ("pdf", "PDF", {"pdf"}),
+    ("image", "Images", {"png", "jpg", "jpeg", "heic", "gif"}),
+    ("office", "Office docs", {"doc", "docx", "xls", "xlsx", "csv", "txt"}),
+    ("other", "Other", {"kmz", "kml", "zip", "bpmn"}),
+]
+HOUSEHOLD_FILE_FORMAT_LABELS = {key: label for key, label, _ in HOUSEHOLD_FILE_FORMATS}
+_HOUSEHOLD_FILE_EXT_TO_FORMAT = {
+    ext: key for key, _, exts in HOUSEHOLD_FILE_FORMATS for ext in exts}
+
+
+def _household_file_ext(record):
+    name = record["original_name"] or record["stored_name"] or ""
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def _household_file_format(record):
+    return _HOUSEHOLD_FILE_EXT_TO_FORMAT.get(_household_file_ext(record), "other")
 # Piece 16: project pipeline stages, redefined to match Vixinman's process phases.
 # (Renaming these stages to fit the household model is a separate future piece.)
 # Piece 34: pipeline stages renamed for the household reorg. Inspections and
@@ -2214,6 +2235,15 @@ def init_db():
                    " ('inventory_rehaul_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+    # Piece 76: an optional second-level grouping under a category (e.g.
+    # category "Hobbies", subcategory "Sewing"/"Clay"/"Beading"). Purely
+    # additive -- no meta guard needed, ensure_columns() is already idempotent.
+    ensure_columns(db, "inventory_items", ["subcategory"])
+    # Piece 76: Gemini support removed outright (never used) -- drop its
+    # now-dead settings so a household that once had a key configured
+    # doesn't keep it sitting around unused in meta.
+    db.execute("DELETE FROM meta WHERE key IN"
+              " ('ai_default_provider', 'ai_gemini_key', 'ai_gemini_model')")
     # Piece 43: broaden external_helpers ("Contacts") to also cover
     # organizations, and let an appointment link to a contact. Purely
     # additive -- no meta guard needed, ensure_columns() is already
@@ -2807,6 +2837,22 @@ def board_delete(board_id):
 CHORE_RECURRENCE_PRESETS = [(1, "Daily"), (7, "Weekly"), (14, "Every 2 weeks"),
                             (30, "Monthly")]
 
+# Piece 76: bucket chores by recurrence for the collapsible Daily/Weekly/
+# Monthly/Quarterly/Yearly groups on the Chores page. Boundaries sit at the
+# midpoint (on a log scale) between each pair of nominal values (1, 7, 30,
+# 90, 365 days) so a custom recurrence lands in whichever bucket it reads
+# closest to -- "every 2 weeks" (14 days) reads as Weekly, for example.
+CHORE_RECURRENCE_BUCKETS = [
+    (3, "Daily"), (18, "Weekly"), (60, "Monthly"), (227, "Quarterly"),
+]
+
+
+def _chore_recurrence_bucket(days):
+    for threshold, label in CHORE_RECURRENCE_BUCKETS:
+        if days <= threshold:
+            return label
+    return "Yearly"
+
 
 def _notify_chore_assignee(db, title, assignee_id, actor):
     """Tell a household member a chore was assigned to them (skip self / login-less)."""
@@ -2845,13 +2891,15 @@ def chores_page():
     chores = db.execute(sql, params).fetchall()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    edit_id = request.args.get("edit", type=int)
-    edit_chore = db.execute(
-        "SELECT * FROM routine_tasks WHERE id = ?", (edit_id,)
-    ).fetchone() if edit_id else None
-    return render_template("chores.html", chores=chores, employees=employees,
-                           who=who, edit_chore=edit_chore,
-                           recurrence_presets=CHORE_RECURRENCE_PRESETS,
+    # Piece 76: group into collapsible Daily/Weekly/Monthly/Quarterly/Yearly
+    # buckets by recurrence interval -- each keeps the existing due-date order.
+    buckets = {label: [] for _, label in CHORE_RECURRENCE_BUCKETS + [(None, "Yearly")]}
+    for c in chores:
+        buckets[_chore_recurrence_bucket(c["recurrence_days"])].append(c)
+    bucket_groups = [(label, buckets[label]) for label in
+                     ("Daily", "Weekly", "Monthly", "Quarterly", "Yearly") if buckets[label]]
+    return render_template("chores.html", bucket_groups=bucket_groups,
+                           chore_total=len(chores), employees=employees, who=who,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -2866,6 +2914,19 @@ def _chore_form_values():
         "next_due": request.form.get("next_due", "").strip()
                    or datetime.now().strftime("%Y-%m-%d"),
     }
+
+
+@app.route("/chores/new")
+def chore_new_form():
+    """Piece 76: the New/Edit chore form is its own page now (was an inline
+    card at the bottom of the Chores list) -- reached via a "+ New chore"
+    button at the top instead."""
+    db = get_db()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("chore_form.html", ec=None, employees=employees,
+                           recurrence_presets=CHORE_RECURRENCE_PRESETS,
+                           today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/chores/new", methods=["POST"])
@@ -2887,6 +2948,20 @@ def chore_new():
     return redirect(url_for("chores_page"))
 
 
+@app.route("/chores/<int:chore_id>/edit")
+def chore_edit_form(chore_id):
+    db = get_db()
+    ec = db.execute("SELECT * FROM routine_tasks WHERE id = ?",
+                    (chore_id,)).fetchone()
+    if ec is None:
+        abort(404)
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("chore_form.html", ec=ec, employees=employees,
+                           recurrence_presets=CHORE_RECURRENCE_PRESETS,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
 @app.route("/chores/<int:chore_id>/edit", methods=["POST"])
 def chore_edit(chore_id):
     db = get_db()
@@ -2897,7 +2972,7 @@ def chore_edit(chore_id):
     values = _chore_form_values()
     if not values["title"]:
         flash("A chore needs a title.", "error")
-        return redirect(url_for("chores_page", edit=chore_id))
+        return redirect(url_for("chore_edit_form", chore_id=chore_id))
     me = current_user()
     db.execute(
         "UPDATE routine_tasks SET title = ?, notes = ?, household_member_id = ?,"
@@ -2927,6 +3002,11 @@ def chore_done(chore_id):
         (today.strftime("%Y-%m-%d"), me["name"] if me else "", next_due, chore_id))
     db.commit()
     flash(f"Marked done: {chore['title']} — next due {next_due}.")
+    # Piece 76: the dashboard's Productivity Overview passes ?next= so the
+    # quick-done checkmark returns there instead of jumping to /chores.
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("chores_page"))
 
 
@@ -3101,6 +3181,11 @@ def appointment_done(appt_id):
             (today.strftime("%Y-%m-%d"), me["name"] if me else "", appt_id))
         db.commit()
         flash(f"Marked done: {appt['title']}.")
+    # Piece 76: the dashboard's Productivity Overview passes ?next= so the
+    # quick-done checkmark returns there instead of jumping to /appointments.
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("appointments_page"))
 
 
@@ -3499,14 +3584,6 @@ def dashboard():
             "SELECT * FROM routine_tasks WHERE household_member_id = ?"
             " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
 
-    # Piece 38: this member's standalone recurring requirements, soonest-due first.
-    my_requirements = []
-    if user is not None:
-        my_requirements = db.execute(
-            "SELECT * FROM resource_rules WHERE field_name = ''"
-            " AND household_member_id = ?"
-            " ORDER BY (next_due = ''), next_due", (user["id"],)).fetchall()
-
     # Piece 42: this member's upcoming appointments (assigned to them or
     # whole-household), soonest first.
     my_appointments = []
@@ -3710,17 +3787,11 @@ def dashboard():
         " AND j.status NOT IN ('Abandoned', 'Done')"
         " ORDER BY t.txn_date, j.id", (upcoming_cutoff,)).fetchall()
 
-    backlog_worklist = db.execute(
-        "SELECT i.*, e.name AS proposed_by_name FROM household_ideas i"
-        " LEFT JOIN household_members e ON e.id = i.proposed_by"
-        " WHERE i.status = 'Backlog'"
-        " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at"
-    ).fetchall()
     return render_template(
         "dashboard.html", user=user,
         task_groups=task_groups, my_chores=my_chores,
-        my_requirements=my_requirements, my_appointments=my_appointments,
-        sections=sections, my_tasks=my_tasks, backlog_worklist=backlog_worklist,
+        my_appointments=my_appointments,
+        sections=sections, my_tasks=my_tasks,
         upcoming_payments=upcoming_payments,
         today=today_s,
         progress_by_job=progress_by_job,
@@ -4088,8 +4159,13 @@ def external_helpers_page():
     edit_helper = db.execute(
         "SELECT * FROM external_helpers WHERE id = ?", (edit_id,)
     ).fetchone() if edit_id else None
+    # Piece 76: Individuals / Organizations tabs, instead of one flat list
+    # with a Type column -- the two kinds already have different relevant
+    # fields (an organization's website/account/renewal info vs. a person's).
+    people = [h for h in helpers if h["kind"] != "Organization"]
+    orgs = [h for h in helpers if h["kind"] == "Organization"]
     return render_template("external_helpers.html", helpers=helpers,
-                           edit_helper=edit_helper)
+                           people=people, orgs=orgs, edit_helper=edit_helper)
 
 
 @app.route("/external-helpers/new", methods=["POST"])
@@ -4193,8 +4269,18 @@ def _discard_draft_file(stored_name):
 def household_files_page():
     files = get_db().execute(
         "SELECT * FROM household_files ORDER BY id DESC").fetchall()
+    category = request.args.get("category", "")
+    fmt = request.args.get("format", "")
+    if category:
+        files = [f for f in files if (f["category"] or "") == category]
+    if fmt:
+        files = [f for f in files if _household_file_format(f) == fmt]
     return render_template("household_files.html", files=files,
-                           file_categories=HOUSEHOLD_FILE_CATEGORIES)
+                           file_categories=HOUSEHOLD_FILE_CATEGORIES,
+                           file_formats=HOUSEHOLD_FILE_FORMATS,
+                           file_format_labels=HOUSEHOLD_FILE_FORMAT_LABELS,
+                           file_format=_household_file_format,
+                           category=category, fmt=fmt)
 
 
 @app.route("/household-files/upload", methods=["POST"])
@@ -5462,9 +5548,7 @@ def project_detail(project_id):
 
     # Piece 48: the "🧠 Plan" tab's brainstorm chat -- config + saved history.
     plan_cfg = assistant_settings(db)
-    plan_providers = assistant_available_providers(plan_cfg)
-    plan_default_provider = plan_cfg["default_provider"] if plan_cfg["default_provider"] in plan_providers else (
-        plan_providers[0] if plan_providers else "claude")
+    plan_configured = assistant_configured(plan_cfg)
     plan_messages = db.execute(
         "SELECT * FROM project_plan_messages WHERE project_id = ? ORDER BY id",
         (project_id,)).fetchall()
@@ -5486,7 +5570,7 @@ def project_detail(project_id):
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORY_SUGGESTIONS, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
-        plan_providers=plan_providers, plan_default_provider=plan_default_provider,
+        plan_configured=plan_configured,
         plan_messages=plan_messages,
     )
 
@@ -5777,12 +5861,26 @@ def inventory_page():
     db = get_db()
     items = db.execute(
         "SELECT * FROM inventory_items WHERE active = 1"
-        " ORDER BY category, make, model").fetchall()
+        " ORDER BY category, subcategory, make, model").fetchall()
     by_cat = {}
     for it in items:
         by_cat.setdefault(it["category"] or "Uncategorized", []).append(it)
-    sections = [{"category": cat, "items": rows, "count": len(rows)}
-                for cat, rows in sorted(by_cat.items())]
+    # Piece 76: an optional second collapsible level under a category (e.g.
+    # "Hobbies" -> "Sewing"/"Clay"/"Beading"). Only nested when the category
+    # actually has 2+ distinct subcategories in use -- a category nobody has
+    # subcategorized keeps its plain flat table, unchanged.
+    sections = []
+    for cat, rows in sorted(by_cat.items()):
+        by_subcat = {}
+        for it in rows:
+            by_subcat.setdefault(it["subcategory"] or "", []).append(it)
+        if len(by_subcat) > 1:
+            subgroups = [{"subcategory": sub or "General", "items": sub_rows}
+                         for sub, sub_rows in sorted(by_subcat.items())]
+        else:
+            subgroups = None
+        sections.append({"category": cat, "items": rows, "count": len(rows),
+                         "subgroups": subgroups})
     tools = db.execute(
         "SELECT * FROM inventory_tools WHERE active = 1"
         " ORDER BY category, name").fetchall()
@@ -5800,10 +5898,17 @@ def _inventory_category_choices(db):
         " WHERE COALESCE(category, '') != '' ORDER BY category").fetchall()]
 
 
+def _inventory_subcategory_choices(db):
+    return [r[0] for r in db.execute(
+        "SELECT DISTINCT subcategory FROM inventory_items"
+        " WHERE COALESCE(subcategory, '') != '' ORDER BY subcategory").fetchall()]
+
+
 def _inventory_form_values():
     """Pull an inventory item's fields out of the POSTed form."""
     return {
         "category": request.form.get("category", "").strip(),
+        "subcategory": request.form.get("subcategory", "").strip(),
         "make": request.form.get("make", "").strip(),
         "model": request.form.get("model", "").strip(),
         "description": request.form.get("description", "").strip(),
@@ -5827,20 +5932,20 @@ def _apply_inventory_item(db, payload, ref_id, actor_name, draft_file_stored_nam
     v = payload["values"]
     if ref_id is None:
         db.execute(
-            "INSERT INTO inventory_items (category, make, model, description,"
-            " purchased_from, cost, purchase_url, manual_url, quantity, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (v["category"], v["make"], v["model"], v["description"],
+            "INSERT INTO inventory_items (category, subcategory, make, model,"
+            " description, purchased_from, cost, purchase_url, manual_url,"
+            " quantity, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["category"], v["subcategory"], v["make"], v["model"], v["description"],
              v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
              v["quantity"], v["notes"]))
         return True, f"Added {v['make']} {v['model']}.".strip(), None
     if db.execute("SELECT 1 FROM inventory_items WHERE id = ?", (ref_id,)).fetchone() is None:
         return False, "That inventory item no longer exists.", None
     db.execute(
-        "UPDATE inventory_items SET category = ?, make = ?, model = ?,"
-        " description = ?, purchased_from = ?, cost = ?, purchase_url = ?,"
-        " manual_url = ?, quantity = ?, notes = ? WHERE id = ?",
-        (v["category"], v["make"], v["model"], v["description"],
+        "UPDATE inventory_items SET category = ?, subcategory = ?, make = ?,"
+        " model = ?, description = ?, purchased_from = ?, cost = ?,"
+        " purchase_url = ?, manual_url = ?, quantity = ?, notes = ? WHERE id = ?",
+        (v["category"], v["subcategory"], v["make"], v["model"], v["description"],
          v["purchased_from"], v["cost"], v["purchase_url"], v["manual_url"],
          v["quantity"], v["notes"], ref_id))
     return True, "Item updated.", None
@@ -5866,7 +5971,8 @@ def inventory_item_new():
     category = request.args.get("category", "")
     return render_template(
         "inventory_item_form.html", item=None, category=category,
-        categories=_inventory_category_choices(db))
+        categories=_inventory_category_choices(db),
+        subcategories=_inventory_subcategory_choices(db))
 
 
 @app.route("/inventory/items/<int:item_id>/edit", methods=["GET", "POST"])
@@ -5889,7 +5995,8 @@ def inventory_item_edit(item_id):
         return redirect(url_for("inventory_page", _anchor=v["category"]))
     return render_template(
         "inventory_item_form.html", item=dict(row), category=row["category"],
-        categories=_inventory_category_choices(db))
+        categories=_inventory_category_choices(db),
+        subcategories=_inventory_subcategory_choices(db))
 
 
 @app.route("/inventory/items/<int:item_id>/delete", methods=["POST"])
@@ -6250,10 +6357,13 @@ def projects_list():
     clients table (Piece 33)."""
     db = get_db()
     projects = db.execute(
-        "SELECT id, job_name, status, install_date FROM projects"
+        "SELECT id, job_name, project_category, status, install_date FROM projects"
         " ORDER BY (status = 'Done'), (status = 'Abandoned'), id DESC").fetchall()
+    # Piece 76: each card gets its own compact progress bar at the bottom.
+    progress_by_job = {p["id"]: build_project_progress(db, p) for p in projects}
     return render_template("projects_list.html", projects=projects,
-                           job_status_class=PROJECT_STATUS_CLASS)
+                           job_status_class=PROJECT_STATUS_CLASS,
+                           progress_by_job=progress_by_job)
 
 
 def _capture_install_date(**_):
@@ -6810,12 +6920,21 @@ def tasks_dashboard():
             if t["due_date"] and t["due_date"] < today:
                 g["overdue"] += 1
 
+    # Piece 76: the current user's own projects surface first, ahead of the
+    # overdue/soonest-due ordering that otherwise governs everyone else's.
+    me = current_user()
+    my_id = me["id"] if me else None
+
     def _group_key(g):
         open_dues = [t["due_date"] for t in g["tasks"]
                      if t["status"] != "Done" and t["due_date"]]
         soonest = min(open_dues) if open_dues else "9999-99-99"
-        # Projects with overdue work first, then by soonest due date, then name.
-        return (0 if g["overdue"] else 1, soonest, (g["job_name"] or "").lower())
+        mine = any(t["household_member_id"] == my_id and t["status"] != "Done"
+                   for t in g["tasks"]) if my_id else False
+        # Mine first, then projects with overdue work, then by soonest due
+        # date, then name.
+        return (0 if mine else 1, 0 if g["overdue"] else 1, soonest,
+                (g["job_name"] or "").lower())
     groups = sorted(grouped.values(), key=_group_key)
     return render_template(
         "tasks.html", groups=groups, task_total=len(tasks), employees=employees,
@@ -8492,7 +8611,8 @@ def _lazy_start_scheduler():
 
 # ============================================================================
 # Piece 32.0: Compendium AI assistant — a read-only, permission-scoped chat over the
-# business data. Uses Claude and/or Gemini (selectable); keys live in `meta`.
+# business data. Uses Claude (Anthropic); the key lives in `meta`. Piece 76
+# removed Gemini support entirely (never used).
 # Online-only: the model is called live, so it degrades gracefully offline.
 # ============================================================================
 ASSISTANT_SYSTEM_PROMPT = (
@@ -8509,7 +8629,17 @@ ASSISTANT_SYSTEM_PROMPT = (
     "numbers, or dates; if the tools don't return something, say so plainly and "
     "suggest where in Compendium to look. Be concise and specific; use short lists "
     "for multiple items. You are read-only: you cannot change data, so if asked "
-    "to do something, explain how the user can do it in Compendium."
+    "to do something, explain how the user can do it in Compendium.\n\n"
+    "One exception: if the conversation has clearly shaped up a real NEW PROJECT "
+    "the user wants to start (not idle chat, and not an existing project), you may "
+    "propose creating it — ALONE on its own line, sparingly, only when genuinely "
+    "warranted, using EXACTLY this format:\n\n"
+    "NEW_PROJECT: <name> | <category> | <subcategory>\n\n"
+    "<category> must be exactly one of: " + ", ".join(PROJECT_CATEGORIES) + ". "
+    "<subcategory> must be one of that category's own list: " +
+    "; ".join(f"{c} → {', '.join(s)}" for c, s in PROJECT_SUBCATEGORIES.items()) + ". "
+    "This never creates anything by itself — a human still has to click the button "
+    "that appears and a parent still has to approve it on the Drafts page."
 )
 
 # Piece 48: a second, project-scoped system prompt for the "🧠 Plan" tab's
@@ -8553,30 +8683,15 @@ PROJECT_PLAN_SYSTEM_PROMPT = (
 def assistant_settings(db):
     """Current AI-assistant configuration, read from `meta`."""
     return {
-        "default_provider": _meta_get(db, "ai_default_provider", "claude") or "claude",
         "claude_key": _meta_get(db, "ai_claude_key", ""),
         "claude_model": _meta_get(db, "ai_claude_model",
                                   ai_assistant.CLAUDE_DEFAULT_MODEL)
                         or ai_assistant.CLAUDE_DEFAULT_MODEL,
-        "gemini_key": _meta_get(db, "ai_gemini_key", ""),
-        "gemini_model": _meta_get(db, "ai_gemini_model",
-                                  ai_assistant.GEMINI_DEFAULT_MODEL)
-                        or ai_assistant.GEMINI_DEFAULT_MODEL,
     }
 
 
-def _provider_configured(cfg, provider):
-    return bool((cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]).strip())
-
-
-def assistant_available_providers(cfg):
-    """Which providers have a key set, so the UI only offers usable ones."""
-    out = []
-    if _provider_configured(cfg, "claude"):
-        out.append("claude")
-    if _provider_configured(cfg, "gemini"):
-        out.append("gemini")
-    return out
+def assistant_configured(cfg):
+    return bool(cfg["claude_key"].strip())
 
 
 def build_assistant_snapshot(db, user):
@@ -8704,12 +8819,33 @@ def build_project_plan_context(db, project):
 def assistant_page():
     db = get_db()
     cfg = assistant_settings(db)
-    providers = assistant_available_providers(cfg)
-    default = cfg["default_provider"] if cfg["default_provider"] in providers else (
-        providers[0] if providers else "claude")
+    user = current_user()
+    # Piece 76: up to 5 saved conversations per person, newest-active first.
+    # ?conversation=new explicitly starts blank; ?conversation=<id> switches
+    # to that one (if it's actually this person's); otherwise the most
+    # recently active conversation resumes automatically.
+    conversations = []
+    active_id = None
+    active_messages = []
+    if user:
+        conversations = db.execute(
+            "SELECT * FROM assistant_conversations WHERE household_member_id = ?"
+            " ORDER BY updated_at DESC LIMIT 5", (user["id"],)).fetchall()
+        want = request.args.get("conversation", "")
+        if want == "new":
+            active_id = None
+        elif want.isdigit() and any(c["id"] == int(want) for c in conversations):
+            active_id = int(want)
+        elif conversations:
+            active_id = conversations[0]["id"]
+        if active_id:
+            active_messages = db.execute(
+                "SELECT * FROM assistant_messages WHERE conversation_id = ? ORDER BY id",
+                (active_id,)).fetchall()
     return render_template(
-        "assistant.html", providers=providers, default_provider=default,
-        is_admin=_is_admin())
+        "assistant.html", configured=assistant_configured(cfg),
+        is_admin=_is_admin(), conversations=conversations,
+        active_conversation_id=active_id, active_messages=active_messages)
 
 
 def _assist_money(n):
@@ -8889,32 +9025,107 @@ def build_assistant_tools(db, user):
     ]
 
 
+def _rotate_assistant_conversations(db, member_id):
+    """Piece 76: cap at 5 saved conversations per person -- starting a new
+    one past the cap drops the oldest first, so this stays a quick-reference
+    tool rather than an open-ended chat archive."""
+    existing = db.execute(
+        "SELECT id FROM assistant_conversations WHERE household_member_id = ?"
+        " ORDER BY updated_at ASC", (member_id,)).fetchall()
+    if len(existing) >= 5:
+        oldest_id = existing[0]["id"]
+        db.execute("DELETE FROM assistant_messages WHERE conversation_id = ?", (oldest_id,))
+        db.execute("DELETE FROM assistant_conversations WHERE id = ?", (oldest_id,))
+
+
 @app.route("/assistant/ask", methods=["POST"])
 def assistant_ask():
     db = get_db()
     cfg = assistant_settings(db)
     question = (request.form.get("question", "") or "").strip()
-    provider = request.form.get("provider", cfg["default_provider"]) or "claude"
-    if provider not in ("claude", "gemini"):
-        provider = "claude"
     if not question:
         return jsonify({"error": "Ask a question first."}), 400
-    if not _provider_configured(cfg, provider):
-        return jsonify({"error": f"No API key is set for {provider.title()}. "
+    if not assistant_configured(cfg):
+        return jsonify({"error": "No Claude API key is set. "
                         "An admin can add one under AI settings."}), 400
     user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in to use the assistant."}), 400
+
+    conversation_id = request.form.get("conversation_id", type=int)
+    conv = db.execute(
+        "SELECT * FROM assistant_conversations WHERE id = ? AND household_member_id = ?",
+        (conversation_id, user["id"])).fetchone() if conversation_id else None
+    if conv is None:
+        _rotate_assistant_conversations(db, user["id"])
+        title = question if len(question) <= 60 else question[:59] + "…"
+        cur = db.execute(
+            "INSERT INTO assistant_conversations (household_member_id, title) VALUES (?, ?)",
+            (user["id"], title))
+        conversation_id = cur.lastrowid
+    db.execute(
+        "INSERT INTO assistant_messages (conversation_id, role, content) VALUES (?, 'user', ?)",
+        (conversation_id, question))
+    db.commit()
+
     snapshot = build_assistant_snapshot(db, user)
-    prompt = (f"COMPENDIUM DATA (only what {user['name'] if user else 'this user'} "
-              f"may see):\n{snapshot}\n\nQUESTION: {question}")
-    key = cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]
-    model = cfg["gemini_model"] if provider == "gemini" else cfg["claude_model"]
+    prior = db.execute(
+        "SELECT role, content FROM assistant_messages WHERE conversation_id = ? ORDER BY id",
+        (conversation_id,)).fetchall()
+    # Last 20 prior turns (excluding the question just inserted above) for
+    # continuity -- same hard cap the Plan tab's own chat history uses.
+    history_lines = [f"{'User' if r['role'] == 'user' else 'Assistant'}: {r['content']}"
+                     for r in prior[:-1][-20:]]
+    history_block = ("Previous conversation:\n" + "\n".join(history_lines) + "\n\n") if history_lines else ""
+    prompt = (f"COMPENDIUM DATA (only what {user['name']} may see):\n{snapshot}\n\n"
+              f"{history_block}QUESTION: {question}")
     tools = build_assistant_tools(db, user)
     try:
-        answer = ai_assistant.run_agent(provider, key, model,
+        answer = ai_assistant.run_agent(cfg["claude_key"], cfg["claude_model"],
                                         ASSISTANT_SYSTEM_PROMPT, prompt, tools)
     except ai_assistant.AssistantError as e:
-        return jsonify({"error": str(e)}), 502
-    return jsonify({"answer": answer, "provider": provider})
+        return jsonify({"error": str(e), "conversation_id": conversation_id}), 502
+    db.execute(
+        "INSERT INTO assistant_messages (conversation_id, role, content) VALUES (?, 'assistant', ?)",
+        (conversation_id, answer))
+    db.execute("UPDATE assistant_conversations SET updated_at = datetime('now') WHERE id = ?",
+              (conversation_id,))
+    db.commit()
+    return jsonify({"answer": answer, "conversation_id": conversation_id})
+
+
+@app.route("/assistant/draft-project", methods=["POST"])
+def assistant_draft_project():
+    """Piece 76: turn the Assistant chat's NEW_PROJECT: suggestion into a
+    real Pending draft on the existing Drafts page -- reuses the "project.new"
+    draft kind's own apply logic verbatim (Piece 51/52), just inserted
+    directly rather than via a live route call, since ANY signed-in person
+    (not only an Assistant-role account) can propose one this way. Nothing
+    is created for real until a parent approves it there."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in first."}), 400
+    name = (request.form.get("name", "") or "").strip()
+    category = (request.form.get("category", "") or "").strip()
+    subcategory = (request.form.get("subcategory", "") or "").strip()
+    if not name:
+        return jsonify({"error": "No project name given."}), 400
+    if category not in PROJECT_CATEGORIES:
+        category = ""
+    if category not in PROJECT_SUBCATEGORIES or subcategory not in PROJECT_SUBCATEGORIES[category]:
+        subcategory = ""
+    db = get_db()
+    # Built from PROJECT_FIELDS directly (not hardcoded) so this stays correct
+    # if that list ever grows -- _apply_new_project() expects every one present.
+    values = {f: "" for f in PROJECT_FIELDS}
+    values.update(job_name=name, project_category=category, project_type=subcategory)
+    payload = {"values": values, "owner_id": None}
+    db.execute(
+        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
+        " VALUES ('project.new', NULL, ?, NULL, ?)",
+        (json.dumps(payload), user["id"]))
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/projects/<int:project_id>/plan/ask", methods=["POST"])
@@ -8935,9 +9146,6 @@ def project_plan_ask(project_id):
     db = get_db()
     cfg = assistant_settings(db)
     message = (request.form.get("message", "") or "").strip()
-    provider = request.form.get("provider", cfg["default_provider"]) or "claude"
-    if provider not in ("claude", "gemini"):
-        provider = "claude"
     user = current_user()
     author = user["name"] if user else ""
 
@@ -8953,15 +9161,15 @@ def project_plan_ask(project_id):
         user_msg_id = existing["id"]
         message = existing["content"]
         author = existing["author"]
-        if not _provider_configured(cfg, provider):
-            return jsonify({"error": f"No API key is set for {provider.title()}. "
+        if not assistant_configured(cfg):
+            return jsonify({"error": "No Claude API key is set. "
                             "An admin can add one under AI settings.",
                             "message_id": user_msg_id}), 400
     else:
         if not message:
             return jsonify({"error": "Type a message first."}), 400
-        if not _provider_configured(cfg, provider):
-            return jsonify({"error": f"No API key is set for {provider.title()}. "
+        if not assistant_configured(cfg):
+            return jsonify({"error": "No Claude API key is set. "
                             "An admin can add one under AI settings."}), 400
         # Persist the user's turn immediately so it isn't lost if the AI call fails.
         cur = db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
@@ -8982,18 +9190,16 @@ def project_plan_ask(project_id):
     context = build_project_plan_context(db, project)
     prompt = (f"PROJECT CONTEXT:\n{context}\n\n{history_block}"
               f"NEW MESSAGE from {author or 'the user'}: {message}")
-    key = cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]
-    model = cfg["gemini_model"] if provider == "gemini" else cfg["claude_model"]
     tools = build_assistant_tools(db, user)
     try:
-        answer = ai_assistant.run_agent(provider, key, model,
+        answer = ai_assistant.run_agent(cfg["claude_key"], cfg["claude_model"],
                                         PROJECT_PLAN_SYSTEM_PROMPT, prompt, tools)
     except ai_assistant.AssistantError as e:
         return jsonify({"error": str(e), "message_id": user_msg_id}), 502
     db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
                " VALUES (?, 'assistant', '', ?)", (project_id, answer))
     db.commit()
-    return jsonify({"answer": answer, "provider": provider})
+    return jsonify({"answer": answer})
 
 
 @app.route("/assistant/settings", methods=["GET", "POST"])
@@ -9001,29 +9207,21 @@ def project_plan_ask(project_id):
 def assistant_settings_page():
     db = get_db()
     if request.method == "POST":
-        _meta_set(db, "ai_default_provider",
-                  request.form.get("default_provider", "claude") or "claude")
         _meta_set(db, "ai_claude_model",
                   request.form.get("claude_model", "").strip()
                   or ai_assistant.CLAUDE_DEFAULT_MODEL)
-        _meta_set(db, "ai_gemini_model",
-                  request.form.get("gemini_model", "").strip()
-                  or ai_assistant.GEMINI_DEFAULT_MODEL)
-        # Only overwrite a key when a new value is typed (blank = keep existing).
-        for field, meta_key in (("claude_key", "ai_claude_key"),
-                                ("gemini_key", "ai_gemini_key")):
-            val = request.form.get(field, "")
-            if val.strip():
-                _meta_set(db, meta_key, val.strip())
-            elif request.form.get(f"clear_{field}"):
-                _meta_set(db, meta_key, "")
+        # Only overwrite the key when a new value is typed (blank = keep existing).
+        val = request.form.get("claude_key", "")
+        if val.strip():
+            _meta_set(db, "ai_claude_key", val.strip())
+        elif request.form.get("clear_claude_key"):
+            _meta_set(db, "ai_claude_key", "")
         db.commit()
         flash("AI assistant settings saved.")
         return redirect(url_for("assistant_settings_page"))
     cfg = assistant_settings(db)
     return render_template(
-        "assistant_settings.html", cfg=cfg, claude_models=ai_assistant.CLAUDE_MODELS,
-        gemini_default=ai_assistant.GEMINI_DEFAULT_MODEL)
+        "assistant_settings.html", cfg=cfg, claude_models=ai_assistant.CLAUDE_MODELS)
 
 
 # Piece 69: run at import time (not only under `if __name__ == "__main__"`)

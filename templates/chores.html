@@ -3,6 +3,7 @@
 {% block content %}
 <div class="toolbar">
   <h1>🔁 Chores <span class="muted" style="font-size:0.95rem; font-weight:400;">— recurring household tasks, not tied to a project</span></h1>
+  <a href="{{ url_for('chore_new_form') }}" class="btn">＋ New chore</a>
 </div>
 <p class="muted" style="margin-top:0;">Things that come around again and again (trash day,
 watering, a weekly clean). Mark one done when it's finished — it comes back due after its
@@ -16,26 +17,30 @@ recurrence interval, no need to re-add it.</p>
   <a href="{{ url_for('chores_page', who='unassigned') }}" class="btn {{ '' if who == 'unassigned' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Unassigned</a>
 </div>
 
-{# ---- list ---- #}
-<div class="card">
-  {% if chores %}
+{# ---- list, grouped into collapsible Daily/Weekly/Monthly/Quarterly/Yearly
+       buckets by recurrence interval (Piece 76) ---- #}
+{% if bucket_groups %}
+{% for label, group_chores in bucket_groups %}
+<details class="card sect">
+  <summary>🔁 {{ label }} <span class="sect-count">{{ group_chores|length }}</span></summary>
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Chore</th><th>Assigned to</th><th>Next due</th><th>Every</th><th></th></tr></thead>
+    <thead><tr><th>Chore</th><th>Assigned to</th><th>Next due</th><th>Every</th><th>Notes</th><th></th></tr></thead>
     <tbody>
-      {% for c in chores %}
+      {% for c in group_chores %}
       {% set overdue = c["next_due"] and c["next_due"] < today %}
       <tr>
-        <td>{{ c["title"] }}{% if c["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ c["notes"] }}</span>{% endif %}</td>
+        <td>{{ c["title"] }}</td>
         <td class="muted" style="font-size:0.85rem;">{{ c["assignee_name"] or "— unassigned —" }}</td>
         <td style="white-space:nowrap;">{{ c["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
         <td class="muted">{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}</td>
+        <td class="muted" style="font-size:0.85rem;">{{ c["notes"] or "—" }}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="display:inline; margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
           </form>
-          <a href="{{ url_for('chores_page', who=who, edit=c['id']) }}#chore-form"
+          <a href="{{ url_for('chore_edit_form', chore_id=c['id']) }}"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('chore_delete', chore_id=c['id']) }}" style="display:inline; margin:0;"
@@ -50,47 +55,9 @@ recurrence interval, no need to re-add it.</p>
     </tbody>
   </table>
   </div>
-  {% else %}
-  <p class="empty">No chores here — add one below.</p>
-  {% endif %}
-</div>
-
-{# ---- new / edit chore ---- #}
-<div class="card" id="chore-form">
-  {% set ec = edit_chore %}
-  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit chore" if ec else "＋ New chore" }}</h2>
-  <form method="post" action="{{ url_for('chore_edit', chore_id=ec['id']) if ec else url_for('chore_new') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-grid">
-      <div class="field wide"><label for="title">Chore *</label>
-        <input id="title" name="title" required value="{{ ec['title'] if ec else '' }}" placeholder="e.g. Take out the trash"></div>
-      <div class="field"><label for="household_member_id">Assign to (optional)</label>
-        <select id="household_member_id" name="household_member_id">
-          <option value="">— unassigned —</option>
-          {% for e in employees %}
-          <option value="{{ e['id'] }}" {% if ec and ec['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
-          {% endfor %}
-        </select></div>
-      <div class="field"><label for="recurrence_preset">Repeats every</label>
-        <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
-          {% for days, label in recurrence_presets %}
-          <option value="{{ days }}" {% if (ec['recurrence_days'] if ec else 7) == days %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-          <option value="">Custom — enter days →</option>
-        </select>
-      </div>
-      <div class="field"><label for="recurrence_days">…or custom (days)</label>
-        <input id="recurrence_days" name="recurrence_days" type="number" min="1"
-               value="{{ ec['recurrence_days'] if ec else 7 }}"></div>
-      <div class="field"><label for="next_due">Next due</label>
-        <input id="next_due" name="next_due" type="date" value="{{ ec['next_due'] if ec else today }}"></div>
-      <div class="field wide"><label for="notes">Notes (optional)</label>
-        <input id="notes" name="notes" value="{{ ec['notes'] if ec else '' }}" placeholder="anything else about it"></div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="btn">{{ "Save changes" if ec else "＋ Add chore" }}</button>
-      {% if ec %}<a href="{{ url_for('chores_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
-    </div>
-  </form>
-</div>
+</details>
+{% endfor %}
+{% else %}
+<div class="card"><p class="empty">No chores here — <a href="{{ url_for('chore_new_form') }}">add one</a>.</p></div>
+{% endif %}
 {% endblock %}

@@ -15,7 +15,7 @@
        the 🗓 My schedule widget below instead (Piece 53) — individually
        focused, not the whole household's pipeline/money/approvals. ---- #}
 {% if gm and not (user and user["role"] == "Child") %}
-<details class="card sect" open style="border-left:4px solid var(--brand);">
+<details class="card sect" style="border-left:4px solid var(--brand);">
   <summary>🏠 Household overview</summary>
 
   {% set panel = "background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:0.75rem 0.9rem; margin-bottom:0.85rem;" %}
@@ -169,7 +169,7 @@
        schedule below instead. Placed directly under Household overview
        per the user's explicit request. ---- #}
 {% if not (user and user["role"] == "Child") %}
-<details class="card sect" open>
+<details class="card sect">
   <summary>🗂 Productivity Overview</summary>
   <div style="display:flex; gap:1.2rem; flex-wrap:wrap; align-items:flex-start;">
 
@@ -189,6 +189,7 @@
           <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ a["when_date"] }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}</span>
           <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
           </form>
         </li>
@@ -210,6 +211,7 @@
           <span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ c["next_due"] or "—" }}</span>
           <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
           </form>
         </li>
@@ -227,6 +229,12 @@
           <a href="{{ url_for('board_detail', board_id=b['id']) }}" style="flex:1 1 auto;">{{ b["title"] }}</a>
           <span class="badge {{ sc.get(b['status'], 'neutral') }}" style="font-size:0.68rem;">{{ b["status"] }}</span>
           {% if b["due_date"] %}<span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ b["due_date"] }}{% if b["due_time"] %} · {{ b["due_time"] }}{% endif %}</span>{% endif %}
+          <form method="post" action="{{ url_for('board_status', board_id=b['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="Done">
+          <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+          </form>
         </li>
         {% endfor %}
       </ul>
@@ -245,6 +253,12 @@
           {% if overdue %}<span class="badge danger" style="font-size:0.68rem;">overdue</span>{% endif %}
           {% if t["due_date"] %}<span class="muted" style="font-size:0.78rem; white-space:nowrap;">{{ t["due_date"] }}</span>{% endif %}
           <span class="badge {{ sc[t['status']] }}" style="font-size:0.68rem;">{{ t["status"] }}</span>
+          <form method="post" action="{{ url_for('set_task_status', project_id=t['project_id'], task_id=t['id']) }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="Done">
+          <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.1rem 0.45rem; font-size:0.72rem;">✓</button>
+          </form>
         </li>
         {% endfor %}
       </ul>
@@ -308,7 +322,7 @@
        overview above (Piece 53). Read-only -- the My tasks/My chores/My
        appointments cards below still carry the mark-done actions. ---- #}
 {% if user and user["role"] == "Child" %}
-<details class="card sect" open style="border-left:4px solid var(--brand);">
+<details class="card sect" style="border-left:4px solid var(--brand);">
   <summary>🗓 My schedule</summary>
   {% for key, heading in [("today", "Today"), ("tomorrow", "Tomorrow"), ("soon", "Next 2 weeks")] %}
   <section style="margin-bottom:0.75rem;">
@@ -334,8 +348,8 @@
 {# ---- Procurement: materials by status, any active project with materials on file.
        Not shown on a Child's dashboard (Piece 53). ---- #}
 {% if not (user and user["role"] == "Child") %}
-<details class="card sect" open>
-  <summary>📦 Procurement <span class="sect-count">{{ procurement|length }} project{{ "s" if procurement|length != 1 }}</span></summary>
+<details class="card sect">
+  <summary>📦 Orders and Deliveries <span class="sect-count">{{ procurement|length }} project{{ "s" if procurement|length != 1 }}</span></summary>
   {% if procurement %}
   <div style="overflow-x:auto;">
   <table>
@@ -359,7 +373,7 @@
   source (Needed / Quoted / Backordered) are highlighted. Open a project's
   <strong>Materials</strong> tab to update.</p>
   {% else %}
-  <p class="empty">No projects in procurement right now.</p>
+  <p class="empty">No orders or deliveries in progress right now.</p>
   {% endif %}
 </details>
 {% endif %}
@@ -368,10 +382,15 @@
        "In Planning". Columns are the same for every stage now (Piece 41 —
        no more stage-specific Loads/Permits gating): Project · Requirements ·
        Target date · Progress. The Requirements badge only shows when the
-       project has 1+ applicable Requirements Engine rules. ---- #}
+       project has 1+ applicable Requirements Engine rules. Piece 76: the
+       Planning section is the one exception -- Requirements is swapped for
+       "Next to-do" there (a project this early rarely has requirements
+       filed yet, and the immediate next step is more actionable), and its
+       Progress bar drops the redundant "▶ Next: ..." caption since that
+       same text now has its own column. ---- #}
 {% for s in sections %}
 {% set proposals = s.name == "Planning" %}
-<details class="card sect" open>
+<details class="card sect">
   <summary>{{ s.icon }} {% if proposals %}In Planning{% else %}{{ s.name }}{% endif %}
     <span class="sect-count">{{ s.projects|length }}</span>
   </summary>
@@ -379,17 +398,24 @@
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>
-      <th>Project</th><th title="Certification/Permit/Prerequisite documents filed / required">Requirements</th><th>Target date</th><th style="min-width:200px;">Progress</th>{% if user %}<th>Work Bag</th>{% endif %}
+      <th>Project</th>
+      {% if proposals %}<th>Next to-do</th>{% else %}<th title="Certification/Permit/Prerequisite documents filed / required">Requirements</th>{% endif %}
+      <th>Target date</th><th style="min-width:200px;">Progress</th>{% if user %}<th>Work Bag</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for j in s.projects %}
       <tr>
         <td><a href="{{ url_for('project_detail', project_id=j['id']) }}">{{ j["job_name"] or "Project #" ~ j["id"] }}</a></td>
+        {% if proposals %}
+        {% set jp = progress_by_job[j['id']] %}
+        <td>{% if jp.complete or jp.lost %}<span class="muted">—</span>{% else %}{{ jp.next_label }}{% endif %}</td>
+        {% else %}
         {% set pc = permits_by_job[j['id']] %}
         <td><a href="{{ url_for('project_detail', project_id=j['id'], _anchor='requirements') }}" title="Requirements documents filed">
           {% if pc[1] %}<span class="badge {{ '' if pc[0] >= pc[1] else 'warn' }}">{{ pc[0] }}/{{ pc[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</a></td>
+        {% endif %}
         <td class="muted">{{ j["install_date"] or "—" }}</td>
-        <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
+        <td>{{ job_progress(progress_by_job[j['id']], compact=true, show_next=not proposals) }}</td>
         {% if user %}
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('work_bag_toggle', project_id=j['id']) }}" style="display:inline; margin:0;">
@@ -418,66 +444,4 @@
 </details>
 {% endfor %}
 
-{# ---- Backlog worklist (above My tasks) — household ideas not yet started.
-       Not shown on a Child's dashboard (Piece 53). ---- #}
-{% if not (user and user["role"] == "Child") %}
-<details class="card sect" open style="border-left:4px solid #f5a623;">
-  <summary>🗂 Backlog <span class="sect-count">{{ backlog_worklist|length }}</span></summary>
-  {% if backlog_worklist %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Idea</th><th>Proposed by</th><th>Target</th><th></th></tr></thead>
-    <tbody>
-      {% for i in backlog_worklist %}
-      <tr>
-        <td><a href="{{ url_for('backlog_detail', idea_id=i['id']) }}">{{ i["name"] }}</a></td>
-        <td>{{ i["proposed_by_name"] or "—" }}</td>
-        <td>{% if i["target_date"] %}{{ i["target_date"] }}{% if i["reminder_date"] and i["reminder_date"] < today %} <span class="badge danger">reminder due</span>{% endif %}{% else %}<span class="muted">— someday —</span>{% endif %}</td>
-        <td style="white-space:nowrap;">
-          <form method="post" action="{{ url_for('backlog_start', idea_id=i['id']) }}" style="display:inline; margin:0;"
-                onsubmit="return confirm('Start this as a project?');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">🚀 Start</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty">Nothing in the backlog right now. 🎉</p>
-  {% endif %}
-</details>
-{% endif %}
-
-{# ---- My requirements (standalone recurring, not tied to a project) ---- #}
-<details class="card sect" open>
-  <summary>📋 My requirements <span class="sect-count">{{ my_requirements|length }}</span></summary>
-  {% if my_requirements %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Requirement</th><th>Next due</th><th>Every</th><th></th></tr></thead>
-    <tbody>
-      {% for r in my_requirements %}
-      {% set overdue = r["next_due"] and r["next_due"] < today %}
-      <tr>
-        <td>{{ r["label"] }}{% if r["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ r["notes"] }}</span>{% endif %}</td>
-        <td>{{ r["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
-        <td>
-          <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="margin:0;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Mark done</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty">No requirements assigned to you. <a href="{{ url_for('rules_page') }}">Set one up →</a></p>
-  {% endif %}
-</details>
 {% endblock %}
