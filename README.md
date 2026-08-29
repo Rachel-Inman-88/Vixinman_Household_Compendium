@@ -614,6 +614,16 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.54** — **Fixed duplicate reminder notifications.** A daily chore
+  ("Cook Dinner") rang twice for the same missed day instead of once —
+  root cause: the reminder check ("has this already been sent?") and the
+  write marking it sent weren't atomic, so two nearly-simultaneous callers
+  (the app runs 2 worker processes, plus a periodic background check)
+  could both see "not sent yet" before either recorded it, both firing a
+  notification. Fixed for chores and, since Appointments, standalone
+  Requirements, and the household idea Backlog reminder share the exact
+  same pattern, all four now claim the "sent" flag atomically *before*
+  notifying — only whichever caller actually wins that flag ever sends.
 - **v0.53** — **Parent UI review pass.** A screenshot-driven, mobile-focused
   button/layout review across the whole app: Dashboard sections now
   collapse by default and Backlog/My requirements were dropped from the

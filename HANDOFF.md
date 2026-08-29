@@ -2562,6 +2562,66 @@ piece once the user said the Parent-UI round was done.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 77 (v0.54): fixed duplicate reminder notifications — done.**
+User: "the daily chore of making dinner rang twice for not being marked
+done, and after I looked at the notifications they didn't clear - I had
+to click through the now nonexistent chores to clear them. for daily
+chores, don't stack the notification."
+- **Root cause**: `ensure_routine_task_reminders()` (and its three
+  siblings — `ensure_appointment_reminders`, `ensure_requirement_reminders`,
+  `ensure_backlog_reminders`) all used a check-then-act pattern: `SELECT`
+  rows where `reminder_sent != '1'`, loop over them calling
+  `notify_employees()`, THEN `UPDATE ... SET reminder_sent = '1'` at the
+  end of the loop (one batched commit for the whole pass). This app runs
+  **2 gunicorn worker processes** in production, plus a periodic
+  background scheduler thread (`run_maintenance` / `_scheduler_tick`) —
+  both of these functions are explicitly called from both the dashboard
+  route AND the scheduler. Two callers landing close enough together
+  (e.g. a dashboard load racing a scheduler tick, on different
+  connections/processes) could both pass the `reminder_sent != '1'`
+  check before either one's UPDATE had committed, both firing a
+  notification for the same due chore — exactly the "rang twice"
+  symptom. The "didn't clear" half of the report was very likely a
+  direct consequence, not a separate bug: `notification_open()` (the
+  route behind every "Open"/"Dismiss" button) already correctly deletes
+  a notification and redirects — but with two duplicates stacked, the
+  user had to click through it twice, each time landing on the general
+  `/chores` page rather than anything specific to resolve, which reads
+  exactly like "clicking through nonexistent chores to clear them."
+- **Fix**: the `UPDATE`/`INSERT ... ON CONFLICT` that flips
+  `reminder_sent` is now the atomic claim, run and committed *before*
+  `notify_employees()` is ever called, and gated on its own `rowcount`.
+  SQLite serializes writes at the file level, so only whichever caller's
+  UPDATE actually flips the flag from unset to `'1'` (rowcount 1) goes on
+  to notify; a caller that loses the race sees rowcount 0 on its own
+  UPDATE (the row was already claimed) and skips notifying entirely, no
+  matter how close together the two calls land. Applied identically to
+  all four reminder functions since they share the exact same shape and
+  the exact same dashboard+scheduler dual-caller exposure — chores was
+  just the one that got reported and reproduced first.
+- The idea-backlog function has a second, meta-table-based nudge (the
+  monthly "review your backlog" notice, keyed by `backlog_review_last_sent`)
+  using the same check-then-act shape against a different table — fixed
+  with the equivalent atomic pattern: `INSERT ... ON CONFLICT(key) DO
+  UPDATE SET value = excluded.value WHERE meta.value != excluded.value`,
+  gated on `rowcount` the same way. Verified this exact SQLite UPSERT-
+  with-WHERE idiom reports `rowcount = 0` when the conflicting row's
+  value already matches (i.e., "someone already claimed this month") and
+  `rowcount = 1` only on a genuine change, via a small isolated script
+  before wiring it in.
+- Verified via a new `piece77_reminder_race_test.py`: a manual two-
+  connection interleaving that reproduces the actual race (both
+  connections see the row as unclaimed before either writes), proving
+  only one connection's claim succeeds; a real end-to-end call of
+  `ensure_routine_task_reminders()` confirming exactly one notification
+  lands and a second call doesn't stack a duplicate; and the same
+  single-fire check repeated for appointments, standalone requirements,
+  and both backlog nudges. Full Piece 69/71-76 regression suite re-run
+  unchanged.
+- Merged `feature/reminder-dedup-fix` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
