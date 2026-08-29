@@ -498,10 +498,20 @@ above, independent of it the whole time.
 
 ### AI Assistant
 - **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
-  data. Ask about projects, tasks and the schedule and get a grounded answer;
-  it can explain and summarize but **never changes anything**.
-- **Claude and/or Gemini, selectable.** Add a key for either or both under **AI
-  settings** (admin only); when both are set, staff pick the model per question.
+  data, powered by **Claude** (Anthropic). Ask about projects, tasks and the
+  schedule and get a grounded answer; it can explain and summarize but
+  **never changes anything** on its own (see the draft-proposal bullet below
+  for the one narrow exception, which still needs a human's approval).
+- **Up to 5 saved conversations per person (Piece 76).** A small strip above
+  the chat lets you switch between your last 5 conversations (auto-titled
+  from each one's first question) or start a fresh one — starting a 6th
+  quietly drops the oldest, keeping this a quick-reference tool rather than
+  an open-ended chat log.
+- **📝 Propose a new project (Piece 76).** If a conversation clearly shapes up
+  a real new project, the assistant can suggest creating it; a **Send as
+  draft** button appears, and clicking it adds a Pending entry to the same
+  🗒 Drafts page described below for a parent to approve or discard — nothing
+  is created until then.
 - **🔁 Retry on failure.** If a question fails (dropped connection, provider
   hiccup), a Retry button appears next to the error and resends the exact
   same question — no retyping or copy/pasting it back in. The per-project
@@ -531,7 +541,7 @@ above, independent of it the whole time.
   is asked, and nothing is sent while offline.
 - **🧠 Plan tab** (on each project's own page): a project-scoped brainstorm chat
   to think through finishing *that* project — same read-only, permission-scoped,
-  Claude-or-Gemini design as 💬 Assistant, but its conversation is **saved per
+  Claude-powered design as 💬 Assistant, but its conversation is **saved per
   project** so you can pick it back up later, and it's grounded in that
   project's Category/Subcategory, open tasks, and recent field notes. It's
   **propose, then confirm**: the AI never saves anything itself — a suggested
@@ -571,29 +581,22 @@ above, independent of it the whole time.
 ## Setting up the AI Assistant
 
 The 💬 Assistant is **off until an admin adds an API key** — Compendium doesn't ship
-with one. It uses your own account with Anthropic (Claude) and/or Google (Gemini),
-so **you pay the provider per use** (both are inexpensive for this kind of Q&A).
+with one. It uses your own account with Anthropic (Claude), so **you pay Anthropic
+per use** (inexpensive for this kind of Q&A).
 
-**1. Get an API key** for whichever provider(s) you want:
-
-- **Claude (Anthropic):** sign in at **console.anthropic.com**, add billing, and
-  create an API key under **API Keys** (it looks like `sk-ant-…`).
-- **Gemini (Google):** create a key at **aistudio.google.com** (API keys), or in
-  your Google Cloud project (it looks like `AIza…`). Note which **model** your
-  account offers (e.g. `gemini-2.0-flash`).
+**1. Get a Claude API key:** sign in at **console.anthropic.com**, add billing, and
+create an API key under **API Keys** (it looks like `sk-ant-…`).
 
 **2. Enter it in Compendium.** As an admin, open **💬 Assistant → ⚙️ AI settings** and:
 
-- Paste the Claude key and/or the Gemini key. Pick a **default provider**.
-- Choose the **Claude model** (Sonnet is the balanced default; Opus is the most
-  capable and priciest; Haiku is the cheapest) and set the **Gemini model** to
-  whatever your account provides.
-- Save. Keys are stored **on this machine** (in your Compendium data folder), never in
-  the program itself, and are only ever sent to the provider you choose.
+- Paste the key.
+- Choose the **model** (Sonnet is the balanced default; Opus is the most
+  capable and priciest; Haiku is the cheapest).
+- Save. The key is stored **on this machine** (in your Compendium data folder), never
+  in the program itself, and is only ever sent to Anthropic.
 
-**3. Ask a question.** Open **💬 Assistant**, type a question (e.g. *"Which projects are
-in Project Prep?"*, *"What are my open tasks?"*, *"Bernalillo projects over $30k with an
-overdue permit"*), and — if both providers are set up — pick the model to answer.
+**3. Ask a question.** Open **💬 Assistant** and type a question (e.g. *"Which projects
+are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?"*).
 
 **What to know:**
 
@@ -611,6 +614,27 @@ overdue permit"*), and — if both providers are set up — pick the model to an
 
 ## Build history (high level)
 
+- **v0.53** — **Parent UI review pass.** A screenshot-driven, mobile-focused
+  button/layout review across the whole app: Dashboard sections now
+  collapse by default and Backlog/My requirements were dropped from the
+  summary (still live on their own pages); Procurement is now "Orders and
+  Deliveries"; the Planning stage's card shows the next to-do instead of
+  Requirements; every Productivity Overview item (Appointments/Chores/
+  Boards/Tasks) now has a one-tap ✓, and marking one done correctly stays
+  on the dashboard instead of jumping away. The Projects list, Tasks
+  board, and Chores page were redesigned around real card headers,
+  collapsed-by-default groups, and (for Chores) a Daily/Weekly/Monthly/
+  Quarterly/Yearly grouping with its own dedicated New/Edit form page.
+  Boards, Appointments, and Household Files gained color-coded, two-tone
+  filters; Contacts split into Individuals/Organizations tabs; a
+  persistent notification bell now sits in the mobile header; Money's
+  Budget/Loans/Savings buttons fit on one row; Inventory gained a
+  previously-missing "＋ New item" button (there was no way to add the
+  very first item before this) plus an optional subcategory level that
+  nests into its own collapsible groups. The AI Assistant page dropped
+  Gemini support entirely (Claude only, never used otherwise), gained a
+  5-conversation rolling history per person, and can now propose a new
+  project as a Pending draft mid-conversation for a parent to approve.
 - **v0.52** — **Mobile-responsive audit.** Checked the app on real phone-
   width viewports (375px/330px/320px) across every page, project-detail
   tab, and form. Found the responsive foundation from Piece 31.6/31.7

@@ -2395,6 +2395,173 @@ itself re-verified against current code — same lesson as
 - **This closes item (1) of the Pixel 9a beta-test readiness list
   below** — items (2) and (3) there are unaffected and still open.
 
+**Piece 76 (v0.53): Parent UI review pass — done.** User: "let's review the
+buttons and layout of all screens, beginning with the Parent Dashboard,"
+then clarified this would be a manual, screenshot-driven session (the user
+clicking through the live production site and sending screenshots for
+context) rather than another automated audit — the goal being to rearrange
+buttons/icons and build toward a style guide for future custom UI art.
+Every change below was made in direct response to one screenshot + a
+specific request, verified against a scratch copy of the real household
+database, never the live site directly, then shipped together as one
+piece once the user said the Parent-UI round was done.
+- **Dashboard**: every `<details>` section (Household overview,
+  Productivity Overview, Orders and Deliveries, each pipeline stage,
+  My schedule) now starts **collapsed** on load — all were hardcoded
+  `open` before. "Procurement" relabeled "Orders and Deliveries."
+  **Backlog** and **My requirements** cards removed from the dashboard
+  entirely (the underlying `/backlog` and standalone-requirements
+  features are untouched, still reachable from their own nav entries) —
+  `backlog_worklist`/`my_requirements` were also removed from
+  `dashboard()` since nothing else used them, avoiding a compute-only
+  orphan. The Planning stage's card shows the **next to-do** in place of
+  the (almost-never-populated) Requirements column, and its Progress bar
+  no longer repeats that same text — a new `show_next` parameter on the
+  shared `job_progress()` macro handles this without touching the
+  Progress widget's other 20+ call sites' behavior. Every Productivity
+  Overview item (Appointments, Chores, Boards, Tasks) now has a one-tap
+  ✓ — Boards and Tasks needed the button added; Chores and Appointments
+  already had one but, caught in the process, it silently redirected
+  away to `/chores`/`/appointments` instead of staying on the dashboard
+  (`chore_done`/`appointment_done` didn't honor a `next=` param the way
+  `set_task_status`/`board_status` already did) — fixed to match.
+- **Projects list**: redesigned from a flat table into per-project cards —
+  a real bold header (project name, linked) with its category where the
+  name used to sit as a plain value, and the existing Stage/Target date
+  columns followed by a new Progress column, which — via the same
+  rstack restacking every dense table already gets — lands as the last
+  (bottom) row of each card, exactly as asked.
+- **Task board**: the intro blurb and the Who/Show filter are gone from
+  the top (filter tucked into a collapsed `🔍 Filter` section); every
+  project group starts collapsed with a one-line **next-to-do preview**
+  visible even while collapsed (previously nothing showed until
+  expanded); the signed-in user's own projects now sort first, ahead of
+  the overdue/soonest-due ordering that used to be the only factor.
+- **Boards**: blurb removed; the Who and Status filter rows are now
+  color-coded (Who = a new `--accent2` blue, Status = the existing brand
+  green) so the two independent filters read as separate controls; every
+  row gained a ✓ to mark done in place (redirects back to `/boards` with
+  whatever filter was active, via the existing `board_status` route's
+  `next=` support).
+- **Chores**: notes moved out of the Chore cell into their own column at
+  the end of the table (lands at the bottom on mobile, same restacking
+  trick as Projects' Progress column); chores now group into collapsible
+  **Daily/Weekly/Monthly/Quarterly/Yearly** buckets by recurrence
+  interval (a new `_chore_recurrence_bucket()` helper, boundaries picked
+  at the log-scale midpoint between each nominal value); "＋ New chore"
+  moved from an inline form at the bottom of the list to a toolbar button
+  at the top, linking to a genuinely new page (`chore_form.html` +
+  `chore_new_form`/`chore_edit_form` GET routes) instead of the old
+  `?edit=<id>` inline-card pattern, which is now fully retired.
+- **Notifications**: a persistent 🔔 bell with an unread-count badge now
+  sits directly in the mobile header, always visible — previously the
+  count was only visible after opening the hamburger menu and then the
+  "To-do" dropdown inside it.
+- **Appointments**: Who/Show filter rows color-coded the same way as
+  Boards; intro blurb removed.
+- **Money**: the Budget/Loans/Savings toolbar buttons were wrapping onto
+  two rows on a phone (default-sized `.btn`/`.btn-secondary`) — given the
+  same compact sizing every other page's toolbar buttons already use, all
+  three now fit on one row at both 375px and 320px.
+- **Household Files**: added Category and Format filters (color-coded
+  the same way), where Format is a new `HOUSEHOLD_FILE_FORMATS` bucket
+  scheme (PDF/Images/Office docs/Other) derived live from each file's own
+  extension — no new column, so it can never drift out of sync with the
+  actual file.
+- **Contacts**: split into "👤 Individuals" / "🏢 Organizations" tabs
+  (reusing `project_detail.html`'s existing `.tab-bar`/`.tab-panel`
+  pattern) instead of one flat table with a redundant Type column now
+  that the tab itself conveys it.
+- **Inventory**: fixed a real, previously-unnoticed bug — there was **no
+  way to add the very first inventory item**, since the "＋ New item"
+  button only ever rendered inside an already-existing category section
+  (which requires an item to exist first). Added a global "＋ New item"
+  button to the main toolbar. Custom collapsible categories already
+  worked once items exist (confirmed live). Added an optional
+  `subcategory` field — a category with 2+ distinct subcategories in use
+  (the user's own example: Hobbies → Sewing/Clay/Beading) automatically
+  nests into its own collapsible groups; a category with none stays a
+  plain flat table, unchanged. **A real bug caught before shipping**: the
+  first implementation used `s.items`/`g.items` (dot notation) on plain
+  dicts, which Jinja resolves to the dict's own built-in `.items()`
+  *method* rather than the `"items"` key — a classic Jinja/dict pitfall
+  (the original code already used bracket access, `s['items']`, for
+  exactly this reason; the refactor into a macro accidentally
+  reintroduced dot notation) — caused a real 500 on `/inventory` once any
+  item existed, caught immediately via a live click-through, fixed by
+  switching every reference back to bracket notation.
+- **AI Assistant — Gemini removed entirely** (user: "I don't need it at
+  all"): every `Gemini`/provider-selector code path removed from
+  `ai_assistant.py` (the whole `_gemini_agent`, `build_gemini_request`,
+  `parse_gemini_response`), `app.py` (`assistant_available_providers`,
+  `_provider_configured`, every `provider=` form field and branch),
+  and all three templates that had a provider dropdown
+  (`assistant_settings.html`, `assistant.html`, `project_detail.html`'s
+  Plan tab) — `ask()`/`run_agent()` in `ai_assistant.py` dropped the
+  `provider` parameter outright rather than keeping an always-"claude"
+  vestige. A new one-time cleanup deletes the now-dead
+  `ai_default_provider`/`ai_gemini_key`/`ai_gemini_model` meta rows.
+- **AI Assistant — 5-conversation rolling history** (user: "up to 5
+  slots... no more than 5 can be held in memory to encourage using the
+  actual app features"): two new tables, `assistant_conversations` and
+  `assistant_messages`, scoped per household member. A strip of up to 5
+  saved conversations (auto-titled from each one's first question) sits
+  above the chat; switching or starting fresh is a plain `?conversation=`
+  link, matching every other filter-via-query-param page in this app.
+  Starting a 6th conversation drops the oldest (its rows) first — a new
+  `_rotate_assistant_conversations()` helper, called from `assistant_ask()`
+  only when no valid `conversation_id` was posted. Follow-up questions in
+  the same conversation fold the last 20 prior turns into the prompt,
+  identical to the Plan tab's own existing history-capping convention.
+- **AI Assistant — propose-a-project drafts** (user: "projects or other
+  templateable work is discussed, the Assistant can send a draft to be
+  approved"): `ASSISTANT_SYSTEM_PROMPT` teaches a new
+  `NEW_PROJECT: <name> | <category> | <subcategory>` line convention
+  (mirroring the Plan tab's existing `TASK:`/`SECTION:`/`FLAG:` lines),
+  parsed client-side into a "Send as draft" button. Clicking it hits a
+  new `/assistant/draft-project` route that inserts directly into the
+  **existing** `drafts` table using the exact payload shape
+  `_apply_new_project()` (Piece 51/52) already expects — so the
+  **existing** Drafts page approve/discard flow needed zero changes.
+  Any signed-in person can propose one (not gated to the Assistant
+  household role) since the real safety gate is the Parent-approval step
+  that already exists on every draft, regardless of kind. **A real bug
+  caught by the test before shipping**: the first version of the payload
+  hardcoded only `job_name`/`project_category`/`project_type`/
+  `site_location`, missing `estimated_cost` (a `PROJECT_FIELDS` member
+  added since this payload shape was last touched) — `_apply_new_project`
+  raised `KeyError` on approval. Fixed by building the payload's values
+  dict from `PROJECT_FIELDS` directly instead of a hardcoded literal, so
+  it can't drift out of sync with that list again.
+- **A separate, pre-existing bug found and deliberately NOT fixed here**
+  (flagged as its own background task instead): `DRAFT_KINDS["project.new"]`
+  and `["project.edit"]`'s own `"capture"` lambdas
+  (`lambda **_: read_project_form()`) produce a flat values dict, but
+  `_apply_new_project`/`_apply_edit_project` both expect
+  `payload["values"]` — meaning a real Assistant-role household account
+  submitting a new/edited project through the *existing* Piece 51/52
+  draft-interception path (not the new chat-proposal path above, which
+  builds its own correctly-shaped payload) would hit `KeyError: 'values'`
+  on approval. Never hit in practice since no Assistant-role account has
+  tried it yet, but genuinely reachable given Assistant's confirmed
+  `projects.manage` grant (Piece 51).
+- Verified via: a new `piece76_assistant_test.py` (Gemini fully absent
+  from settings/assistant pages; a stubbed `ai_assistant.run_agent` proves
+  a first message creates a conversation with the right title, a
+  follow-up reuses it and includes prior-turn history, six conversations
+  in a row correctly rotate down to 5, a `NEW_PROJECT:` proposal creates
+  a real Pending draft, approving it creates the real project via the
+  *existing* apply logic, and a bogus category/subcategory is sanitized
+  rather than stored); a fresh-DB boot across two `init_db()` calls; a
+  migration test against a **fresh copy** of the real household database
+  (all 5 members and 7 projects intact, `subcategory` column and both new
+  `assistant_*` tables present, old Gemini meta rows gone); a live
+  DOM/overflow check at 375px/320px across every touched page; and the
+  full Piece 69/71-75 regression suite re-run unchanged throughout.
+- Merged `feature/dashboard-ui-cleanup` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
@@ -2408,6 +2575,16 @@ itself re-verified against current code — same lesson as
   row, and remind the user to hand it over next time this comes up. Also
   build a flexible column-mapping fallback alongside the NFCU-specific
   matching, so a format change or a second bank doesn't need a rebuild.
+- **Child and Assistant UI review — not started.** User's original request
+  (start of Piece 76): "beginning with the Parent Dashboard... after a
+  complete run through of the parent UI, we'll verify the Child and
+  Assistant UIs respectively." The Parent-UI round is done (see Piece 76
+  above); logging in as a Child-role and Assistant-role household member
+  and repeating the same screenshot-driven button/layout review for each
+  has not happened yet — expect this to surface its own set of
+  role-specific findings (hidden nav items, gated tabs, the Child
+  dashboard's separate "My schedule" widget, etc.) distinct from what
+  Piece 76 already covered for Parent/admin accounts.
 - **Budget reporting — 2 more items still open.** Piece 55 built the pie
   chart, cash-flow projection, and both trend charts the user asked for by
   name; the user's own "among others" phrasing implied more might be
