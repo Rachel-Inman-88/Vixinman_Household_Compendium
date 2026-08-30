@@ -36,7 +36,7 @@
         <td style="white-space:nowrap;">{{ a["when_date"] or "—" }}{% if a["when_time"] %} · {{ a["when_time"] }}{% endif %}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
         <td class="muted">{{ a["location"] or "—" }}</td>
         <td class="muted">{% if a["contact_name"] %}<a href="{{ url_for('external_helpers_page', edit=a['external_helper_id']) }}">{{ a["contact_name"] }}</a>{% else %}—{% endif %}</td>
-        <td class="muted">{% if a["recurrence_days"] %}{{ a["recurrence_days"] }} day{{ "s" if a["recurrence_days"] != 1 }}{% else %}—{% endif %}</td>
+        <td class="muted">{% if a["recurrence_weekdays"] %}{{ a["recurrence_weekdays"].replace(",", ", ") }}{% elif a["recurrence_days"] %}{{ a["recurrence_days"] }} day{{ "s" if a["recurrence_days"] != 1 }}{% else %}—{% endif %}</td>
         <td style="white-space:nowrap;">
           {% if not a["completed_at"] %}
           <form method="post" action="{{ url_for('appointment_done', appt_id=a['id']) }}" style="display:inline; margin:0;">
@@ -96,7 +96,15 @@
         <input id="when_date" name="when_date" type="date" required value="{{ ea['when_date'] if ea else today }}"></div>
       <div class="field"><label for="when_time">Time (optional)</label>
         <input id="when_time" name="when_time" type="time" value="{{ ea['when_time'] if ea else '' }}"></div>
-      <div class="field"><label for="recurrence_preset">Repeats</label>
+      {% set ea_weekdays = (ea['recurrence_weekdays'] if ea else '')|weekdays %}
+      <div class="field wide">
+        <label for="recurrence_mode">Repeats</label>
+        <select id="recurrence_mode">
+          <option value="interval" {% if not ea_weekdays %}selected{% endif %}>By interval</option>
+          <option value="weekdays" {% if ea_weekdays %}selected{% endif %}>Specific days of the week</option>
+        </select>
+      </div>
+      <div class="field" id="recurrence-interval-mode"><label for="recurrence_preset">Repeats</label>
         <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
           {% for days, label in recurrence_presets %}
           <option value="{{ days }}" {% if (ea['recurrence_days'] if ea and ea['recurrence_days'] else 0) == days %}selected{% endif %}>{{ label }}</option>
@@ -104,9 +112,18 @@
           <option value="">Custom — enter days →</option>
         </select>
       </div>
-      <div class="field"><label for="recurrence_days">…or custom (days, blank/0 = one-time)</label>
+      <div class="field" id="recurrence-interval-days"><label for="recurrence_days">…or custom (days, blank/0 = one-time)</label>
         <input id="recurrence_days" name="recurrence_days" type="number" min="0"
                value="{{ ea['recurrence_days'] if ea and ea['recurrence_days'] else 0 }}"></div>
+      <div class="field wide" id="recurrence-weekday-mode">
+        <label>Which days</label>
+        <div style="display:flex; gap:0.9rem; flex-wrap:wrap; padding:0.3rem 0;">
+          {% for label, num in weekday_options %}
+          <label style="font-weight:400;"><input type="checkbox" name="recurrence_weekdays" value="{{ num }}"
+                 {% if num in ea_weekdays %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
       <div class="field wide"><label for="notes">Notes (optional)</label>
         <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}" placeholder="anything else about it"></div>
     </div>
@@ -116,4 +133,22 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  var mode = document.getElementById("recurrence_mode");
+  var intervalMode = document.getElementById("recurrence-interval-mode");
+  var intervalDays = document.getElementById("recurrence-interval-days");
+  var weekdayMode = document.getElementById("recurrence-weekday-mode");
+  var weekdayBoxes = weekdayMode.querySelectorAll('input[name="recurrence_weekdays"]');
+  function sync() {
+    var weekly = mode.value === "weekdays";
+    intervalMode.style.display = weekly ? "none" : "";
+    intervalDays.style.display = weekly ? "none" : "";
+    weekdayMode.style.display = weekly ? "" : "none";
+    weekdayBoxes.forEach(function (b) { b.disabled = !weekly; });
+  }
+  mode.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

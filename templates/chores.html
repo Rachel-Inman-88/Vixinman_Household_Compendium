@@ -33,7 +33,7 @@ recurrence interval, no need to re-add it.</p>
         <td>{{ c["title"] }}</td>
         <td class="muted" style="font-size:0.85rem;">{{ c["assignee_name"] or "— unassigned —" }}</td>
         <td style="white-space:nowrap;">{{ c["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td class="muted">{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}</td>
+        <td class="muted">{% if c["recurrence_weekdays"] %}{{ c["recurrence_weekdays"].replace(",", ", ") }}{% else %}{{ c["recurrence_days"] }} day{{ "s" if c["recurrence_days"] != 1 }}{% endif %}</td>
         <td class="muted" style="font-size:0.85rem;">{{ c["notes"] or "—" }}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('chore_done', chore_id=c['id']) }}" style="display:inline; margin:0;">

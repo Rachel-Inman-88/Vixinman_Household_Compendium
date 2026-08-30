@@ -128,9 +128,26 @@ To look up what applies to a given project type instead of editing, use the read
         <option value="{{ e['id'] }}" {% if er and (er['household_member_id'] or 0)|int == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
         {% endfor %}
       </select></div>
-    <div class="field"><label for="recurrence_days">Repeats every (days)</label>
+    {% set er_weekdays = (er['recurrence_weekdays'] if er else '')|weekdays %}
+    <div class="field wide">
+      <label for="recurrence_mode">Repeats</label>
+      <select id="recurrence_mode">
+        <option value="interval" {% if not er_weekdays %}selected{% endif %}>Every N days</option>
+        <option value="weekdays" {% if er_weekdays %}selected{% endif %}>Specific days of the week</option>
+      </select>
+    </div>
+    <div class="field" id="recurrence-interval-days"><label for="recurrence_days">Repeats every (days)</label>
       <input id="recurrence_days" name="recurrence_days" type="number" min="1"
              value="{{ (er['recurrence_days'] if er and er['recurrence_days'] else 7)|int }}"></div>
+    <div class="field wide" id="recurrence-weekday-mode">
+      <label>Which days</label>
+      <div style="display:flex; gap:0.9rem; flex-wrap:wrap; padding:0.3rem 0;">
+        {% for label, num in weekday_options %}
+        <label style="font-weight:400;"><input type="checkbox" name="recurrence_weekdays" value="{{ num }}"
+               {% if num in er_weekdays %}checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </div>
     <div class="field"><label for="next_due">Next due</label>
       <input id="next_due" name="next_due" type="date"
              value="{{ er['next_due'] if er and er['next_due'] else today }}"></div>
@@ -178,6 +195,21 @@ To look up what applies to a given project type instead of editing, use the read
     sync();
   })();
 
+  (function() {
+    const mode = document.getElementById("recurrence_mode");
+    const intervalDays = document.getElementById("recurrence-interval-days");
+    const weekdayMode = document.getElementById("recurrence-weekday-mode");
+    const weekdayBoxes = weekdayMode.querySelectorAll('input[name="recurrence_weekdays"]');
+    function sync() {
+      const weekly = mode.value === "weekdays";
+      intervalDays.style.display = weekly ? "none" : "";
+      weekdayMode.style.display = weekly ? "" : "none";
+      weekdayBoxes.forEach(function (b) { b.disabled = !weekly; });
+    }
+    mode.addEventListener("change", sync);
+    sync();
+  })();
+
   // Piece 41: suggest real values instead of leaving "…matches this value"
   // as blind free text — project_category has a fixed, small set of choices;
   // project_type/site_location are open-ended, so suggest whatever's already
@@ -222,7 +254,7 @@ To look up what applies to a given project type instead of editing, use the read
         <td>{{ r["label"] }}{% if r["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ r["notes"] }}</span>{% endif %}</td>
         <td class="muted" style="font-size:0.85rem;">{{ r["assignee_name"] or "— unassigned —" }}</td>
         <td style="white-space:nowrap;">{{ r["next_due"] or "—" }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td class="muted">{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}</td>
+        <td class="muted">{% if r["recurrence_weekdays"] %}{{ r["recurrence_weekdays"].replace(",", ", ") }}{% else %}{{ r["recurrence_days"]|int }} day{{ "s" if r["recurrence_days"]|int != 1 }}{% endif %}</td>
         <td style="white-space:nowrap;">
           <form method="post" action="{{ url_for('requirement_done', rule_id=r['id']) }}" style="display:inline; margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

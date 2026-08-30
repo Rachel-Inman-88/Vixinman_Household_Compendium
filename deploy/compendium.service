@@ -13,7 +13,11 @@ EnvironmentFile=/opt/compendium/.env
 # use $HOME as scratch space for an internal control socket and fails
 # with "Read-only file system: '/nonexistent'" without this override.
 Environment=HOME=/opt/compendium
-ExecStart=/opt/compendium/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 app:app
+# Piece 80: --timeout 180 (gunicorn's default is 30s) -- a long AI Assistant
+# reply, especially one using tool-calling (up to a few round-trips to
+# Claude), could take longer than 30s and get its worker killed mid-request
+# before this fix.
+ExecStart=/opt/compendium/venv/bin/gunicorn --workers 2 --timeout 180 --bind 127.0.0.1:8000 app:app
 Restart=on-failure
 RestartSec=5
 

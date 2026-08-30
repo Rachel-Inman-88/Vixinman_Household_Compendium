@@ -19,7 +19,15 @@
           <option value="{{ e['id'] }}" {% if ec and ec['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select></div>
-      <div class="field"><label for="recurrence_preset">Repeats every</label>
+      {% set ec_weekdays = (ec['recurrence_weekdays'] if ec else '')|weekdays %}
+      <div class="field wide">
+        <label for="recurrence_mode">Repeats</label>
+        <select id="recurrence_mode">
+          <option value="interval" {% if not ec_weekdays %}selected{% endif %}>Every N days</option>
+          <option value="weekdays" {% if ec_weekdays %}selected{% endif %}>Specific days of the week</option>
+        </select>
+      </div>
+      <div class="field" id="recurrence-interval-mode"><label for="recurrence_preset">Repeats every</label>
         <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
           {% for days, label in recurrence_presets %}
           <option value="{{ days }}" {% if (ec['recurrence_days'] if ec else 7) == days %}selected{% endif %}>{{ label }}</option>
@@ -27,9 +35,18 @@
           <option value="">Custom — enter days →</option>
         </select>
       </div>
-      <div class="field"><label for="recurrence_days">…or custom (days)</label>
+      <div class="field" id="recurrence-interval-days"><label for="recurrence_days">…or custom (days)</label>
         <input id="recurrence_days" name="recurrence_days" type="number" min="1"
                value="{{ ec['recurrence_days'] if ec else 7 }}"></div>
+      <div class="field wide" id="recurrence-weekday-mode">
+        <label>Which days</label>
+        <div style="display:flex; gap:0.9rem; flex-wrap:wrap; padding:0.3rem 0;">
+          {% for label, num in weekday_options %}
+          <label style="font-weight:400;"><input type="checkbox" name="recurrence_weekdays" value="{{ num }}"
+                 {% if num in ec_weekdays %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
       <div class="field"><label for="next_due">Next due</label>
         <input id="next_due" name="next_due" type="date" value="{{ ec['next_due'] if ec else today }}"></div>
       <div class="field wide"><label for="notes">Notes (optional)</label>
@@ -41,4 +58,24 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  var mode = document.getElementById("recurrence_mode");
+  var intervalMode = document.getElementById("recurrence-interval-mode");
+  var intervalDays = document.getElementById("recurrence-interval-days");
+  var weekdayMode = document.getElementById("recurrence-weekday-mode");
+  var weekdayBoxes = weekdayMode.querySelectorAll('input[name="recurrence_weekdays"]');
+  function sync() {
+    var weekly = mode.value === "weekdays";
+    intervalMode.style.display = weekly ? "none" : "";
+    intervalDays.style.display = weekly ? "none" : "";
+    weekdayMode.style.display = weekly ? "" : "none";
+    // Disabled inputs aren't submitted -- keeps a hidden mode's leftover
+    // selection from silently overriding the one actually chosen.
+    weekdayBoxes.forEach(function (b) { b.disabled = !weekly; });
+  }
+  mode.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

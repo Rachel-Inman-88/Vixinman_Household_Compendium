@@ -42,6 +42,7 @@
           <option value="daily" {% if not eh or (eh['frequency_type'] or 'daily') == 'daily' %}selected{% endif %}>Once a day (simple check-off)</option>
           <option value="count" {% if eh and eh['frequency_type'] == 'count' %}selected{% endif %}>A number of times per day</option>
           <option value="times" {% if eh and eh['frequency_type'] == 'times' %}selected{% endif %}>Specific times of day</option>
+          <option value="weekly" {% if eh and eh['frequency_type'] == 'weekly' %}selected{% endif %}>Specific days of the week</option>
         </select></div>
       <div class="field" id="field-target-count" style="display:none;">
         <label for="target_count">Times per day</label>
@@ -51,6 +52,16 @@
         <label for="scheduled_times">Times (comma-separated, 24-hour HH:MM)</label>
         <input id="scheduled_times" name="scheduled_times"
                value="{{ eh['scheduled_times'] if eh else '' }}" placeholder="e.g. 08:00, 14:00, 20:00"></div>
+      {% set eh_weekdays = (eh['recurrence_weekdays'] if eh else '')|weekdays %}
+      <div class="field wide" id="field-recurrence-weekdays" style="display:none;">
+        <label>Which days</label>
+        <div style="display:flex; gap:0.9rem; flex-wrap:wrap; padding:0.3rem 0;">
+          {% for label, num in weekday_options %}
+          <label style="font-weight:400;"><input type="checkbox" name="recurrence_weekdays" value="{{ num }}"
+                 {% if num in eh_weekdays %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="actions">
       <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add habit" }}</button>
@@ -63,9 +74,14 @@
   var sel = document.getElementById("frequency_type");
   var countField = document.getElementById("field-target-count");
   var timesField = document.getElementById("field-scheduled-times");
+  var weekdaysField = document.getElementById("field-recurrence-weekdays");
+  var weekdayBoxes = weekdaysField.querySelectorAll('input[name="recurrence_weekdays"]');
   function sync() {
     countField.style.display = sel.value === "count" ? "" : "none";
     timesField.style.display = sel.value === "times" ? "" : "none";
+    var weekly = sel.value === "weekly";
+    weekdaysField.style.display = weekly ? "" : "none";
+    weekdayBoxes.forEach(function (b) { b.disabled = !weekly; });
   }
   sel.addEventListener("change", sync);
   sync();

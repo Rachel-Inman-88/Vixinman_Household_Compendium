@@ -35,16 +35,26 @@ running, and the strip below it shows the last two weeks at a glance.</p>
         {% elif h["next_time"] %}
         <span class="muted" style="font-size:0.75rem; white-space:nowrap;">next: {{ h["next_time"] }}</span>
         {% endif %}
+      {% elif h["frequency_type"] == "weekly" %}
+        <span class="muted" style="font-size:0.75rem; white-space:nowrap;">{{ h["recurrence_weekdays"].replace(",", ", ") }}</span>
       {% endif %}
     </div>
   </div>
 
-  {# 14-day contribution-graph-style history, oldest to newest, today last. #}
+  {# 14-day contribution-graph-style history, oldest to newest, today last.
+     A 'weekly' habit's non-scheduled days render as a faint dot, distinct
+     from both done (filled) and missed (bordered) -- nothing was due. #}
   <div style="display:flex; gap:3px; margin:0.6rem 0;">
     {% for day in h["recent"] %}
-    <div title="{{ day.date }}{{ ' — done' if day.checked else '' }}"
+    {% if not day.eligible %}
+    <div title="{{ day.date }} — not scheduled"
+         style="width:1rem; height:1rem; border-radius:3px; flex:none;
+                background:transparent; box-shadow:inset 0 0 0 1px var(--border); opacity:0.4;"></div>
+    {% else %}
+    <div title="{{ day.date }}{{ ' — done' if day.checked else ' — missed' }}"
          style="width:1rem; height:1rem; border-radius:3px; flex:none;
                 background:{{ 'var(--brand)' if day.checked else 'var(--border)' }};"></div>
+    {% endif %}
     {% endfor %}
   </div>
 
@@ -73,6 +83,8 @@ running, and the strip below it shows the last two weeks at a glance.</p>
       </button>
     </form>
     {% endfor %}
+    {% elif h["frequency_type"] == "weekly" and not h["is_due_today"] %}
+    <span class="muted" style="font-size:0.85rem;">Not scheduled today</span>
     {% else %}
     <form method="post" action="{{ url_for('habit_checkin', habit_id=h['id']) }}" style="margin:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

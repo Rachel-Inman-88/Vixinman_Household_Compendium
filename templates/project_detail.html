@@ -162,7 +162,7 @@
 </div>
 
 {# Piece 21.9: field notes jotted from the Work Bag, for later reading. #}
-<div class="card">
+<div class="card" id="notes">
   <h2 style="margin-top:0; font-size:1.1rem;">📝 Field notes <span class="badge">{{ project_notes|length }}</span></h2>
   {% if project_notes %}
   <ul style="list-style:none; margin:0; padding:0;">
@@ -174,8 +174,20 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="empty" style="margin:0;">No field notes yet. Crews can add them from the 🎒 Work Bag.</p>
+  <p class="empty" style="margin:0;">No field notes yet.</p>
   {% endif %}
+  {# Piece 80: this card was previously read-only -- notes could only be
+     added from the Work Bag or the Plan tab's "Save as project note". #}
+  <form method="post" action="{{ url_for('add_project_note') }}" style="margin-top:0.7rem; display:flex; gap:0.4rem; align-items:flex-end; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="project_id" value="{{ project['id'] }}">
+  <input type="hidden" name="next" value="{{ url_for('project_detail', project_id=project['id'], _anchor='notes') }}">
+    <div class="field" style="flex:1 1 20rem; margin:0;">
+      <label for="note" style="font-size:0.8rem;">Add a note</label>
+      <input id="note" name="note" placeholder="Anything worth remembering about this project" required>
+    </div>
+    <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.8rem; font-size:0.85rem;">＋ Add note</button>
+  </form>
 </div>
 
 {% if versions %}

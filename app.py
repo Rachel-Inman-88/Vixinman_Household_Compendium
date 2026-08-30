@@ -597,7 +597,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.56"
+VERSION = "0.57"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -790,6 +790,14 @@ def _fmt_money0(v):
         return "{:,.0f}".format(float(v or 0))
     except (ValueError, TypeError):
         return v
+
+
+@app.template_filter("weekdays")
+def _fmt_weekdays(raw):
+    """Piece 80: the recurrence-form templates use this both to check
+    which boxes should be pre-checked on edit (`num in (raw|weekdays)`)
+    and to render a friendly display label ("Tue, Thu")."""
+    return _parse_recurrence_weekdays(raw)
 
 
 @app.context_processor
@@ -2488,6 +2496,14 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # Piece 80: "recur on specific days of the week" alongside the existing
+    # plain day-interval recurrence, shared by Chores/Appointments/
+    # standalone Requirements/Habits -- see _advance_recurrence().
+    ensure_columns(db, "routine_tasks", ["recurrence_weekdays"])
+    ensure_columns(db, "appointments", ["recurrence_weekdays"])
+    ensure_columns(db, "resource_rules", ["recurrence_weekdays"])
+    ensure_columns(db, "habits", ["recurrence_weekdays"])
+
     db.close()
 
 
@@ -3015,6 +3031,49 @@ def board_delete(board_id):
     return redirect(url_for("boards_page"))
 
 
+# Piece 80: a shared "recur on specific days of the week" option (e.g. "work
+# Tues and Thursday") alongside the existing plain day-interval recurrence,
+# used by Chores, Appointments, standalone Requirements, and Habits. Stored
+# as a comma-separated list of these abbreviations (e.g. "Tue,Thu"); empty
+# means "use the plain day-interval instead," not "never."
+WEEKDAY_OPTIONS = [("Mon", 0), ("Tue", 1), ("Wed", 2), ("Thu", 3),
+                    ("Fri", 4), ("Sat", 5), ("Sun", 6)]
+_WEEKDAY_NUM = {label: num for label, num in WEEKDAY_OPTIONS}
+_WEEKDAY_LABEL = {num: label for label, num in WEEKDAY_OPTIONS}
+
+
+def _parse_recurrence_weekdays(raw):
+    """'Tue,Thu' -> {1, 3}. Unrecognized tokens are dropped rather than
+    raising, since this only ever reads back what the app itself wrote
+    (or an empty/legacy column)."""
+    return {_WEEKDAY_NUM[d.strip()] for d in (raw or "").split(",")
+            if d.strip() in _WEEKDAY_NUM}
+
+
+def _format_recurrence_weekdays(weekday_nums):
+    """A submitted list of weekday form values, cleaned and ordered
+    Mon->Sun regardless of submission order, joined for storage/display."""
+    nums = sorted({n for n in weekday_nums if n in _WEEKDAY_LABEL})
+    return ",".join(_WEEKDAY_LABEL[n] for n in nums)
+
+
+def _advance_recurrence(from_date, recurrence_days, recurrence_weekdays_raw):
+    """The shared "what's the next occurrence" rule for Chores/Appointments/
+    standalone Requirements' mark-done actions. If specific weekdays are
+    set, finds the next date after from_date matching one of them (Mon=0..
+    Sun=6, wrapping within a week); otherwise falls back to the plain
+    from_date + recurrence_days interval this app has always used."""
+    weekdays = _parse_recurrence_weekdays(recurrence_weekdays_raw)
+    if weekdays:
+        d = from_date + timedelta(days=1)
+        for _ in range(8):
+            if d.weekday() in weekdays:
+                return d
+            d += timedelta(days=1)
+        return from_date  # unreachable if weekdays is non-empty
+    return from_date + timedelta(days=recurrence_days or 1)
+
+
 # ------------------------------------------------------------------- Piece 37: chores
 CHORE_RECURRENCE_PRESETS = [(1, "Daily"), (7, "Weekly"), (14, "Every 2 weeks"),
                             (30, "Monthly")]
@@ -3088,11 +3147,13 @@ def chores_page():
 def _chore_form_values():
     assignee = request.form.get("household_member_id", "")
     days = int(_to_float(request.form.get("recurrence_days")) or 7)
+    weekdays = [int(v) for v in request.form.getlist("recurrence_weekdays") if v.isdigit()]
     return {
         "title": request.form.get("title", "").strip(),
         "notes": request.form.get("notes", "").strip(),
         "household_member_id": int(assignee) if assignee.isdigit() else None,
         "recurrence_days": max(1, days),
+        "recurrence_weekdays": _format_recurrence_weekdays(weekdays),
         "next_due": request.form.get("next_due", "").strip()
                    or datetime.now().strftime("%Y-%m-%d"),
     }
@@ -3108,6 +3169,7 @@ def chore_new_form():
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("chore_form.html", ec=None, employees=employees,
                            recurrence_presets=CHORE_RECURRENCE_PRESETS,
+                           weekday_options=WEEKDAY_OPTIONS,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -3121,9 +3183,11 @@ def chore_new():
     me = current_user()
     cur = db.execute(
         "INSERT INTO routine_tasks (title, notes, household_member_id,"
-        " recurrence_days, next_due, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        " recurrence_days, recurrence_weekdays, next_due, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (values["title"], values["notes"], values["household_member_id"],
-         values["recurrence_days"], values["next_due"], me["name"] if me else ""))
+         values["recurrence_days"], values["recurrence_weekdays"],
+         values["next_due"], me["name"] if me else ""))
     _notify_chore_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
     flash(f"Chore added: {values['title']}")
@@ -3141,6 +3205,7 @@ def chore_edit_form(chore_id):
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("chore_form.html", ec=ec, employees=employees,
                            recurrence_presets=CHORE_RECURRENCE_PRESETS,
+                           weekday_options=WEEKDAY_OPTIONS,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -3158,9 +3223,10 @@ def chore_edit(chore_id):
     me = current_user()
     db.execute(
         "UPDATE routine_tasks SET title = ?, notes = ?, household_member_id = ?,"
-        " recurrence_days = ?, next_due = ? WHERE id = ?",
+        " recurrence_days = ?, recurrence_weekdays = ?, next_due = ? WHERE id = ?",
         (values["title"], values["notes"], values["household_member_id"],
-         values["recurrence_days"], values["next_due"], chore_id))
+         values["recurrence_days"], values["recurrence_weekdays"],
+         values["next_due"], chore_id))
     if values["household_member_id"] != chore["household_member_id"]:
         _notify_chore_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
@@ -3177,7 +3243,8 @@ def chore_done(chore_id):
         abort(404)
     me = current_user()
     today = datetime.now()
-    next_due = (today + timedelta(days=chore["recurrence_days"])).strftime("%Y-%m-%d")
+    next_due = _advance_recurrence(today, chore["recurrence_days"],
+                                    chore["recurrence_weekdays"]).strftime("%Y-%m-%d")
     db.execute(
         "UPDATE routine_tasks SET last_completed_at = ?, last_completed_by = ?,"
         " next_due = ?, reminder_sent = '' WHERE id = ?",
@@ -3209,17 +3276,23 @@ def _habit_scheduled_times(habit):
 
 
 def _habit_progress(db, habit, today_str=None):
-    """Piece 79: everything the UI needs about a habit's current state and
-    history, computed live every call from habit_checkins (frequency_type
-    'daily', unchanged since Piece 78) or habit_interval_checkins
+    """Piece 79 (extended Piece 80 for 'weekly'): everything the UI needs
+    about a habit's current state and history, computed live every call
+    from habit_checkins ('daily'/'weekly') or habit_interval_checkins
     ('count'/'times') -- never stored, so it can't drift out of sync.
     Fetches each table once and does the day-by-day math in Python rather
-    than a query per day, same efficiency shape as Piece 78's original."""
+    than a query per day, same efficiency shape as Piece 78's original.
+
+    'weekly' shares habit_checkins with 'daily' (still a plain per-day
+    check-in) but only specific weekdays are "eligible" -- a non-eligible
+    day is neither done nor missed (see `eligible` in each `recent` entry)
+    and doesn't move the streak at all, so a "work Tue/Thu" habit's streak
+    counts actual Tue/Thu occurrences, not calendar days."""
     today_str = today_str or datetime.now().strftime("%Y-%m-%d")
     ftype = habit["frequency_type"] or "daily"
     daily_dates = set()
     interval_by_date = {}
-    if ftype == "daily":
+    if ftype in ("daily", "weekly"):
         daily_dates = {r["checkin_date"] for r in db.execute(
             "SELECT checkin_date FROM habit_checkins WHERE habit_id = ?",
             (habit["id"],)).fetchall()}
@@ -3231,28 +3304,56 @@ def _habit_progress(db, habit, today_str=None):
 
     times = _habit_scheduled_times(habit) if ftype == "times" else []
     target = (habit["target_count"] or 1) if ftype == "count" else None
+    weekdays = _parse_recurrence_weekdays(habit["recurrence_weekdays"]) if ftype == "weekly" else set()
+
+    def _date_obj(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d")
+
+    def is_eligible(date_str):
+        if ftype == "weekly":
+            return _date_obj(date_str).weekday() in weekdays
+        return True
 
     def day_done(date_str):
         if ftype == "daily":
             return date_str in daily_dates
+        if ftype == "weekly":
+            return (not is_eligible(date_str)) or date_str in daily_dates
         if ftype == "count":
             return len(interval_by_date.get(date_str, set())) >= target
         return bool(times) and all(t in interval_by_date.get(date_str, set()) for t in times)
 
     # Streak: consecutive days ending today, or ending yesterday if today
     # isn't done yet -- a streak doesn't reset just because the day isn't
-    # over. Same rule Piece 78 established, now routed through day_done().
-    cursor = datetime.strptime(today_str, "%Y-%m-%d")
-    if not day_done(today_str):
-        cursor -= timedelta(days=1)
+    # over. For 'weekly', only eligible days count or break the chain;
+    # ineligible days are skipped over silently.
     streak = 0
-    while day_done(cursor.strftime("%Y-%m-%d")):
-        streak += 1
-        cursor -= timedelta(days=1)
+    if ftype == "weekly" and not weekdays:
+        pass  # defensive only -- the form never saves an empty weekday set
+    elif ftype == "weekly":
+        cursor = _date_obj(today_str)
+        if is_eligible(today_str) and today_str not in daily_dates:
+            cursor -= timedelta(days=1)
+        for _ in range(3660):  # ~10 years, a sane hard cap on the walk-back
+            ds = cursor.strftime("%Y-%m-%d")
+            if is_eligible(ds):
+                if ds in daily_dates:
+                    streak += 1
+                else:
+                    break
+            cursor -= timedelta(days=1)
+    else:
+        cursor = _date_obj(today_str)
+        if not day_done(today_str):
+            cursor -= timedelta(days=1)
+        while day_done(cursor.strftime("%Y-%m-%d")):
+            streak += 1
+            cursor -= timedelta(days=1)
 
-    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    today_dt = _date_obj(today_str)
     recent = [{"date": (today_dt - timedelta(days=i)).strftime("%Y-%m-%d"),
-               "checked": day_done((today_dt - timedelta(days=i)).strftime("%Y-%m-%d"))}
+               "checked": day_done((today_dt - timedelta(days=i)).strftime("%Y-%m-%d")),
+               "eligible": is_eligible((today_dt - timedelta(days=i)).strftime("%Y-%m-%d"))}
               for i in range(13, -1, -1)]
 
     today_slots = interval_by_date.get(today_str, set())
@@ -3279,6 +3380,8 @@ def _habit_progress(db, habit, today_str=None):
         "today_checked_times": today_slots if ftype == "times" else set(),
         "next_time": next_time,
         "overdue_times": overdue_times,
+        "recurrence_weekdays": habit["recurrence_weekdays"] if ftype == "weekly" else "",
+        "is_due_today": is_eligible(today_str) if ftype == "weekly" else True,
     }
 
 
@@ -3323,18 +3426,20 @@ def _habit_form_values(me):
     forced to their own id, regardless of what the (locked, but not
     trusted) form field says. Everyone else keeps free assignment.
 
-    Also parses the frequency_type ('daily' / 'count' / 'times') and its
-    matching field -- target_count for 'count', a comma-separated
-    scheduled_times list for 'times' -- with the other type's field always
-    cleared, so switching a habit's type on edit doesn't leave stale data
-    behind from the type it used to be. A 'times' habit with no valid
-    times left after parsing falls back to plain 'daily' rather than
-    silently creating an uncheckable habit."""
+    Also parses the frequency_type ('daily' / 'count' / 'times' / 'weekly')
+    and its matching field -- target_count for 'count', a comma-separated
+    scheduled_times list for 'times', recurrence_weekdays for 'weekly' --
+    with every other type's field always cleared, so switching a habit's
+    type on edit doesn't leave stale data behind from the type it used to
+    be. A 'times'/'weekly' habit with nothing valid selected after parsing
+    falls back to plain 'daily' rather than silently creating an
+    uncheckable habit."""
     ftype = request.form.get("frequency_type", "daily").strip()
-    if ftype not in ("daily", "count", "times"):
+    if ftype not in ("daily", "count", "times", "weekly"):
         ftype = "daily"
     target_count = None
     scheduled_times = ""
+    recurrence_weekdays = ""
     if ftype == "count":
         raw = request.form.get("target_count", "").strip()
         target_count = int(raw) if raw.isdigit() and int(raw) > 0 else 1
@@ -3345,12 +3450,18 @@ def _habit_form_values(me):
             scheduled_times = ",".join(sorted(set(times)))
         else:
             ftype = "daily"
+    elif ftype == "weekly":
+        weekdays = [int(v) for v in request.form.getlist("recurrence_weekdays") if v.isdigit()]
+        recurrence_weekdays = _format_recurrence_weekdays(weekdays)
+        if not recurrence_weekdays:
+            ftype = "daily"
     values = {
         "title": request.form.get("title", "").strip(),
         "notes": request.form.get("notes", "").strip(),
         "frequency_type": ftype,
         "target_count": target_count,
         "scheduled_times": scheduled_times,
+        "recurrence_weekdays": recurrence_weekdays,
     }
     if me is not None and me["role"] == "Child":
         values["household_member_id"] = me["id"]
@@ -3374,7 +3485,8 @@ def habit_new_form():
     employees = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("habit_form.html", eh=None, employees=employees,
-                            lock_to_self=lock_to_self, me=me)
+                            lock_to_self=lock_to_self, me=me,
+                            weekday_options=WEEKDAY_OPTIONS)
 
 
 @app.route("/habits/new", methods=["POST"])
@@ -3387,10 +3499,11 @@ def habit_new():
     db = get_db()
     db.execute(
         "INSERT INTO habits (title, notes, household_member_id, frequency_type,"
-        " target_count, scheduled_times, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " target_count, scheduled_times, recurrence_weekdays, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (values["title"], values["notes"], values["household_member_id"],
          values["frequency_type"], values["target_count"], values["scheduled_times"],
-         me["name"] if me else ""))
+         values["recurrence_weekdays"], me["name"] if me else ""))
     db.commit()
     flash(f"Habit added: {values['title']}")
     return redirect(url_for("habits_page"))
@@ -3407,7 +3520,8 @@ def habit_edit_form(habit_id):
     employees = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("habit_form.html", eh=eh, employees=employees,
-                            lock_to_self=lock_to_self, me=me)
+                            lock_to_self=lock_to_self, me=me,
+                            weekday_options=WEEKDAY_OPTIONS)
 
 
 @app.route("/habits/<int:habit_id>/edit", methods=["POST"])
@@ -3423,9 +3537,11 @@ def habit_edit(habit_id):
         return redirect(url_for("habit_edit_form", habit_id=habit_id))
     db.execute(
         "UPDATE habits SET title = ?, notes = ?, household_member_id = ?,"
-        " frequency_type = ?, target_count = ?, scheduled_times = ? WHERE id = ?",
+        " frequency_type = ?, target_count = ?, scheduled_times = ?,"
+        " recurrence_weekdays = ? WHERE id = ?",
         (values["title"], values["notes"], values["household_member_id"],
-         values["frequency_type"], values["target_count"], values["scheduled_times"], habit_id))
+         values["frequency_type"], values["target_count"], values["scheduled_times"],
+         values["recurrence_weekdays"], habit_id))
     db.commit()
     flash(f"Habit updated: {values['title']}")
     return redirect(url_for("habits_page"))
@@ -3438,7 +3554,10 @@ def habit_checkin(habit_id):
     harmless no-op rather than a second row -- idempotent by construction,
     unlike the reminder flags Piece 77 had to fix after the fact.
 
-    'daily': one plain check-in, unchanged since Piece 78.
+    'daily'/'weekly': one plain check-in, same habit_checkins row shape --
+      'weekly' just treats a non-scheduled day as trivially satisfied
+      when computing streak/history (see _habit_progress()), the checkin
+      route itself doesn't need to know the difference.
     'count': each POST adds one more toward target_count for today (a
       no-op past the target -- the button is disabled client-side once
       met, this is just the server-side backstop).
@@ -3574,6 +3693,7 @@ def appointments_page():
         "appointments.html", appointments=appointments, employees=employees,
         contacts=contacts, who=who, show=show, edit_appt=edit_appt,
         prefill=prefill, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
+        weekday_options=WEEKDAY_OPTIONS,
         today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -3581,6 +3701,7 @@ def _appointment_form_values():
     assignee = request.form.get("household_member_id", "")
     contact = request.form.get("external_helper_id", "")
     days = int(_to_float(request.form.get("recurrence_days")) or 0)
+    weekdays = [int(v) for v in request.form.getlist("recurrence_weekdays") if v.isdigit()]
     return {
         "title": request.form.get("title", "").strip(),
         "location": request.form.get("location", "").strip(),
@@ -3588,6 +3709,7 @@ def _appointment_form_values():
         "household_member_id": int(assignee) if assignee.isdigit() else None,
         "external_helper_id": int(contact) if contact.isdigit() else None,
         "recurrence_days": max(0, days),
+        "recurrence_weekdays": _format_recurrence_weekdays(weekdays),
         "when_date": request.form.get("when_date", "").strip()
                     or datetime.now().strftime("%Y-%m-%d"),
         "when_time": request.form.get("when_time", "").strip(),
@@ -3604,12 +3726,12 @@ def appointment_new():
     me = current_user()
     db.execute(
         "INSERT INTO appointments (title, location, notes, household_member_id,"
-        " external_helper_id, recurrence_days, when_date, when_time, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " external_helper_id, recurrence_days, recurrence_weekdays, when_date,"
+        " when_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (values["title"], values["location"], values["notes"],
          values["household_member_id"], values["external_helper_id"],
-         values["recurrence_days"], values["when_date"], values["when_time"],
-         me["name"] if me else ""))
+         values["recurrence_days"], values["recurrence_weekdays"],
+         values["when_date"], values["when_time"], me["name"] if me else ""))
     _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
     flash(f"Appointment added: {values['title']}")
@@ -3631,11 +3753,11 @@ def appointment_edit(appt_id):
     db.execute(
         "UPDATE appointments SET title = ?, location = ?, notes = ?,"
         " household_member_id = ?, external_helper_id = ?, recurrence_days = ?,"
-        " when_date = ?, when_time = ? WHERE id = ?",
+        " recurrence_weekdays = ?, when_date = ?, when_time = ? WHERE id = ?",
         (values["title"], values["location"], values["notes"],
          values["household_member_id"], values["external_helper_id"],
-         values["recurrence_days"], values["when_date"], values["when_time"],
-         appt_id))
+         values["recurrence_days"], values["recurrence_weekdays"],
+         values["when_date"], values["when_time"], appt_id))
     if values["household_member_id"] != appt["household_member_id"]:
         _notify_appointment_assignee(db, values["title"], values["household_member_id"], me)
     db.commit()
@@ -3652,8 +3774,9 @@ def appointment_done(appt_id):
         abort(404)
     me = current_user()
     today = datetime.now()
-    if appt["recurrence_days"]:
-        next_due = (today + timedelta(days=appt["recurrence_days"])).strftime("%Y-%m-%d")
+    if appt["recurrence_days"] or appt["recurrence_weekdays"]:
+        next_due = _advance_recurrence(today, appt["recurrence_days"],
+                                        appt["recurrence_weekdays"]).strftime("%Y-%m-%d")
         db.execute(
             "UPDATE appointments SET when_date = ?, reminder_sent = '' WHERE id = ?",
             (next_due, appt_id))
@@ -6244,21 +6367,32 @@ def _workbag_redirect(anchor=None):
 def add_project_note():
     """Piece 21.9: jot a free-form note about a project from the Work Bag. Each note
     keeps its own timestamp (datetime('now'), the same clock the audit log uses)
-    and author, so the office can read the field's notes later."""
+    and author, so the office can read the field's notes later.
+
+    Piece 80: also reachable directly from a project's own page (its Field
+    notes card previously had no add-note control at all, only a display
+    of notes added elsewhere) -- an optional next= sends the redirect back
+    there instead of the Work Bag, same next= pattern chore_done/
+    habit_checkin/etc. already use."""
     user = current_user()
     if user is None:
         abort(403)
     db = get_db()
     project_id = request.form.get("project_id", "")
     note = request.form.get("note", "").strip()
+    nxt = request.form.get("next", "")
+    def _redirect_back():
+        if nxt.startswith("/") and not nxt.startswith("//"):
+            return redirect(nxt)
+        return _workbag_redirect(anchor="notes")
     if not project_id.isdigit() or not note:
         flash("Pick a project and type a note.", "error")
-        return _workbag_redirect(anchor="notes")
+        return _redirect_back()
     db.execute("INSERT INTO project_notes (project_id, note, author) VALUES (?, ?, ?)",
                (int(project_id), note, user["name"]))
     db.commit()
     flash("Note saved for the office.")
-    return _workbag_redirect(anchor="notes")
+    return _redirect_back()
 
 
 @app.route("/work-bag/receipt", methods=["POST"])
@@ -8077,7 +8211,7 @@ def rules_page():
         field_labels=PROJECT_FIELD_LABELS, categories=RULE_CATEGORIES,
         recurring=recurring, employees=employees,
         project_categories=PROJECT_CATEGORIES, distinct_types=distinct_types,
-        distinct_locations=distinct_locations,
+        distinct_locations=distinct_locations, weekday_options=WEEKDAY_OPTIONS,
         today=datetime.now().strftime("%Y-%m-%d"),
     )
 
@@ -8104,12 +8238,14 @@ def _rule_form_values():
     if standalone:
         assignee = request.form.get("household_member_id", "")
         days = int(_to_float(request.form.get("recurrence_days")) or 7)
+        weekdays = [int(v) for v in request.form.getlist("recurrence_weekdays") if v.isdigit()]
         values.update(
             field_name="", field_value="", match_type="equals",
             field_name2="", field_value2="", match_type2="equals",
             allowed_formats="",
             household_member_id=int(assignee) if assignee.isdigit() else None,
             recurrence_days=max(1, days),
+            recurrence_weekdays=_format_recurrence_weekdays(weekdays),
             next_due=request.form.get("next_due", "").strip()
                      or datetime.now().strftime("%Y-%m-%d"),
         )
@@ -8125,7 +8261,8 @@ def _rule_form_values():
             match_type2="equals",
             allowed_formats=",".join(sorted(_parse_formats(
                 request.form.get("allowed_formats")))),
-            household_member_id=None, recurrence_days=None, next_due="",
+            household_member_id=None, recurrence_days=None,
+            recurrence_weekdays="", next_due="",
         )
     return standalone, values
 
@@ -8148,7 +8285,7 @@ _RULE_COLUMNS = [
     "phone", "notes", "field_name2", "field_value2", "match_type2",
     "link_text", "allowed_formats", "source_text", "verify_status",
     "est_cost", "est_time", "maintenance_note", "household_member_id",
-    "recurrence_days", "next_due",
+    "recurrence_days", "recurrence_weekdays", "next_due",
 ]
 
 
@@ -8274,7 +8411,8 @@ def requirement_done(rule_id):
         abort(404)
     me = current_user()
     today = datetime.now()
-    next_due = (today + timedelta(days=int(rule["recurrence_days"]))).strftime("%Y-%m-%d")
+    next_due = _advance_recurrence(today, rule["recurrence_days"],
+                                    rule["recurrence_weekdays"]).strftime("%Y-%m-%d")
     db.execute(
         "UPDATE resource_rules SET last_completed_at = ?, last_completed_by = ?,"
         " next_due = ?, reminder_sent = '' WHERE id = ?",

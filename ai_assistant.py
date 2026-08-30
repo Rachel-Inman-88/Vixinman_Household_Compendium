@@ -39,8 +39,13 @@ class AssistantError(Exception):
 # ----------------------------------------------------------------------------
 # Claude (Anthropic Messages API)
 # ----------------------------------------------------------------------------
-def build_claude_request(api_key, model, system, user_message, max_tokens=1024):
-    """Return (url, headers, body_dict) for one Claude Messages API call."""
+def build_claude_request(api_key, model, system, user_message, max_tokens=4096):
+    """Return (url, headers, body_dict) for one Claude Messages API call.
+    Piece 80: max_tokens raised 1024->4096 -- 1024 (~750 words) was silently
+    truncating longer answers mid-sentence. The other real fix for "long
+    responses seem to fail" is on the server, not here: the live gunicorn
+    service had no --timeout flag, so its default 30s worker timeout could
+    kill a multi-step agent request before it ever got this far."""
     headers = {
         "x-api-key": api_key,
         "anthropic-version": ANTHROPIC_VERSION,
@@ -164,7 +169,7 @@ def _claude_agent(api_key, model, system, user_message, tools, registry, max_ste
                "content-type": "application/json"}
     messages = [{"role": "user", "content": user_message}]
     for _ in range(max_steps):
-        body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 1024,
+        body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 4096,
                 "system": system, "messages": messages, "tools": tool_defs}
         data = _post_json(ANTHROPIC_URL, headers, body)
         if data.get("type") == "error":
@@ -181,6 +186,6 @@ def _claude_agent(api_key, model, system, user_message, tools, registry, max_ste
                             "content": out})
         messages.append({"role": "user", "content": results})
     # Ran out of steps — ask for a final answer with tools withheld.
-    body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 1024,
+    body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 4096,
             "system": system, "messages": messages}
     return parse_claude_response(_post_json(ANTHROPIC_URL, headers, body))
