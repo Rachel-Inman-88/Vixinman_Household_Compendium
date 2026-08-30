@@ -169,8 +169,8 @@ stay available as a backup even once a VPS is running.
   project's tasks — a major phase ("Tow old tractor") containing its own
   smaller subtasks — independent of each task's own pipeline stage.
   Deleting a section detaches its tasks (ungrouped, not deleted). A task
-  can also carry a 🚩 flag indicating it's been discussed in the 🧠 Plan
-  tab's chat.
+  can also carry a 🚩 flag indicating it's been discussed in the 🧠 Project
+  Assistant tab's chat.
 - **Default task deadlines**: a new task defaults to **7 days out**; when a task is
   marked Done, the next open task on the project is re-defaulted to 7 days after
   that completion. Hand-editable per task.
@@ -530,50 +530,58 @@ above, independent of it the whole time.
   every account.
 
 ### AI Assistant
-- **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the household's
+- **💬 General Assistant** (top bar; named that — not just "Assistant" —
+  since Piece 82, to keep it distinct from the per-project 🧠 Project
+  Assistant below): an in-app, **read-only** AI chat over the household's
   data, powered by **Claude** (Anthropic). Ask about projects, tasks and the
   schedule and get a grounded answer; it can explain and summarize but
   **never changes anything** on its own (see the draft-proposal bullet below
-  for the one narrow exception, which still needs a human's approval).
+  for the narrow exception, which still needs a human's sign-off).
 - **Up to 5 saved conversations per person (Piece 76).** A small strip above
   the chat lets you switch between your last 5 conversations (auto-titled
   from each one's first question) or start a fresh one — starting a 6th
   quietly drops the oldest, keeping this a quick-reference tool rather than
   an open-ended chat log.
-- **📝 Propose a new project, appointment, chore, or wishlist item (Piece
-  76, reworked Piece 79, expanded Piece 81).** If a conversation clearly
-  calls for one of these four — a Child working through a school science
-  project with the assistant's help, or "add a dentist appointment for
-  next Tuesday" — a persistent **draft panel** sits above the chat
-  showing what the assistant understood, updating as the conversation
-  refines it and surviving a page reload. A **Send as draft** button adds
-  a Pending entry to the same 🗒 Drafts page described below for a parent
-  to approve or discard — nothing is created until then. The assistant
-  proposes at most one per reply, sparingly, only when the conversation
-  actually calls for it — never as a default response to a question.
+- **📝 Propose a project, appointment, chore, wishlist item, habit, or
+  board (Piece 76, reworked Piece 79, expanded Pieces 81-82).** If a
+  conversation clearly calls for one of these six — a Child working
+  through a school science project with the assistant's help, or "add a
+  dentist appointment for next Tuesday" — a persistent **draft panel**
+  sits above the chat showing what the assistant understood, updating as
+  the conversation refines it and surviving a page reload. A **Save as
+  X** button asks **"Do you want to approve this as a real X?"** —
+  **Yes** applies it for real immediately (if you're someone who could
+  approve a draft at all; otherwise this choice doesn't come up) and, for
+  a **project**, follows up asking whether to jump to that project's own
+  🧠 Project Assistant tab to keep going or stay put — staying then offers
+  to **keep or dump** the conversation. **No, keep as draft** — or a
+  Child proposing one at all — lands it as a Pending entry on the 🗒
+  Drafts page instead, same as before. The assistant proposes at most one
+  per reply, sparingly, only when the conversation actually calls for it.
 - **👀 Parent safety notification (Piece 79).** When a Child talks to the
-  assistant — the global 💬 Assistant page or a project's 🧠 Plan tab —
-  and the conversation goes idle, every Parent gets a notification: how
-  long it ran (a coarse ~1hr-floored estimate, not a precise timer), how
-  many messages the Child sent, and which page it happened on. Parent and
-  Assistant-role usage never triggers this — it's specifically about
-  visibility into a Child's own AI conversations.
+  assistant — the 💬 General Assistant page or a project's 🧠 Project
+  Assistant tab — and the conversation goes idle, every Parent gets a
+  notification: how long it ran (a coarse ~1hr-floored estimate, not a
+  precise timer), how many messages the Child sent, and which page it
+  happened on. Parent and Assistant-role usage never triggers this — it's
+  specifically about visibility into a Child's own AI conversations.
 - **🔁 Retry on failure.** If a question fails (dropped connection, provider
   hiccup), a Retry button appears next to the error and resends the exact
   same question — no retyping or copy/pasting it back in. The per-project
-  **🧠 Plan** tab's chat has the same Retry button (Piece 66) — it reuses
-  the already-saved message on retry instead of inserting a duplicate.
+  **🧠 Project Assistant** tab's chat has the same Retry button (Piece 66) —
+  it reuses the already-saved message on retry instead of inserting a duplicate.
 - **🔁 Repeat last (Piece 67).** A second, always-available button
   (not gated on a failure) re-asks your most recent question fresh — handy
   after something else changed and you want an updated answer. Each repeat
   is a genuinely new turn, not a resend of a failed one.
-- **🧠 Plan tab: sections + task-flagging (Piece 67).** The AI can suggest
-  a whole **section** of work — a major phase ("Tow old tractor") with its
-  own smaller subtasks nested one level deep — as a single bordered
-  suggestion block, alongside plain ungrouped task suggestions as before.
-  It can also **flag** an existing task the conversation is discussing; a
-  one-click confirm sets a real, persisted 🚩 indicator visible on that
-  task in the Tasks tab, even after leaving the Plan tab.
+- **🧠 Project Assistant tab: sections + task-flagging (Piece 67).** The AI
+  can suggest a whole **section** of work — a major phase ("Tow old
+  tractor") with its own smaller subtasks nested one level deep — as a
+  single bordered suggestion block, alongside plain ungrouped task
+  suggestions as before. It can also **flag** an existing task the
+  conversation is discussing; a one-click confirm sets a real, persisted
+  🚩 indicator visible on that task in the Tasks tab, even after leaving
+  the tab.
 - **Grounded, not guessing.** Answers come from a live, permission-scoped view of
   your data — the assistant looks things up with read-only tools (find projects by
   name/stage/overdue status, drill into one project, list
@@ -585,11 +593,13 @@ above, independent of it the whole time.
   project "Contract" concept it used to also report on was removed
   entirely in Piece 73. **Online-only** — nothing is sent until a question
   is asked, and nothing is sent while offline.
-- **🧠 Plan tab** (on each project's own page): a project-scoped brainstorm chat
-  to think through finishing *that* project — same read-only, permission-scoped,
-  Claude-powered design as 💬 Assistant, but its conversation is **saved per
-  project** so you can pick it back up later, and it's grounded in that
-  project's Category/Subcategory, open tasks, and recent field notes. It's
+- **🧠 Project Assistant tab** (on each project's own page, labeled "Plan"
+  before Piece 82): a project-scoped brainstorm chat to think through
+  finishing *that* project — same read-only, permission-scoped,
+  Claude-powered design as 💬 General Assistant, but its conversation is
+  **saved per project** so you can pick it back up later, and it's
+  grounded in that project's Category/Subcategory, open tasks, and recent
+  field notes. It's
   **propose, then confirm**: the AI never saves anything itself — a suggested
   next step needs an explicit **➕ Add to project** click (which tags the new
   task to the project's current stage, so it counts toward advancing it), and
@@ -608,7 +618,15 @@ above, independent of it the whole time.
   that's who actually exercised the judgment) — or **Discards** it, which
   deletes any attached file and leaves the real data untouched. A Parent or
   Admin's own actions are completely unaffected — everything above only
-  intercepts a signed-in **Assistant**.
+  intercepts a signed-in **Assistant**. The 💬 General Assistant chat's own
+  six draftable kinds (project/appointment/chore/wishlist/habit/board,
+  see above) land here too, from anyone who chats them into being, not
+  just the Assistant role.
+- **✎ Edit a draft manually (Piece 82)**: for those same six chat-draftable
+  kinds, a Pending draft can be corrected by hand on the Drafts page
+  before approving — fix a typo, adjust a date — rather than discarding
+  it and starting the conversation over. Every other kind (budget
+  entries, loans, rules, inventory, etc.) keeps the summary-only view.
 - Setup is below under **[Setting up the AI Assistant](#setting-up-the-ai-assistant)**.
 
 ### Help & records
@@ -626,14 +644,14 @@ above, independent of it the whole time.
 
 ## Setting up the AI Assistant
 
-The 💬 Assistant is **off until an admin adds an API key** — Compendium doesn't ship
+The 💬 General Assistant is **off until an admin adds an API key** — Compendium doesn't ship
 with one. It uses your own account with Anthropic (Claude), so **you pay Anthropic
 per use** (inexpensive for this kind of Q&A).
 
 **1. Get a Claude API key:** sign in at **console.anthropic.com**, add billing, and
 create an API key under **API Keys** (it looks like `sk-ant-…`).
 
-**2. Enter it in Compendium.** As an admin, open **💬 Assistant → ⚙️ AI settings** and:
+**2. Enter it in Compendium.** As an admin, open **💬 General Assistant → ⚙️ AI settings** and:
 
 - Paste the key.
 - Choose the **model** (Sonnet is the balanced default; Opus is the most
@@ -641,7 +659,7 @@ create an API key under **API Keys** (it looks like `sk-ant-…`).
 - Save. The key is stored **on this machine** (in your Compendium data folder), never
   in the program itself, and is only ever sent to Anthropic.
 
-**3. Ask a question.** Open **💬 Assistant** and type a question (e.g. *"Which projects
+**3. Ask a question.** Open **💬 General Assistant** and type a question (e.g. *"Which projects
 are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?"*).
 
 **What to know:**
@@ -660,6 +678,22 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.59** — **Assistant workflow overhaul: approve from chat, Habits and
+  Boards added, manual draft editing, clearer naming.** Approving a
+  chat-drafted item no longer requires a separate trip to the Drafts page
+  — a "Save as X" click on a draft you can approve now asks **"Do you
+  want to approve this as a real X?"**; saying yes applies it immediately,
+  in the same request. Approving a **project** this way follows up with
+  **"Brainstorm this project, or work on something else?"** — the first
+  option jumps straight to that project's own Project Assistant tab; the
+  second stays put and, only then, offers to **keep or dump** the current
+  conversation. The Assistant can now also propose **Habits** and
+  **Boards**, alongside the existing Project/Appointment/Chore/Wishlist
+  item — six kinds total. The Drafts page gained a **✎ Edit** link for
+  all six, so a draft can be corrected by hand before approving instead
+  of discarding and starting over. The global chat is now labeled
+  **General Assistant** and the per-project chat **Project Assistant**,
+  so the two are never confused for each other again.
 - **v0.58** — **Assistant drafting expanded beyond new projects.** The AI
   Assistant can now propose an **Appointment**, a **Chore**, or a
   **Wishlist item** the same way it's proposed a new project since Piece

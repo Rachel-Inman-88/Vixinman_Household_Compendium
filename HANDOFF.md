@@ -2939,6 +2939,103 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 82 (v0.59): Assistant workflow overhaul — done.** User (via
+`/remote control`, which isn't available in this environment — the rest
+of the message was a real request, acted on): "there's too much runaround
+the site to approve drafts and continue work efficiently," plus a fully
+spelled-out 3-modal flow, a request to also make Habits/Boards
+chat-draftable, a request to distinguish the two Assistant surfaces by
+name, and a request for manual draft editing. Two scoping questions
+first: whether "view/edit manually" should cover all ~25 draft kinds or
+just the chat-draftable ones (answer expanded chat-drafting itself to
+also cover Habits/Boards, i.e. "anything trackable and markable done,"
+while confirming edit scope stays to the chat-draftable set); whether the
+Project Assistant tab's own label should change too (yes — "Project
+Assistant," mirroring "General Assistant" exactly).
+- **Approve-from-chat, skipping the Drafts-page trip**: "Save as X" on
+  the draft panel now asks **"Do you want to approve this as a real
+  X?"** (Yes / No, keep as draft) — but only for someone who could
+  actually approve a draft at all (`has_permission("approvals")`); a
+  Child never sees this choice, "Save as X" just sends it as Pending
+  exactly like Piece 76-81 already did. **Yes** applies it for real in
+  the same request via a new `_assistant_submit_draft()` helper (insert
+  the draft, then immediately call the same `_approve_draft_row()` the
+  Drafts page's own Approve button uses — pulled out of `approve_draft()`
+  specifically so there's exactly one apply-and-mark-approved code path,
+  not two that could drift). Approving a **project** this way follows up
+  with a second dialog — "keep brainstorming here or work on something
+  else" — routing to that project's own 🧠 Project Assistant tab
+  (`/projects/<id>#plan`) or staying put; staying then offers a third
+  dialog, **keep or dump the conversation** (a new
+  `/assistant/conversations/<id>/delete` route). Built as a single
+  reusable native `<dialog>` element repopulated per question (resolves a
+  Promise per click) rather than three different popups — this app had no
+  existing custom-modal pattern to follow, native `<dialog>` gives a
+  focus-trapped, backdrop-dimmed prompt for free with custom button
+  labels, which `confirm()` can't do.
+- **Habits and Boards added to the chat-draftable set** (now six: project/
+  appointment/chore/wishlist/habit/board), via the exact same
+  `NEW_X:`-line + DRAFT_KINDS-entry + `/assistant/draft-X` pattern Piece
+  81 established — `_apply_new_habit`/`_apply_new_board` mirror the
+  existing four exactly. A chat-drafted habit from a Child defaults to
+  assigned-to-themselves, matching Piece 81's own Habit-form Child-lock
+  (checked directly rather than assumed).
+- **Manual draft editing**, scoped to those same six kinds per the user's
+  own answer — a new `/drafts/<id>/edit` page (`draft_edit.html`, one
+  template with a conditional field block per kind) lets a Pending
+  draft's payload be corrected by hand — fix a typo, adjust a date —
+  without discarding it and re-asking the assistant. Deliberately a
+  smaller field set than each kind's real New/Edit form (e.g. a project
+  draft's edit form skips `estimated_cost` — chat-drafted projects never
+  set it anyway); every other existing draft kind (budget entries, loans,
+  rules, inventory, etc.) keeps today's summary-only view, per the user's
+  explicit scoping answer, not a generic edit-everything system.
+- **General Assistant vs. Project Assistant naming**: the global chat's
+  nav link, page `<h1>`/title, and every current-state README mention
+  renamed from bare "Assistant" to "General Assistant"; the per-project
+  chat's tab button and heading renamed from "Plan" to "Project
+  Assistant" (confirmed via AskUserQuestion — the internal route/
+  function/anchor names (`plan`, `project_plan_ask`, etc.) are untouched,
+  matching this app's established "internal name stays, label changes"
+  convention, e.g. Chores staying `routine_tasks`).
+- **A real latent bug caught and fixed while wiring the habit/board apply
+  functions in**: none this time beyond what Piece 81 already fixed — the
+  `is_recommendation` tuple fix from that piece already covers the new
+  kinds correctly (`habit.new`/`board.new` don't start with `"wishlist."`
+  or `"submission."`, so they were never at risk).
+- **Environment note, not a code issue**: the Browser pane's click
+  automation was too unreliable to interactively exercise the 3-modal
+  chain live (a recurring limitation this whole session, documented
+  earlier) — verified via a thorough manual code review of the JS instead
+  (each state transition, the `conversationId` guard, the `approve_now`
+  gating) plus full route-level coverage of every underlying endpoint the
+  modals call. This piece's interactive click-path itself is the one part
+  of this session's work that rests on code review rather than an
+  executed test — worth a real human click-through the next time someone
+  is at a keyboard with this app open.
+- Verified via a new `piece82_assistant_workflow_test.py` (11 checks:
+  relabeling on both surfaces, the two new chat-draftable kinds, the
+  immediate-approve path for an approver, confirmation that a Child's
+  `approve_now=1` is silently ignored server-side and the record does
+  NOT get created, a Child's chat-drafted habit self-assigning, manual
+  draft edit + its own blank-title validation + that approving an edited
+  draft uses the edited values not the original, a non-chat-draftable
+  kind correctly refusing the edit page, and conversation delete
+  including that you can't delete someone else's). Full accumulated
+  regression suite from Pieces 79-82 (9 scripts) re-run clean before
+  shipping. No schema changes this piece.
+- **Piece-numbering note, same as Pieces 79-80**: the two newest test
+  scripts are correctly named `piece82_assistant_workflow_test.py`, but
+  an EARLIER Piece 79 sub-feature test also happens to be named
+  `piece82_child_nav_lockdown_test.py` (a leftover provisional number
+  from before that whole round shipped as Piece 79) — two genuinely
+  different, unrelated test files both starting with "piece82" is a
+  real, if harmless, naming collision worth knowing about if either ever
+  needs to be found by filename alone.
+- Merged `feature/assistant-workflow-overhaul` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
 - **Mobile search bar reported missing, not reproduced.** User: "On
   mobile the search bar disappeared." Investigated directly: re-read
