@@ -2797,6 +2797,96 @@ ship when the user says they're done" pattern as Piece 76.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 80 (v0.57): weekday recurrence, a project note-add fix, and
+Assistant timeout/truncation fixes — done.** Four items in one user
+message: a weekday-of-recurrence picker for Chores/Habits/"Personal
+schedules" (clarified via AskUserQuestion to mean Appointments, plus a
+broader "anything that recurs on this basis" mandate that also picked up
+standalone Requirements), an investigation into a reported AI Assistant
+response-length/timeout issue, a missing add-note button on a project's
+own page, and a feasibility question about phone home-screen widgets.
+- **Weekday recurrence**: a new shared `recurrence_weekdays` column
+  (comma-separated day abbreviations, e.g. "Tue,Thu") on `routine_tasks`,
+  `appointments`, `resource_rules`, and `habits`, plus one shared
+  `_advance_recurrence()` used by `chore_done()`/`appointment_done()`/
+  `requirement_done()` — when weekdays are set, finds the next matching
+  weekday after today; otherwise falls back to the plain day-interval
+  this app has always used. Each of the three forms gained a "Repeats:
+  every N days / specific days of the week" toggle. **Habits gained a
+  4th frequency_type, 'weekly'** — still a plain per-day check-in
+  (reuses `habit_checkins`, no new table needed), but only scheduled
+  weekdays are "eligible": an off-day is neither done nor missed (a
+  distinct third visual state on the history strip), and the streak only
+  counts actual scheduled occurrences, walking back through off-days
+  without either counting or breaking on them. Verified the trickiest
+  case directly: a missed day that *is* scheduled correctly breaks the
+  streak, confirmed via a dedicated test.
+- **AI Assistant timeout/truncation, root-caused not guessed**: the live
+  gunicorn service had **no `--timeout` flag** at all, meaning gunicorn's
+  **default 30-second worker timeout** applied — a multi-step tool-
+  calling Assistant reply (up to `MAX_AGENT_STEPS=6` round-trips to
+  Claude) can easily exceed that even when nothing is actually wrong,
+  and gunicorn kills the worker mid-request. Fixed with `--timeout 180`
+  in both the **live** `/etc/systemd/system/compendium.service` (edited
+  directly, confirmed via AskUserQuestion first since it's outside the
+  normal git-deploy pipeline) and the **repo's own**
+  `deploy/compendium.service` — caught via a direct re-read of
+  `OPERATIONS.md` that a live-only edit would've been silently
+  overwritten by the next `cp deploy/compendium.service
+  /etc/systemd/system/` a future session might run, per that doc's own
+  documented gotcha. Separately, `ai_assistant.py`'s `max_tokens` was
+  hardcoded to 1024 (~750 words) on every Claude call (both the plain
+  `ask()` path and both call sites inside the `run_agent()` tool-calling
+  loop) — raised to 4096, since a legitimately long, detailed answer
+  could get silently truncated mid-sentence even on a call that
+  succeeded well within any timeout.
+- **Project note-add fix**: a project's own "📝 Field notes" card was
+  read-only — its own empty-state text literally said "Crews can add
+  them from the 🎒 Work Bag," confirming there was never a direct way to
+  add one from the project page itself. `add_project_note()`
+  (`/work-bag/notes`) previously always redirected back to the Work Bag
+  via `_workbag_redirect()`; gave it an optional `next=` override (same
+  pattern `chore_done`/`habit_checkin`/etc. already use) so the new
+  inline form on the project page stays there instead of jumping away —
+  the Work Bag's own existing call site is unaffected (no `next=`, same
+  redirect as before).
+- **Phone home-screen widgets: answered, not built.** A PWA can't
+  provide real OS-level home-screen widgets on iOS or Android — that's
+  native-app-only on both platforms. Recommended staying with the
+  existing PWA-install + deep-link path rather than taking on separate
+  native iOS/Android apps, which would be a large, ongoing commitment
+  distinct from this project.
+- **Piece-numbering note, same lesson as Piece 79**: sub-features were
+  drafted under provisional numbers (83, 84) before the batch's full
+  scope was known; swept back to a single **Piece 80** via `sed` once
+  everything was ready to ship (confirmed via `git diff` that every
+  occurrence was newly-added this session first). The two new test
+  script filenames (`piece83_project_note_form_test.py`,
+  `piece84_weekday_recurrence_test.py`) were **not** renamed — they're
+  still valid, just named for their provisional numbers, same situation
+  Piece 79 left behind for its own five scripts.
+- **Mid-deploy discovery, expected but re-checked anyway**: re-verified
+  before switching branches that the previously-flagged background
+  task's `DRAFT_KINDS` payload-shape fix (see Piece 76's note) wasn't
+  sitting uncommitted in the shared working tree again — it wasn't, this
+  time. Same stash-or-isolate playbook is ready if it resurfaces.
+- Verified via a new `piece84_weekday_recurrence_test.py` (7 checks
+  including `_advance_recurrence()`'s weekday-wraparound math, Chores/
+  Appointments/standalone-Requirements mark-done advancing correctly, an
+  appointment with `recurrence_days=0` but weekdays set still being
+  treated as recurring rather than one-time, and the weekly-habit
+  streak-gap edge case), a new `piece83_project_note_form_test.py` (5
+  checks including that the Work Bag's own flow is unchanged), a
+  fresh-DB double-boot, and a migration test against a copy of the real
+  household database confirming all 5 real household members and all 7
+  real projects survive untouched with the new column present on all
+  four tables. The full accumulated regression suite from Pieces 79-80
+  (7 scripts) was re-run clean before shipping.
+- Merged `feature/recurrence-notes-timeout-fixes` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS (including the systemd reload for the gunicorn timeout change) and
+  confirmed there too.
+
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has

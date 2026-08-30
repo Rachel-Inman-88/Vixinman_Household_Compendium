@@ -187,6 +187,10 @@ stay available as a backup even once a VPS is running.
   **recurrence** (checkups, etc.) using the same completion-driven cadence as
   Chores — mark one done and, if it repeats, the next occurrence is
   auto-computed; if it's one-time, it just drops off the upcoming list.
+  Recurrence is either a plain day-interval (every N days) or **specific
+  days of the week** ("work Tue and Thu") — the same choice standalone
+  recurring Requirements and Chores offer, computed by the same shared
+  logic across all three.
   Filter by Mine / All / Unassigned and Upcoming / All. A **📅 Upcoming
   appointments** card on the dashboard shows what's coming up, and reminders
   land in the same notifications inbox as Chores and Requirements. Can be
@@ -208,8 +212,11 @@ stay available as a backup even once a VPS is running.
   per day** (tap to increment, e.g. drink water x8) or **specific times
   of day** (each its own checkable slot, e.g. 08:00/20:00 for
   medication) — a scheduled time only ever shows a visual next-up/overdue
-  indicator, never a push notification. A Child can only ever make a
-  habit for themselves (no reassignment control).
+  indicator, never a push notification. **Specific days of the week**
+  (e.g. "work Tue and Thu") is a 4th type — the streak only counts
+  scheduled occurrences, so an off-day is neither a hit nor a miss.
+  A Child can only ever make a habit for themselves (no reassignment
+  control).
 - **Work Bag** for on-site work — an offline-capable field tool that shows **only
   on-site field work** (install & inspection); office/scheduling steps stay on the
   dashboard. It opens on a **projects landing** that lists just the projects in the
@@ -245,7 +252,9 @@ stay available as a backup even once a VPS is running.
 - **Field notes**: a standard **📝 Project notes** box in the Work Bag lets crews jot
   free-form notes about a project (access details, on-site changes, callbacks). Each
   note is **individually timestamped** (the same clock as the audit log) with the
-  author, and surfaces on the project's record for the office to read later.
+  author, and surfaces on the project's record for the office to read later. The
+  project's own page has a matching **＋ Add note** form directly on its Field
+  notes card — not just from the Work Bag or the Plan tab's "Save as project note."
 - **Field receipts**: crews snap a receipt photo and log the date, total, vendor,
   reference, and expense category from the Work Bag; it's filed on the project and
   recorded as a **paid expense** for bookkeeping.
@@ -650,6 +659,18 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.57** — **Weekday recurrence, a project note-add fix, and Assistant
+  timeout/truncation fixes.** Chores, Appointments, and standalone
+  Requirements can now repeat on specific days of the week ("work Tue and
+  Thu") instead of only a plain day-interval; Habits gained a matching
+  "specific days of the week" type, with a streak that only counts
+  scheduled occurrences. A project's own Field notes card previously had
+  no way to add a note at all (only Work Bag or the Plan tab could) — it
+  now has a real "＋ Add note" form. Diagnosed why longer AI Assistant
+  replies sometimes failed: the live server's gunicorn worker had no
+  `--timeout` flag (default 30s — too short for a multi-step tool-calling
+  reply) and `max_tokens` was capped at 1024, silently truncating longer
+  answers; both fixed (`--timeout 180`, `max_tokens` 4096).
 - **v0.56** — **Child/Assistant UI review pass.** A screenshot-driven
   round covering the Child dashboard, Habit Tracker, and the AI Assistant:
   the Child dashboard replaced its day-by-day "My schedule" glance with
