@@ -63,7 +63,7 @@
         {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
       </td>
       <td style="white-space:nowrap;">
-        <a class="inv-edit" style="margin-right:0.35rem;" href="{{ url_for('wishlist_page', prefill_item=it['id']) }}#wishlist-form" title="Add to wishlist">🎁</a>
+        <a class="inv-edit" style="margin-right:0.35rem;" href="{{ url_for('wishlist_new_form', prefill_item=it['id']) }}" title="Add to wishlist">🎁</a>
         {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}
       </td>
     </tr>

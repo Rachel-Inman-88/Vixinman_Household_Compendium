@@ -2939,6 +2939,79 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 83 (v0.60): "New [item]" buttons + back-links, consistency pass —
+done.** User: "On any page that has an empty form on the bottom to submit a
+new item (Boards, Chores, etc.) use a 'New [item]' button located at the top
+that navigates to the creation form. Always make sure any page can easily be
+backed out with a 'back' button if it's nested (i.e. Savings account back to
+Savings back to Money but not the Project Assistant to the General
+Assistant)." Two parts:
+- **Part 1 — inline bottom-of-page forms → dedicated pages.** Audited every
+  top-level list page for the Chores (Piece 76) / Habits (Piece 78) pattern
+  — a standalone `_form.html` reached via a "＋ New X" toolbar button,
+  instead of an inline card with its own anchor at the bottom of the list.
+  Converted **9 forms across 7 pages**: Boards, Appointments, Wishlist,
+  Contacts (External Helpers), Idea Backlog, and — the two-form page —
+  Household Budget (transactions **and** budget categories separately),
+  plus Loans and Savings account pages. Each conversion follows the same
+  shape: a new GET route (`_new_form`/`_edit_form`) rendering the extracted
+  template; the existing POST create/edit routes' validation-error
+  redirects retargeted from the old `?edit=<id>#anchor` pattern on the list
+  page to the new dedicated edit-form route; the list page's inline
+  `<form>` block and its `#anchor` removed; empty-state and "add one below"
+  text changed to link to the new page. Three stale `external_helpers_page
+  (edit=...)` links elsewhere in the app (Appointments, Household Budget's
+  Contact column, Wishlist) were caught and fixed the same way — that route
+  no longer accepts an `edit` query param at all. Household Budget's
+  `edit_txn`/`edit_budget` query-param handling was the most involved
+  since those two POST routes (unlike the other 8) already carry
+  `@draftable(...)` for the Assistant-role write-interception system
+  (Piece 51/52) — confirmed that decorator only intercepts POST, so the
+  new GET routes needed no changes there at all.
+- **Deliberately excluded from Part 1, now told to the user rather than
+  left as a silent gap**: the **Rules / Requirements Editor**
+  (`rules.html`). Its own form already sits at the **top** of the page, not
+  the bottom, so it doesn't match the literal complaint; it also carries a
+  `from_job` deep-link (a job's "add a requirement" button lands here
+  pre-filled) plus interlocking JS (standalone/recurring toggle, a
+  recurrence-mode toggle, datalist value-suggestions) that would be
+  meaningfully riskier to relocate for a page that wasn't actually the
+  problem. Left as-is. **Also deliberately left inline, by design, not by
+  oversight**: contextual "add a related record to this one specific
+  parent" forms — a Loan/Savings account's own "add an entry," a project's
+  own "add a note" (Piece 80), Work Bag's receipts/notes, Household Files'
+  upload form. Only top-level "add a brand-new record" list-page forms were
+  in scope; a form that's already scoped to one already-open record isn't
+  the "empty form at the bottom of a list" pattern the user described.
+- **Part 2 — back-links.** Audited every detail/nested page; most already
+  had a correct "← Back to X" link (Loan/Savings account detail, Board/
+  Backlog/Employee detail, Work Bag job/photos, project version history —
+  all confirmed via grep, none touched). Gaps found and fixed: Household
+  Budget, Loans, and Savings pages — reachable only via Money's own links,
+  had no way back — each gained a "← Money" link; `project_form.html` had
+  no back-link at all — now links to that project (editing) or the
+  Dashboard (creating). Two minor drive-by fixes caught during the audit:
+  Closed Jobs' back-link carried a stale `mode='Executive'` query param, a
+  leftover from the pre-Piece-35 department mode-switcher removed long
+  ago (harmless — `dashboard()` ignores unknown args — but stale); AI
+  Settings' back-link still read "← Back to Assistant" after Piece 82
+  renamed the global chat to "General Assistant."
+- Verified with a new scratch test script (not committed — matching this
+  session's established pattern of throwaway `test_client()`-based
+  verification rather than a persisted suite) run against an **isolated
+  copy** of the real household database: every new dedicated form route
+  (new + edit) returns 200, a bogus edit id 404s, a real edit id from the
+  actual data 200s, each list page's HTML contains its new button and no
+  longer contains the old inline-form anchor, a validation-error POST
+  redirects to the new dedicated edit route (not the old query-param URL),
+  and the three drive-by fixes render correctly (48 checks, all passing).
+  Also ran a broad smoke sweep of all 58 parameterless GET routes in the
+  app against the same real-data copy — zero 5xx errors, confirming this
+  piece didn't collaterally break anything elsewhere.
+- No schema changes this piece — every conversion was routes + templates
+  only.
+- Branch `feature/ui-consistency-new-buttons`, off `main` at v0.59.
+
 **Piece 82 (v0.59): Assistant workflow overhaul — done.** User (via
 `/remote control`, which isn't available in this environment — the rest
 of the message was a real request, acted on): "there's too much runaround

@@ -3,7 +3,10 @@
 {% block content %}
 <div class="toolbar">
   <h1>📋 Boards <span class="muted" style="font-size:0.95rem; font-weight:400;">— to-dos not tied to a project</span></h1>
-  <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} open</span>
+  <div style="display:flex; align-items:center; gap:0.6rem;">
+    <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} open</span>
+    <a href="{{ url_for('board_new_form') }}" class="btn">＋ New board</a>
+  </div>
 </div>
 
 {# ---- filters -- two independent groups, color-coded so they read as
@@ -51,35 +54,7 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">No boards here — add one below.</p>
+  <p class="empty">No boards here — <a href="{{ url_for('board_new_form') }}">add one</a>.</p>
   {% endif %}
-</div>
-
-{# ---- new board ---- #}
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">＋ New board</h2>
-  <form method="post" action="{{ url_for('board_new') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-grid">
-      <div class="field wide"><label for="title">To-do *</label>
-        <input id="title" name="title" required placeholder="e.g. Clean the shop bathroom"></div>
-      <div class="field"><label for="assigned_to">Send to (optional)</label>
-        <select id="assigned_to" name="assigned_to">
-          <option value="">— unassigned —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
-        </select></div>
-      <div class="field"><label for="priority">Priority</label>
-        <select id="priority" name="priority">
-          {% for p in priorities %}<option value="{{ p }}">{{ p or "— none —" }}</option>{% endfor %}
-        </select></div>
-      <div class="field"><label for="due_date">Due (optional)</label>
-        <input id="due_date" name="due_date" type="date"></div>
-      <div class="field"><label for="due_time">Due time (optional)</label>
-        <input id="due_time" name="due_time" type="time"></div>
-      <div class="field wide"><label for="details">Details (optional)</label>
-        <input id="details" name="details" placeholder="anything else about the task"></div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Add board</button></div>
-  </form>
 </div>
 {% endblock %}

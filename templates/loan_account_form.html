@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit loan account" if ea else "New loan account" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "Edit loan account" if ea else "＋ New loan account" }}</h1>
+  <a href="{{ url_for('loans_page') }}" class="btn btn-secondary">← Loans</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('loan_account_edit', account_id=ea['id']) if ea else url_for('loan_account_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="name">Name *</label>
+        <input id="name" name="name" required value="{{ ea['name'] if ea else '' }}" placeholder="e.g. Car loan, Mortgage"></div>
+      <div class="field"><label for="lender">Lender</label>
+        <input id="lender" name="lender" value="{{ ea['lender'] if ea else '' }}"></div>
+      <div class="field"><label for="original_amount">Original amount $</label>
+        <input id="original_amount" name="original_amount" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ea['original_amount']) if ea else '' }}"></div>
+      <div class="field"><label for="interest_rate">Interest rate %</label>
+        <input id="interest_rate" name="interest_rate" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ea['interest_rate']) if ea else '' }}"></div>
+      <div class="field"><label for="opened_date">Opened</label>
+        <input id="opened_date" name="opened_date" type="date" value="{{ ea['opened_date'] if ea else '' }}"></div>
+      <div class="field wide"><label for="notes">Notes</label>
+        <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ea else "＋ Add loan account" }}</button>
+      <a href="{{ url_for('loans_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

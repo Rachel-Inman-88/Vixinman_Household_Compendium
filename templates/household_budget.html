@@ -3,6 +3,7 @@
 {% block content %}
 <div class="toolbar">
   <h1>💵 Household Budget <span class="muted" style="font-size:0.95rem; font-weight:400;">— spending not tied to a project</span></h1>
+  <a href="{{ url_for('money_page') }}" class="btn btn-secondary">← Money</a>
 </div>
 <p class="muted" style="margin-top:0;">Track household income and expenses (groceries, utilities,
 subscriptions, anything not on a project's own Billing tab) against a monthly budget per
@@ -95,7 +96,10 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
 
 {# ---- Budget vs. actual, this month ---- #}
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">{{ month_label }}</h2>
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.1rem;">{{ month_label }}</h2>
+    <a href="{{ url_for('household_budget_category_new_form') }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.82rem;">＋ New budget category</a>
+  </div>
   <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:0.8rem;">
     <div><span class="muted" style="font-size:0.8rem;">Income</span><br>
       <strong style="color:var(--brand); font-size:1.15rem;">${{ (totals.Income)|money0 }}</strong></div>
@@ -122,7 +126,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
           </div>
         </td>
         <td style="white-space:nowrap;">
-          <a href="{{ url_for('household_budget_page', month=month, show=show, edit_budget=b.id) }}#budget-form"
+          <a href="{{ url_for('household_budget_category_edit_form', budget_id=b.id) }}"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('household_budget_delete', budget_id=b.id) }}" style="display:inline; margin:0;"
@@ -138,7 +142,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   </table>
   </div>
   {% else %}
-  <p class="empty">No budget categories yet — add one below.</p>
+  <p class="empty">No budget categories yet — <a href="{{ url_for('household_budget_category_new_form') }}">add one</a>.</p>
   {% endif %}
 </div>
 
@@ -149,6 +153,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
     <div style="display:flex; gap:0.4rem;">
       <a href="{{ url_for('household_budget_page', month=month, show='month') }}" class="btn {{ '' if show == 'month' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">This month</a>
       <a href="{{ url_for('household_budget_page', month=month, show='all') }}" class="btn {{ '' if show == 'all' else 'btn-secondary' }}" style="padding:0.2rem 0.6rem; font-size:0.82rem;">All</a>
+      <a href="{{ url_for('household_txn_new_form') }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.82rem;">＋ New transaction</a>
     </div>
   </div>
   {% if transactions %}
@@ -170,10 +175,10 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
                     title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
           </form>
         </td>
-        <td class="muted">{% if t["contact_name"] %}<a href="{{ url_for('external_helpers_page', edit=t['external_helper_id']) }}">{{ t["contact_name"] }}</a>{% else %}—{% endif %}</td>
+        <td class="muted">{% if t["contact_name"] %}<a href="{{ url_for('edit_external_helper_form', helper_id=t['external_helper_id']) }}">{{ t["contact_name"] }}</a>{% else %}—{% endif %}</td>
         <td>{% if t["receipt_filename"] %}<a href="{{ url_for('download_household_receipt', txn_id=t['id']) }}" target="_blank" rel="noopener" title="Receipt">🧾</a>{% endif %}</td>
         <td style="white-space:nowrap;">
-          <a href="{{ url_for('household_budget_page', month=month, show=show, edit=t['id']) }}#txn-form"
+          <a href="{{ url_for('household_txn_edit_form', txn_id=t['id']) }}"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% if can('delete') %}
           <form method="post" action="{{ url_for('household_txn_delete', txn_id=t['id']) }}" style="display:inline; margin:0;"
@@ -189,7 +194,7 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   </table>
   </div>
   {% else %}
-  <p class="empty">No transactions {{ "this month" if show == "month" else "" }} — add one below.</p>
+  <p class="empty">No transactions {{ "this month" if show == "month" else "" }} — <a href="{{ url_for('household_txn_new_form') }}">add one</a>.</p>
   {% endif %}
 </div>
 
@@ -256,84 +261,4 @@ category. Project spending stays on each project's own 💵 Billing tab, untouch
   {% endif %}
 </div>
 
-{# ---- new / edit transaction ---- #}
-<div class="card" id="txn-form">
-  {% set et = edit_txn %}
-  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit transaction" if et else "＋ New transaction" }}</h2>
-  <form method="post" action="{{ url_for('household_txn_edit', txn_id=et['id']) if et else url_for('household_txn_new') }}"
-        enctype="multipart/form-data">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-grid">
-      <div class="field"><label for="kind">Kind</label>
-        <select id="kind" name="kind">
-          <option value="Expense" {% if not et or et['kind'] == 'Expense' %}selected{% endif %}>Expense</option>
-          <option value="Income" {% if et and et['kind'] == 'Income' %}selected{% endif %}>Income</option>
-        </select></div>
-      <div class="field"><label for="category">Category</label>
-        <input id="category" name="category" list="budget_category_options" value="{{ et['category'] if et else '' }}" placeholder="e.g. Groceries, Utilities"></div>
-      <div class="field"><label for="amount">Amount *</label>
-        <input id="amount" name="amount" type="number" step="0.01" min="0" required
-               value="{{ '%.2f'|format(et['amount']) if et else '' }}"></div>
-      <div class="field"><label for="status">Status</label>
-        <select id="status" name="status">
-          {% for s in txn_statuses %}
-          <option value="{{ s }}" {% if et and et['status'] == s %}selected{% elif not et and s == 'Paid' %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select></div>
-      <div class="field"><label for="txn_date">Date</label>
-        <input id="txn_date" name="txn_date" type="date" value="{{ et['txn_date'] if et else today }}"></div>
-      <div class="field wide"><label for="description">Description</label>
-        <input id="description" name="description" value="{{ et['description'] if et else '' }}"></div>
-      <div class="field"><label for="party">Paid to / from (optional)</label>
-        <input id="party" name="party" value="{{ et['party'] if et else '' }}"></div>
-      <div class="field"><label for="external_helper_id">Contact (optional)</label>
-        <select id="external_helper_id" name="external_helper_id">
-          <option value="">— none —</option>
-          {% for c in contacts %}
-          <option value="{{ c['id'] }}" {% if et and et['external_helper_id'] == c['id'] %}selected{% endif %}>{{ c["name"] }}</option>
-          {% endfor %}
-        </select></div>
-      <div class="field"><label for="method">Payment method (optional)</label>
-        <select id="method" name="method">
-          {% for m in payment_methods %}
-          <option value="{{ m }}" {% if et and et['method'] == m %}selected{% endif %}>{{ m or "— unset —" }}</option>
-          {% endfor %}
-        </select></div>
-      <div class="field"><label for="reference">Reference (optional)</label>
-        <input id="reference" name="reference" value="{{ et['reference'] if et else '' }}" placeholder="check #, order #, ..."></div>
-      <div class="field wide"><label for="receipt">Receipt (optional)</label>
-        <input id="receipt" name="receipt" type="file" accept="image/*,.pdf">
-        {% if et and et['receipt_filename'] %}<span class="muted" style="font-size:0.8rem;"> — a receipt is already on file; choosing a new one replaces it.</span>{% endif %}</div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="btn">{{ "Save changes" if et else "＋ Add transaction" }}</button>
-      {% if et %}<a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
-    </div>
-  </form>
-</div>
-
-{# ---- new / edit budget category ---- #}
-<div class="card" id="budget-form">
-  {% set eb = edit_budget %}
-  <h2 style="margin-top:0; font-size:1.1rem;">{{ "Edit budget category" if eb else "＋ New budget category" }}</h2>
-  <form method="post" action="{{ url_for('household_budget_edit', budget_id=eb['id']) if eb else url_for('household_budget_new') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-grid">
-      <div class="field"><label for="budget_category">Category *</label>
-        <input id="budget_category" name="category" list="budget_category_options" required
-               value="{{ eb['category'] if eb else '' }}" placeholder="e.g. Groceries"></div>
-      <div class="field"><label for="monthly_amount">Monthly target *</label>
-        <input id="monthly_amount" name="monthly_amount" type="number" step="0.01" min="0" required
-               value="{{ '%.2f'|format(eb['monthly_amount']) if eb else '' }}"></div>
-    </div>
-    <div class="actions">
-      <button type="submit" class="btn">{{ "Save changes" if eb else "＋ Add budget category" }}</button>
-      {% if eb %}<a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary">Cancel</a>{% endif %}
-    </div>
-  </form>
-</div>
-
-<datalist id="budget_category_options">
-  {% for c in household_budget_categories %}<option value="{{ c }}">{% endfor %}
-</datalist>
 {% endblock %}
