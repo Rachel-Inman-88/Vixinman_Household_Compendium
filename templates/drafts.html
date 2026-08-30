@@ -8,9 +8,10 @@
     <a href="{{ url_for('drafts_page', show='all') }}" class="btn {{ 'btn-secondary' if show == 'pending' }}">All</a>
   </div>
 </div>
-<p class="muted" style="margin-top:0;">Writes from an Assistant-role account (an AI agent's own login) land here
-first, never straight into the real data. <strong>Approving</strong> applies the change for real, attributed to
-whoever proposed it; <strong>discarding</strong> throws it away — nothing changes until you decide.</p>
+<p class="muted" style="margin-top:0;">Writes from an Assistant-role account (an AI agent's own login), and
+anything the 💬 General Assistant chat proposes for anyone, land here first, never straight into the real
+data. <strong>Approving</strong> applies the change for real, attributed to whoever proposed it;
+<strong>discarding</strong> throws it away — nothing changes until you decide.</p>
 
 {% if drafts %}
 {% for d in drafts %}
@@ -24,6 +25,9 @@ whoever proposed it; <strong>discarding</strong> throws it away — nothing chan
   <p style="margin:0.3rem 0;">{{ d.summary }}{% if d.has_file %} · 📎 file attached{% endif %}</p>
   {% if r["status"] == "Pending" %}
   <div class="actions">
+    {% if r["kind"] in editable_kinds %}
+    <a href="{{ url_for('draft_edit_form', draft_id=r['id']) }}" class="btn btn-secondary">✎ Edit</a>
+    {% endif %}
     <form method="post" action="{{ url_for('approve_draft', draft_id=r['id']) }}" style="display:inline; margin:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn">✓ Approve</button>

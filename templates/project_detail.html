@@ -122,7 +122,7 @@
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
   <button class="tab-btn" data-tab="general">General details</button>
-  <button class="tab-btn" data-tab="plan" title="Brainstorm this project with AI">🧠 Plan</button>
+  <button class="tab-btn" data-tab="plan" title="Brainstorm this project with AI">🧠 Project Assistant</button>
   <button class="tab-btn" data-tab="requirements" title="Certifications / Permits / Prerequisites">Requirements ({{ req_total }})</button>
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   {% if can_see_files %}<button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>{% endif %}
@@ -209,7 +209,7 @@
 
 <div class="tab-panel" id="tab-plan">
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">🧠 Plan — brainstorm this project</h2>
+  <h2 style="margin-top:0; font-size:1.1rem;">🧠 Project Assistant — brainstorm this project</h2>
   {% if project["status"] in ("Done", "Abandoned") %}
   <p class="muted" style="margin:0;">Planning chat is turned off for a
     {{ "finished" if project["status"] == "Done" else "cancelled" }} project.</p>

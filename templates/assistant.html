@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Assistant{% endblock %}
+{% block title %}General Assistant{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1 style="margin:0;">💬 Compendium Assistant</h1>
+  <h1 style="margin:0;">💬 General Assistant</h1>
   {% if is_admin %}
   <a href="{{ url_for('assistant_settings_page') }}" class="btn btn-secondary"
      style="padding:0.3rem 0.7rem; font-size:0.85rem;">⚙️ AI settings</a>
   {% endif %}
 </div>
-<p class="muted" style="margin-top:0;">Ask about projects, the idea backlog, tasks and the schedule.
-  Answers are grounded in <strong>what you're allowed to see</strong> and the assistant
-  is <strong>read-only</strong> — it can explain and summarize, but never changes anything.
-  Needs an internet connection.</p>
+<p class="muted" style="margin-top:0;">Ask about projects, the idea backlog, tasks and the schedule,
+  or ask it to draft a project, appointment, chore, habit, board, or wishlist item.
+  Answers are grounded in <strong>what you're allowed to see</strong>, and nothing it drafts is
+  <strong>real until you say so</strong> — it can explain, summarize, and propose, but never
+  changes anything on its own. Needs an internet connection.
+  {% if is_admin %}For editing something inside one specific project, use that project's
+  own <strong>🧠 Project Assistant</strong> tab instead.{% endif %}</p>
 
 {% if not configured %}
 <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
@@ -49,9 +52,20 @@
        what's actually been captured so far, instead of it being buried
        as a one-off note under a single chat bubble. ---- #}
 <div class="card" id="draft-panel" style="border-left:4px solid var(--brand);">
-  <div style="font-weight:700; margin-bottom:0.3rem;">📝 Project draft</div>
+  <div style="font-weight:700; margin-bottom:0.3rem;">📝 Draft</div>
   <div id="draft-body"></div>
 </div>
+
+{# Piece 82: one reusable confirmation dialog, repopulated per step, for the
+   "Save as X" -> approve now? -> (project only) brainstorm here or there? ->
+   (only if staying) keep or dump this conversation? chain. Native <dialog>
+   gives a focus-trapped, backdrop-dimmed modal for free. #}
+<dialog id="assistant-modal" style="border:none; border-radius:12px; padding:0; max-width:26rem; width:90%;">
+  <div style="padding:1.1rem 1.2rem;">
+    <p id="assistant-modal-text" style="margin:0 0 1rem; font-size:0.95rem;"></p>
+    <div id="assistant-modal-buttons" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end;"></div>
+  </div>
+</dialog>
 
 <div class="card">
   <div id="chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem; margin-bottom:0.8rem;">
@@ -124,14 +138,14 @@
     return wrap;
   }
 
-  // Piece 76 (generalized Piece 81 to cover 4 kinds, not just projects):
+  // Piece 76 (generalized Piece 81/82 to cover 6 kinds, not just projects):
   // pull a "propose X" line out of a reply (if present), leaving the rest
   // of the text to display normally. Piece 79 moved the "propose as a
   // draft" control out of a one-off bubble and into the persistent
   // #draft-panel above the chat -- a later proposal overwrites an earlier
   // one there, and it survives a page reload (seeded from
   // {{ initial_draft|tojson }}, built server-side by _extract_draft_proposal()
-  // which mirrors these same 4 regexes).
+  // which mirrors these same 6 regexes).
   var DRAFT_KIND_PATTERNS = [
     { kind: "project", re: /^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$/m,
       build: function (m) { return { kind: "project", name: m[1].trim(), category: m[2].trim(), subcategory: m[3].trim() }; } },
@@ -140,32 +154,84 @@
     { kind: "chore", re: /^NEW_CHORE:\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(.*)$/m,
       build: function (m) { return { kind: "chore", title: m[1].trim(), next_due: m[2].trim(), recurrence_days: m[3].trim() }; } },
     { kind: "wishlist", re: /^NEW_WISHLIST:\s*(.+?)\s*\|\s*(.*)$/m,
-      build: function (m) { return { kind: "wishlist", title: m[1].trim(), estimated_cost: m[2].trim() }; } }
+      build: function (m) { return { kind: "wishlist", title: m[1].trim(), estimated_cost: m[2].trim() }; } },
+    { kind: "habit", re: /^NEW_HABIT:\s*(.+?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "habit", title: m[1].trim(), notes: m[2].trim() }; } },
+    { kind: "board", re: /^NEW_BOARD:\s*(.+?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "board", title: m[1].trim(), due_date: m[2].trim() }; } }
   ];
-  // Per-kind: how to label the draft panel, which endpoint "Send as draft"
-  // posts to, and which of the draft's own fields become that POST's body.
+  // Per-kind: display noun, which endpoint "Save as X" posts to, which of
+  // the draft's own fields become that POST's body, how to label the
+  // panel, and where to link once it's been approved for real.
   var DRAFT_KIND_INFO = {
     project: {
-      endpoint: "{{ url_for('assistant_draft_project') }}",
+      noun: "Project", endpoint: "{{ url_for('assistant_draft_project') }}",
       fields: ["name", "category", "subcategory"],
-      label: function (d) { return esc(d.name) + (d.category ? esc(' (' + d.category + (d.subcategory ? ' — ' + d.subcategory : '') + ')') : ''); }
+      label: function (d) { return esc(d.name) + (d.category ? esc(' (' + d.category + (d.subcategory ? ' — ' + d.subcategory : '') + ')') : ''); },
+      resultLink: function (id) { return "/projects/" + id; }
     },
     appointment: {
-      endpoint: "{{ url_for('assistant_draft_appointment') }}",
+      noun: "Appointment", endpoint: "{{ url_for('assistant_draft_appointment') }}",
       fields: ["title", "when_date", "when_time", "location"],
-      label: function (d) { return esc(d.title) + (d.when_date ? esc(' — ' + d.when_date + (d.when_time ? ' ' + d.when_time : '')) : '') + (d.location ? esc(' (' + d.location + ')') : ''); }
+      label: function (d) { return esc(d.title) + (d.when_date ? esc(' — ' + d.when_date + (d.when_time ? ' ' + d.when_time : '')) : '') + (d.location ? esc(' (' + d.location + ')') : ''); },
+      resultLink: function () { return "{{ url_for('appointments_page') }}"; }
     },
     chore: {
-      endpoint: "{{ url_for('assistant_draft_chore') }}",
+      noun: "Chore", endpoint: "{{ url_for('assistant_draft_chore') }}",
       fields: ["title", "next_due", "recurrence_days"],
-      label: function (d) { return esc(d.title) + (d.recurrence_days ? esc(' — every ' + d.recurrence_days + 'd') : ''); }
+      label: function (d) { return esc(d.title) + (d.recurrence_days ? esc(' — every ' + d.recurrence_days + 'd') : ''); },
+      resultLink: function () { return "{{ url_for('chores_page') }}"; }
     },
     wishlist: {
-      endpoint: "{{ url_for('assistant_draft_wishlist') }}",
+      noun: "Wishlist item", endpoint: "{{ url_for('assistant_draft_wishlist') }}",
       fields: ["title", "estimated_cost"],
-      label: function (d) { return esc(d.title) + (d.estimated_cost ? esc(' (~$' + d.estimated_cost + ')') : ''); }
+      label: function (d) { return esc(d.title) + (d.estimated_cost ? esc(' (~$' + d.estimated_cost + ')') : ''); },
+      resultLink: function () { return "{{ url_for('wishlist_page') }}"; }
+    },
+    habit: {
+      noun: "Habit", endpoint: "{{ url_for('assistant_draft_habit') }}",
+      fields: ["title", "notes"],
+      label: function (d) { return esc(d.title); },
+      resultLink: function () { return "{{ url_for('habits_page') }}"; }
+    },
+    board: {
+      noun: "Board", endpoint: "{{ url_for('assistant_draft_board') }}",
+      fields: ["title", "due_date"],
+      label: function (d) { return esc(d.title) + (d.due_date ? esc(' — due ' + d.due_date) : ''); },
+      resultLink: function (id) { return "/boards/" + id; }
     }
   };
+
+  // Piece 82: only someone who could actually approve a draft on the
+  // Drafts page gets the "approve immediately" choice at all -- for
+  // anyone else (a Child, most often) "Save as X" behaves exactly like
+  // Piece 76-81's plain "send as a Pending draft," no modal in the way.
+  var CAN_APPROVE = {{ "true" if can("approvals") else "false" }};
+
+  // One reusable <dialog>, repopulated per question -- see the markup
+  // above. Resolves with whichever choice's `value` was clicked.
+  var modalEl = document.getElementById("assistant-modal");
+  var modalText = document.getElementById("assistant-modal-text");
+  var modalButtons = document.getElementById("assistant-modal-buttons");
+  function askModal(text, choices) {
+    return new Promise(function (resolve) {
+      modalText.textContent = text;
+      modalButtons.innerHTML = "";
+      choices.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn" + (c.primary ? "" : " btn-secondary");
+        b.style.cssText = "padding:0.3rem 0.8rem; font-size:0.85rem;";
+        b.textContent = c.label;
+        b.addEventListener("click", function () {
+          modalEl.close();
+          resolve(c.value);
+        });
+        modalButtons.appendChild(b);
+      });
+      modalEl.showModal();
+    });
+  }
 
   var draftBody = document.getElementById("draft-body");
   var draftSent = false;
@@ -185,28 +251,71 @@
     sendBtn.type = "button";
     sendBtn.className = "btn";
     sendBtn.style.cssText = "padding:0.2rem 0.6rem; font-size:0.82rem;";
-    sendBtn.textContent = "Send as draft";
-    sendBtn.addEventListener("click", function () {
-      sendBtn.disabled = true; sendBtn.textContent = "Sending…";
+    sendBtn.textContent = "Save as " + info.noun;
+
+    function submitDraft(approveNow) {
+      sendBtn.disabled = true; sendBtn.textContent = approveNow ? "Approving…" : "Sending…";
       var data = new URLSearchParams();
       info.fields.forEach(function (f) { data.append(f, draft[f] || ""); });
+      if (approveNow) data.append("approve_now", "1");
       fetch(info.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
                    "X-CSRFToken": window.CSRF_TOKEN },
         body: data.toString()
       }).then(function (r) { return r.json(); }).then(function (d) {
-        if (d.ok) {
+        if (!d.ok) {
+          sendBtn.disabled = false; sendBtn.textContent = "Save as " + info.noun;
+          draftBody.appendChild(document.createTextNode(" " + (d.error || "Something went wrong.")));
+          return;
+        }
+        if (d.approved) {
+          var link = info.resultLink(d.new_id);
+          draftBody.innerHTML = '<div style="font-size:0.9rem; margin-bottom:0.3rem;"><strong>' + label + '</strong></div>' +
+            '<div style="font-size:0.82rem;">✓ Approved — ' + info.noun.toLowerCase() + ' created. ' +
+            '<a href="' + link + '">Open it →</a></div>';
+          if (draft.kind === "project") {
+            askModal("Do you want to keep brainstorming in this project, or stay here and work on something else?", [
+              { label: "Brainstorm something else.", value: "stay", primary: false },
+              { label: "Brainstorm this project.", value: "there", primary: true }
+            ]).then(function (choice) {
+              if (choice === "there") {
+                window.location.href = "/projects/" + d.new_id + "#plan";
+                return;
+              }
+              if (!conversationId) return;
+              askModal("Keep or dump this conversation?", [
+                { label: "Dump", value: "dump", primary: false },
+                { label: "Keep", value: "keep", primary: true }
+              ]).then(function (kd) {
+                if (kd !== "dump") return;
+                fetch("/assistant/conversations/" + conversationId + "/delete", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
+                             "X-CSRFToken": window.CSRF_TOKEN },
+                  body: ""
+                }).then(function () {
+                  window.location.href = "{{ url_for('assistant_page', conversation='new') }}";
+                });
+              });
+            });
+          }
+        } else {
           draftSent = true;
           draftBody.innerHTML = '<div style="font-size:0.9rem; margin-bottom:0.3rem;"><strong>' + label + '</strong></div>' +
             '<div style="font-size:0.82rem;">✓ Sent — a parent will approve or discard it on the 🗒 Drafts page.</div>';
-        } else {
-          sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
-          draftBody.appendChild(document.createTextNode(" " + (d.error || "Something went wrong.")));
         }
       }).catch(function () {
-        sendBtn.disabled = false; sendBtn.textContent = "Send as draft";
+        sendBtn.disabled = false; sendBtn.textContent = "Save as " + info.noun;
       });
+    }
+
+    sendBtn.addEventListener("click", function () {
+      if (!CAN_APPROVE) { submitDraft(false); return; }
+      askModal("Do you want to approve this as a real " + info.noun.toLowerCase() + "?", [
+        { label: "No, keep as draft.", value: false, primary: false },
+        { label: "Yes", value: true, primary: true }
+      ]).then(submitDraft);
     });
     draftBody.appendChild(sendBtn);
   }

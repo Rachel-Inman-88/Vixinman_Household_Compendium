@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Edit draft{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>✎ Edit draft</h1>
+  <a href="{{ url_for('drafts_page') }}" class="btn btn-secondary">← Drafts</a>
+</div>
+<p class="muted" style="margin-top:0;">Changes here save back to the draft itself — it's still
+Pending afterward, still needs its own ✓ Approve on the Drafts page.</p>
+
+<div class="card">
+  <form method="post" action="{{ url_for('draft_edit', draft_id=draft['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      {% if draft["kind"] == "project.new" %}
+      <div class="field wide"><label for="job_name">Project name *</label>
+        <input id="job_name" name="job_name" required value="{{ payload['values']['job_name'] }}"></div>
+      <div class="field"><label for="project_category">Category</label>
+        <select id="project_category" name="project_category">
+          <option value="">—</option>
+          {% for c in project_categories %}
+          <option value="{{ c }}" {% if payload['values']['project_category'] == c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="project_type">Subcategory</label>
+        <input id="project_type" name="project_type" value="{{ payload['values']['project_type'] }}"
+               placeholder="must match the category's own list"></div>
+      <div class="field wide"><label for="site_location">Site location (optional)</label>
+        <input id="site_location" name="site_location" value="{{ payload['values'].get('site_location', '') }}"></div>
+
+      {% elif draft["kind"] == "appointment.new" %}
+      <div class="field wide"><label for="title">Title *</label>
+        <input id="title" name="title" required value="{{ payload['values']['title'] }}"></div>
+      <div class="field"><label for="when_date">Date</label>
+        <input id="when_date" type="date" name="when_date" value="{{ payload['values']['when_date'] }}"></div>
+      <div class="field"><label for="when_time">Time (optional)</label>
+        <input id="when_time" type="time" name="when_time" value="{{ payload['values']['when_time'] }}"></div>
+      <div class="field wide"><label for="location">Location (optional)</label>
+        <input id="location" name="location" value="{{ payload['values']['location'] }}"></div>
+
+      {% elif draft["kind"] == "chore.new" %}
+      <div class="field wide"><label for="title">Title *</label>
+        <input id="title" name="title" required value="{{ payload['values']['title'] }}"></div>
+      <div class="field"><label for="next_due">First due</label>
+        <input id="next_due" type="date" name="next_due" value="{{ payload['values']['next_due'] }}"></div>
+      <div class="field"><label for="recurrence_days">Repeat every (days)</label>
+        <input id="recurrence_days" type="number" min="1" step="1" name="recurrence_days"
+               value="{{ payload['values']['recurrence_days'] }}"></div>
+
+      {% elif draft["kind"] == "wishlist.new" %}
+      <div class="field wide"><label for="title">Item *</label>
+        <input id="title" name="title" required value="{{ payload['values']['title'] }}"></div>
+      <div class="field"><label for="estimated_cost">Estimated cost (optional)</label>
+        <input id="estimated_cost" type="number" step="0.01" min="0" name="estimated_cost"
+               value="{{ payload['values']['estimated_cost'] or '' }}"></div>
+
+      {% elif draft["kind"] == "habit.new" %}
+      <div class="field wide"><label for="title">Habit *</label>
+        <input id="title" name="title" required value="{{ payload['values']['title'] }}"></div>
+      <div class="field wide"><label for="notes">Notes (optional)</label>
+        <input id="notes" name="notes" value="{{ payload['values']['notes'] }}"></div>
+      <p class="muted" style="font-size:0.82rem; margin:0;">Interval tracking (a count per day, or
+      specific times) can be set up after approving, from the habit's own Edit form.</p>
+
+      {% elif draft["kind"] == "board.new" %}
+      <div class="field wide"><label for="title">Title *</label>
+        <input id="title" name="title" required value="{{ payload['values']['title'] }}"></div>
+      <div class="field"><label for="due_date">Due date (optional)</label>
+        <input id="due_date" type="date" name="due_date" value="{{ payload['values']['due_date'] }}"></div>
+      <div class="field"><label for="priority">Priority (optional)</label>
+        <select id="priority" name="priority">
+          <option value="">—</option>
+          {% for p in board_priorities %}
+          <option value="{{ p }}" {% if payload['values']['priority'] == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select></div>
+      {% endif %}
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">Save changes</button>
+      <a href="{{ url_for('drafts_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

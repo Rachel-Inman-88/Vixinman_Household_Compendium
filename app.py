@@ -597,7 +597,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.58"
+VERSION = "0.59"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -6975,6 +6975,27 @@ def _apply_new_wishlist(db, payload, ref_id, actor_name, draft_file_stored_name=
     return True, f"Added to the wishlist: {v['title']}", cur.lastrowid
 
 
+def _apply_new_habit(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    cur = db.execute(
+        "INSERT INTO habits (title, notes, household_member_id, frequency_type,"
+        " target_count, scheduled_times, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (v["title"], v["notes"], v["household_member_id"], v["frequency_type"],
+         v["target_count"], v["scheduled_times"], actor_name))
+    return True, f"Habit created: {v['title']}", cur.lastrowid
+
+
+def _apply_new_board(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    cur = db.execute(
+        "INSERT INTO boards (title, details, assigned_to, priority, due_date,"
+        " due_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (v["title"], v["details"], v["assigned_to"], v["priority"],
+         v["due_date"], v["due_time"], actor_name))
+    _notify_board_assignee(db, cur.lastrowid, v["title"], v["assigned_to"], None)
+    return True, f"Board created: {v['title']}", cur.lastrowid
+
+
 @app.route("/projects/<int:project_id>/reopen", methods=["POST"])
 @admin_required
 @draftable("project.reopen", ref_id_kwarg="project_id")
@@ -8809,6 +8830,28 @@ def _capture_new_wishlist(**_):
     return {"values": values}, errors
 
 
+def _capture_new_habit(**_):
+    values = _habit_form_values(current_user())
+    errors = [] if values["title"] else ["A habit needs a title."]
+    return {"values": values}, errors
+
+
+def _capture_new_board(**_):
+    title = request.form.get("title", "").strip()
+    assignee = request.form.get("assigned_to", "")
+    priority = request.form.get("priority", "")
+    values = {
+        "title": title,
+        "details": request.form.get("details", "").strip(),
+        "assigned_to": int(assignee) if assignee.isdigit() else None,
+        "priority": priority if priority in BOARD_PRIORITIES else "",
+        "due_date": request.form.get("due_date", "").strip(),
+        "due_time": request.form.get("due_time", "").strip(),
+    }
+    errors = [] if title else ["A board needs a title."]
+    return {"values": values}, errors
+
+
 DRAFT_KINDS = {
     "project.new": {
         "label": "New project", "capture": lambda **_: read_project_form(),
@@ -8959,7 +9002,24 @@ DRAFT_KINDS = {
         "apply": _apply_new_wishlist,
         "summarize": lambda p: p["values"]["title"]
             + (f" (~${p['values']['estimated_cost']:,.0f})" if p["values"].get("estimated_cost") else "")},
+    "habit.new": {
+        "label": "New habit", "capture": _capture_new_habit,
+        "apply": _apply_new_habit,
+        "summarize": lambda p: p["values"]["title"]},
+    "board.new": {
+        "label": "New board", "capture": _capture_new_board,
+        "apply": _apply_new_board,
+        "summarize": lambda p: p["values"]["title"]
+            + (f" — due {p['values']['due_date']}" if p["values"].get("due_date") else "")},
 }
+
+# Piece 82: the kinds a "manual edit" form exists for -- the 6 the General
+# Assistant can chat-draft. Every other kind (budget entries, loans, rules,
+# inventory, etc.) keeps the existing summary + Approve/Discard-only view;
+# those are auto-captured from a live form submission already, not
+# something meant to be hand-edited as a standalone draft.
+DRAFT_EDITABLE_KINDS = {"project.new", "appointment.new", "chore.new",
+                        "wishlist.new", "habit.new", "board.new"}
 
 
 @app.route("/drafts")
@@ -8984,7 +9044,127 @@ def drafts_page():
             "row": r, "label": spec.get("label", r["kind"]),
             "summary": summary, "has_file": bool(r["file_stored_name"]),
         })
-    return render_template("drafts.html", drafts=drafts, show=show)
+    return render_template("drafts.html", drafts=drafts, show=show,
+                           editable_kinds=DRAFT_EDITABLE_KINDS)
+
+
+@app.route("/drafts/<int:draft_id>/edit")
+@admin_required
+def draft_edit_form(draft_id):
+    db = get_db()
+    draft = db.execute("SELECT * FROM drafts WHERE id = ? AND status = 'Pending'", (draft_id,)).fetchone()
+    if draft is None:
+        abort(404)
+    if draft["kind"] not in DRAFT_EDITABLE_KINDS:
+        flash("This kind of draft can't be edited manually -- approve or discard it instead.", "error")
+        return redirect(url_for("drafts_page"))
+    payload = json.loads(draft["payload"])
+    return render_template(
+        "draft_edit.html", draft=draft, payload=payload,
+        project_categories=PROJECT_CATEGORIES, project_subcategories=PROJECT_SUBCATEGORIES,
+        board_priorities=BOARD_PRIORITIES)
+
+
+@app.route("/drafts/<int:draft_id>/edit", methods=["POST"])
+@admin_required
+def draft_edit(draft_id):
+    """Piece 82: hand-edit a chat-drafted item's payload in place -- still
+    Pending afterward, still needs its own Approve. Each branch rebuilds
+    values the same shape its own /assistant/draft-* route and apply
+    function expect, straight from this form's own (deliberately smaller
+    than the live New/Edit forms) field set."""
+    db = get_db()
+    draft = db.execute("SELECT * FROM drafts WHERE id = ? AND status = 'Pending'", (draft_id,)).fetchone()
+    if draft is None:
+        abort(404)
+    kind = draft["kind"]
+    if kind not in DRAFT_EDITABLE_KINDS:
+        abort(404)
+    old_values = json.loads(draft["payload"]).get("values", {})
+    if kind == "project.new":
+        values = {f: request.form.get(f, "").strip() for f in PROJECT_FIELDS}
+        if values["project_category"] not in PROJECT_SUBCATEGORIES or \
+           values["project_type"] not in PROJECT_SUBCATEGORIES.get(values["project_category"], []):
+            values["project_type"] = ""
+        payload = {"values": values, "owner_id": None}
+        title_ok = bool(values["job_name"])
+    elif kind == "appointment.new":
+        values = dict(old_values)
+        values.update(
+            title=request.form.get("title", "").strip(),
+            location=request.form.get("location", "").strip(),
+            when_date=request.form.get("when_date", "").strip(),
+            when_time=request.form.get("when_time", "").strip())
+        payload = {"values": values}
+        title_ok = bool(values["title"])
+    elif kind == "chore.new":
+        days_raw = request.form.get("recurrence_days", "").strip()
+        values = dict(old_values)
+        values.update(
+            title=request.form.get("title", "").strip(),
+            next_due=request.form.get("next_due", "").strip(),
+            recurrence_days=int(days_raw) if days_raw.isdigit() and int(days_raw) > 0 else 7)
+        payload = {"values": values}
+        title_ok = bool(values["title"])
+    elif kind == "wishlist.new":
+        values = dict(old_values)
+        values.update(title=request.form.get("title", "").strip(),
+                      estimated_cost=_to_float(request.form.get("estimated_cost")) or None)
+        payload = {"values": values}
+        title_ok = bool(values["title"])
+    elif kind == "habit.new":
+        values = dict(old_values)
+        values.update(title=request.form.get("title", "").strip(),
+                      notes=request.form.get("notes", "").strip())
+        payload = {"values": values}
+        title_ok = bool(values["title"])
+    else:  # board.new
+        priority = request.form.get("priority", "")
+        values = dict(old_values)
+        values.update(
+            title=request.form.get("title", "").strip(),
+            due_date=request.form.get("due_date", "").strip(),
+            priority=priority if priority in BOARD_PRIORITIES else "")
+        payload = {"values": values}
+        title_ok = bool(values["title"])
+    if not title_ok:
+        flash("A title is required.", "error")
+        return redirect(url_for("draft_edit_form", draft_id=draft_id))
+    db.execute("UPDATE drafts SET payload = ? WHERE id = ?", (json.dumps(payload), draft_id))
+    db.commit()
+    flash("Draft updated.")
+    return redirect(url_for("drafts_page"))
+
+
+def _approve_draft_row(db, draft, who):
+    """Piece 82: the shared apply-and-mark-approved logic, pulled out of
+    approve_draft() below so the Assistant chat's own "approve immediately"
+    shortcut (_assistant_submit_draft) can reuse it verbatim instead of a
+    second, drifting copy. Returns (ok, message, new_id) exactly like a
+    DRAFT_KINDS "apply" function -- caller is responsible for db.commit()."""
+    spec = DRAFT_KINDS[draft["kind"]]
+    proposer = db.execute("SELECT name FROM household_members WHERE id = ?",
+                          (draft["created_by"],)).fetchone()
+    # Recommendation-style kinds (approve/reject a pending item someone else
+    # submitted) attribute reviewed_by to whoever actually exercised the
+    # review judgment -- the approving Parent, not the Assistant that only
+    # flagged a recommendation. Every other kind keeps the proposer's name.
+    # Piece 81: an explicit tuple, not draft["kind"].startswith("wishlist.")
+    # -- the "wishlist.new" kind (a chat-drafted wishlist item, not a
+    # review of an existing one) would otherwise match that prefix too.
+    is_recommendation = draft["kind"] in ("wishlist.approve", "wishlist.reject") \
+        or draft["kind"].startswith("submission.")
+    actor_name = (who["name"] if who else "") if is_recommendation \
+        else (proposer["name"] if proposer else "Assistant")
+    ok, message, new_id = spec["apply"](
+        db, json.loads(draft["payload"]), draft["ref_id"], actor_name,
+        draft_file_stored_name=draft["file_stored_name"] or None,
+        exclude_id=who["id"] if who else None)
+    if ok:
+        db.execute(
+            "UPDATE drafts SET status = 'Approved', reviewed_by = ?, reviewed_at = datetime('now')"
+            " WHERE id = ?", (who["name"] if who else "", draft["id"]))
+    return ok, message, new_id
 
 
 @app.route("/drafts/<int:draft_id>/approve", methods=["POST"])
@@ -8995,31 +9175,11 @@ def approve_draft(draft_id):
     if draft is None:
         flash("Draft not found or already reviewed.", "error")
         return redirect(url_for("drafts_page"))
-    spec = DRAFT_KINDS[draft["kind"]]
-    proposer = db.execute("SELECT name FROM household_members WHERE id = ?",
-                          (draft["created_by"],)).fetchone()
     who = current_user()
-    # Recommendation-style kinds (approve/reject a pending item someone else
-    # submitted) attribute reviewed_by to whoever actually exercised the
-    # review judgment -- the approving Parent, not the Assistant that only
-    # flagged a recommendation. Every other kind keeps the proposer's name.
-    # Piece 81: an explicit tuple, not draft["kind"].startswith("wishlist.")
-    # -- the new "wishlist.new" kind (a chat-drafted wishlist item, not a
-    # review of an existing one) would otherwise match that prefix too.
-    is_recommendation = draft["kind"] in ("wishlist.approve", "wishlist.reject") \
-        or draft["kind"].startswith("submission.")
-    actor_name = (who["name"] if who else "") if is_recommendation \
-        else (proposer["name"] if proposer else "Assistant")
-    ok, message, _new_id = spec["apply"](
-        db, json.loads(draft["payload"]), draft["ref_id"], actor_name,
-        draft_file_stored_name=draft["file_stored_name"] or None,
-        exclude_id=who["id"] if who else None)
+    ok, message, _new_id = _approve_draft_row(db, draft, who)
     if not ok:
         flash(message, "error")
         return redirect(url_for("drafts_page"))
-    db.execute(
-        "UPDATE drafts SET status = 'Approved', reviewed_by = ?, reviewed_at = datetime('now')"
-        " WHERE id = ?", (who["name"] if who else "", draft_id))
     db.commit()
     flash(message)
     return redirect(url_for("drafts_page"))
@@ -9338,13 +9498,13 @@ ASSISTANT_SYSTEM_PROMPT = (
     "numbers, or dates; if the tools don't return something, say so plainly and "
     "suggest where in Compendium to look. Be concise and specific; use short lists "
     "for multiple items. You cannot change anything directly — you have no write "
-    "tools — but for the four kinds below, if the user is clearly asking you to "
+    "tools — but for the six kinds below, if the user is clearly asking you to "
     "add/create/schedule one (not idle chat, and not editing something that "
     "already exists), you may propose it: ALONE on its own line, sparingly, only "
     "when genuinely warranted, using EXACTLY one of these formats. Never propose "
-    "more than one per reply. A human still has to click the button that appears "
-    "and a parent still has to approve it on the Drafts page — proposing one never "
-    "creates anything by itself.\n\n"
+    "more than one per reply. The user can approve it on the spot as they chat, or "
+    "leave it as a draft a parent reviews later on the Drafts page — either way, "
+    "proposing one never creates anything by itself.\n\n"
     "NEW_PROJECT: <name> | <category> | <subcategory>\n"
     "<category> must be exactly one of: " + ", ".join(PROJECT_CATEGORIES) + ". "
     "<subcategory> must be one of that category's own list: " +
@@ -9354,7 +9514,14 @@ ASSISTANT_SYSTEM_PROMPT = (
     "Use today or a date the user implied if none is given outright.\n\n"
     "NEW_CHORE: <title> | <first due date YYYY-MM-DD, or blank for today> | "
     "<repeat every N days, or blank for 7>\n\n"
-    "NEW_WISHLIST: <title> | <estimated cost as a plain number, or blank>"
+    "NEW_WISHLIST: <title> | <estimated cost as a plain number, or blank>\n\n"
+    "NEW_HABIT: <title> | <notes, or blank>\n"
+    "This always proposes the simple daily check-in type — more detailed tracking "
+    "(a count per day, or specific times) can be set up afterward by editing it.\n\n"
+    "NEW_BOARD: <title> | <due date YYYY-MM-DD, or blank>\n"
+    "A Board is a stand-alone to-do not tied to a project (\"call the vet\", "
+    "\"clean the garage\") — use this instead of NEW_CHORE for a one-off task "
+    "that doesn't repeat."
 )
 
 # Piece 48: a second, project-scoped system prompt for the "🧠 Plan" tab's
@@ -9535,10 +9702,12 @@ NEW_APPOINTMENT_LINE_RE = re.compile(
     r"^NEW_APPOINTMENT:\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*)$", re.MULTILINE)
 NEW_CHORE_LINE_RE = re.compile(r"^NEW_CHORE:\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(.*)$", re.MULTILINE)
 NEW_WISHLIST_LINE_RE = re.compile(r"^NEW_WISHLIST:\s*(.+?)\s*\|\s*(.*)$", re.MULTILINE)
+NEW_HABIT_LINE_RE = re.compile(r"^NEW_HABIT:\s*(.+?)\s*\|\s*(.*)$", re.MULTILINE)
+NEW_BOARD_LINE_RE = re.compile(r"^NEW_BOARD:\s*(.+?)\s*\|\s*(.*)$", re.MULTILINE)
 
 
 def _extract_draft_proposal(text):
-    """Piece 79 (generalized Piece 81 to cover all 4 "propose X" line
+    """Piece 79 (generalized Piece 81/82 to cover all 6 "propose X" line
     conventions, not just NEW_PROJECT): pulls the LAST such line out of an
     assistant reply, whichever kind it is -- mirrors the JS regexes in
     assistant.html exactly. Used to rehydrate the persistent draft panel
@@ -9563,6 +9732,12 @@ def _extract_draft_proposal(text):
         candidates.append((m.start(), {
             "kind": "wishlist", "title": m.group(1).strip(),
             "estimated_cost": m.group(2).strip()}))
+    for m in NEW_HABIT_LINE_RE.finditer(text):
+        candidates.append((m.start(), {
+            "kind": "habit", "title": m.group(1).strip(), "notes": m.group(2).strip()}))
+    for m in NEW_BOARD_LINE_RE.finditer(text):
+        candidates.append((m.start(), {
+            "kind": "board", "title": m.group(1).strip(), "due_date": m.group(2).strip()}))
     if not candidates:
         return None
     candidates.sort(key=lambda c: c[0])
@@ -9804,6 +9979,28 @@ def _rotate_assistant_conversations(db, member_id):
         db.execute("DELETE FROM assistant_conversations WHERE id = ?", (oldest_id,))
 
 
+@app.route("/assistant/conversations/<int:conversation_id>/delete", methods=["POST"])
+def assistant_delete_conversation(conversation_id):
+    """Piece 82: the "Dump conversation?" option after approving a draft
+    and choosing to keep chatting on the General Assistant page instead of
+    jumping to the new project's own Project Assistant tab -- lets someone
+    clear out a conversation that's served its purpose rather than letting
+    it sit as one of their 5 saved slots. Only ever the owner's own."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in first."}), 400
+    db = get_db()
+    conv = db.execute(
+        "SELECT id FROM assistant_conversations WHERE id = ? AND household_member_id = ?",
+        (conversation_id, user["id"])).fetchone()
+    if conv is None:
+        return jsonify({"error": "Conversation not found."}), 404
+    db.execute("DELETE FROM assistant_messages WHERE conversation_id = ?", (conversation_id,))
+    db.execute("DELETE FROM assistant_conversations WHERE id = ?", (conversation_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/assistant/ask", methods=["POST"])
 def assistant_ask():
     db = get_db()
@@ -9860,14 +10057,35 @@ def assistant_ask():
     return jsonify({"answer": answer, "conversation_id": conversation_id})
 
 
+def _assistant_submit_draft(kind, payload, user):
+    """Piece 76 (generalized Piece 82): insert a chat-drafted item as a
+    Pending draft on the Drafts page -- reuses that draft kind's own apply
+    logic verbatim, just inserted directly rather than via a live route
+    call, since ANY signed-in person (not only an Assistant-role account)
+    can propose one this way. Nothing is created for real until a parent
+    approves it -- UNLESS the requester checked "approve immediately" AND
+    actually holds the 'approvals' permission, in which case this applies
+    it for real in the same request (the Drafts-page trip Piece 82 was
+    built to skip). Returns a dict ready to jsonify."""
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
+        " VALUES (?, NULL, ?, NULL, ?)",
+        (kind, json.dumps(payload), user["id"]))
+    db.commit()
+    draft_id = cur.lastrowid
+    if request.form.get("approve_now") == "1" and has_permission("approvals"):
+        draft_row = db.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+        ok, message, new_id = _approve_draft_row(db, draft_row, user)
+        db.commit()
+        if ok:
+            return {"ok": True, "approved": True, "kind": kind, "new_id": new_id}
+        return {"ok": True, "approved": False, "draft_id": draft_id, "error": message}
+    return {"ok": True, "approved": False, "draft_id": draft_id}
+
+
 @app.route("/assistant/draft-project", methods=["POST"])
 def assistant_draft_project():
-    """Piece 76: turn the Assistant chat's NEW_PROJECT: suggestion into a
-    real Pending draft on the existing Drafts page -- reuses the "project.new"
-    draft kind's own apply logic verbatim (Piece 51/52), just inserted
-    directly rather than via a live route call, since ANY signed-in person
-    (not only an Assistant-role account) can propose one this way. Nothing
-    is created for real until a parent approves it there."""
     user = current_user()
     if user is None:
         return jsonify({"error": "Sign in first."}), 400
@@ -9880,28 +10098,20 @@ def assistant_draft_project():
         category = ""
     if category not in PROJECT_SUBCATEGORIES or subcategory not in PROJECT_SUBCATEGORIES[category]:
         subcategory = ""
-    db = get_db()
     # Built from PROJECT_FIELDS directly (not hardcoded) so this stays correct
     # if that list ever grows -- _apply_new_project() expects every one present.
     values = {f: "" for f in PROJECT_FIELDS}
     values.update(job_name=name, project_category=category, project_type=subcategory)
-    payload = {"values": values, "owner_id": None}
-    db.execute(
-        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
-        " VALUES ('project.new', NULL, ?, NULL, ?)",
-        (json.dumps(payload), user["id"]))
-    db.commit()
-    return jsonify({"ok": True})
+    return jsonify(_assistant_submit_draft("project.new", {"values": values, "owner_id": None}, user))
 
 
 @app.route("/assistant/draft-appointment", methods=["POST"])
 def assistant_draft_appointment():
-    """Piece 81: same shape as assistant_draft_project() above, for the
-    Assistant chat's NEW_APPOINTMENT: suggestion. Chat-drafted appointments
-    are always unassigned/no-contact -- the chat convention doesn't attempt
-    to resolve a household member or Contact by name, and unassigned is a
-    perfectly normal appointment (visible to the whole household) rather
-    than a gap needing a workaround."""
+    """Chat-drafted appointments are always unassigned/no-contact -- the
+    chat convention doesn't attempt to resolve a household member or
+    Contact by name, and unassigned is a perfectly normal appointment
+    (visible to the whole household) rather than a gap needing a
+    workaround."""
     user = current_user()
     if user is None:
         return jsonify({"error": "Sign in first."}), 400
@@ -9917,20 +10127,12 @@ def assistant_draft_appointment():
         "when_date": when_date or datetime.now().strftime("%Y-%m-%d"),
         "when_time": (request.form.get("when_time", "") or "").strip(),
     }
-    db = get_db()
-    db.execute(
-        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
-        " VALUES ('appointment.new', NULL, ?, NULL, ?)",
-        (json.dumps({"values": values}), user["id"]))
-    db.commit()
-    return jsonify({"ok": True})
+    return jsonify(_assistant_submit_draft("appointment.new", {"values": values}, user))
 
 
 @app.route("/assistant/draft-chore", methods=["POST"])
 def assistant_draft_chore():
-    """Piece 81: same shape as assistant_draft_project() above, for the
-    Assistant chat's NEW_CHORE: suggestion. Always unassigned -- same
-    reasoning as appointments above."""
+    """Always unassigned -- same reasoning as appointments above."""
     user = current_user()
     if user is None:
         return jsonify({"error": "Sign in first."}), 400
@@ -9945,22 +10147,14 @@ def assistant_draft_chore():
         "next_due": (request.form.get("next_due", "") or "").strip()
                     or datetime.now().strftime("%Y-%m-%d"),
     }
-    db = get_db()
-    db.execute(
-        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
-        " VALUES ('chore.new', NULL, ?, NULL, ?)",
-        (json.dumps({"values": values}), user["id"]))
-    db.commit()
-    return jsonify({"ok": True})
+    return jsonify(_assistant_submit_draft("chore.new", {"values": values}, user))
 
 
 @app.route("/assistant/draft-wishlist", methods=["POST"])
 def assistant_draft_wishlist():
-    """Piece 81: same shape as assistant_draft_project() above, for the
-    Assistant chat's NEW_WISHLIST: suggestion. household_member_id defaults
-    to the person chatting (wishlist_items requires one -- it's whose want
-    list this is for, unlike the always-optional assignment on the other
-    two kinds above)."""
+    """household_member_id defaults to the person chatting (wishlist_items
+    requires one -- it's whose want list this is for, unlike the
+    always-optional assignment on the other kinds here)."""
     user = current_user()
     if user is None:
         return jsonify({"error": "Sign in first."}), 400
@@ -9973,13 +10167,47 @@ def assistant_draft_wishlist():
         "estimated_cost": cost or None, "purchase_url": "",
         "inventory_item_id": None, "project_id": None, "external_helper_id": None,
     }
-    db = get_db()
-    db.execute(
-        "INSERT INTO drafts (kind, ref_id, payload, file_stored_name, created_by)"
-        " VALUES ('wishlist.new', NULL, ?, NULL, ?)",
-        (json.dumps({"values": values}), user["id"]))
-    db.commit()
-    return jsonify({"ok": True})
+    return jsonify(_assistant_submit_draft("wishlist.new", {"values": values}, user))
+
+
+@app.route("/assistant/draft-habit", methods=["POST"])
+def assistant_draft_habit():
+    """Piece 82: chat-drafted habits are always the simple daily type --
+    interval tracking (a count-per-day target or specific times) is more
+    detail than a quick chat proposal needs; edit the habit afterward for
+    that. A Child chatting gets it assigned to themselves (matching
+    _habit_form_values()'s own Child-lock, Piece 81); everyone else's
+    defaults to unassigned."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in first."}), 400
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        return jsonify({"error": "No habit title given."}), 400
+    values = {
+        "title": title, "notes": (request.form.get("notes", "") or "").strip(),
+        "household_member_id": user["id"] if user["role"] == "Child" else None,
+        "frequency_type": "daily", "target_count": None, "scheduled_times": "",
+    }
+    return jsonify(_assistant_submit_draft("habit.new", {"values": values}, user))
+
+
+@app.route("/assistant/draft-board", methods=["POST"])
+def assistant_draft_board():
+    """Chat-drafted boards are always unassigned -- same reasoning as
+    appointments/chores above."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in first."}), 400
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        return jsonify({"error": "No board title given."}), 400
+    values = {
+        "title": title, "details": "", "assigned_to": None, "priority": "",
+        "due_date": (request.form.get("due_date", "") or "").strip(),
+        "due_time": "",
+    }
+    return jsonify(_assistant_submit_draft("board.new", {"values": values}, user))
 
 
 @app.route("/projects/<int:project_id>/plan/ask", methods=["POST"])
