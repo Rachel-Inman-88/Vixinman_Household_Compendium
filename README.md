@@ -678,6 +678,29 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.60** — **"New" buttons and back-links, consistently.** Every
+  top-level list page that used to end in an empty inline "add one"
+  card (Boards, Appointments, Wishlist, Contacts, Idea Backlog,
+  Household Budget's transactions and budget categories, Loans, Savings)
+  now has a **＋ New [item]** button at the top that opens a standalone
+  creation page instead — matching the pattern Chores and Habits already
+  used. Editing an existing item now opens that same dedicated form
+  (pre-filled) rather than jumping to an anchor partway down the list.
+  Nested pages that were missing a way back now have one: Household
+  Budget, Loans, and Savings each link **← Money**; a new project's form
+  links back to the Dashboard, and editing a project's details links
+  back to that project. Two small drive-by fixes: the Closed Jobs page's
+  back-link had been carrying a leftover `mode=Executive` query
+  parameter from the pre-Piece-35 mode switcher (harmless, but stale);
+  and the AI settings page's back-link still said "Assistant" instead of
+  "General Assistant" after Piece 82's rename. Contextual, single-record
+  forms (an account's own "add an entry," a project's own "add a note,"
+  Work Bag's receipts) were left inline on purpose — this pass only
+  targeted top-level "add a new record" list forms. The Rules /
+  Requirements Editor was also left as-is: its form already sits at the
+  top of the page, not the bottom, and its interlocking JS (recurrence
+  toggle, standalone/recurring switch, deep-link prefill from a job) made
+  relocating it risk-for-no-benefit.
 - **v0.59** — **Assistant workflow overhaul: approve from chat, Habits and
   Boards added, manual draft editing, clearer naming.** Approving a
   chat-drafted item no longer requires a separate trip to the Drafts page
