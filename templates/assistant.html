@@ -124,25 +124,61 @@
     return wrap;
   }
 
-  // Piece 76 (reworked Piece 79): pull a "NEW_PROJECT: <name> | <category> |
-  // <subcategory>" line out of a reply (if present), leaving the rest of the
-  // text to display normally. Piece 79 moved the "propose as a draft"
-  // control out of a one-off bubble and into the persistent #draft-panel
-  // above the chat -- a later proposal overwrites an earlier one there,
-  // and it survives a page reload (seeded from {{ initial_draft|tojson }}).
-  var NEW_PROJECT_RE = /^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$/m;
+  // Piece 76 (generalized Piece 81 to cover 4 kinds, not just projects):
+  // pull a "propose X" line out of a reply (if present), leaving the rest
+  // of the text to display normally. Piece 79 moved the "propose as a
+  // draft" control out of a one-off bubble and into the persistent
+  // #draft-panel above the chat -- a later proposal overwrites an earlier
+  // one there, and it survives a page reload (seeded from
+  // {{ initial_draft|tojson }}, built server-side by _extract_draft_proposal()
+  // which mirrors these same 4 regexes).
+  var DRAFT_KIND_PATTERNS = [
+    { kind: "project", re: /^NEW_PROJECT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "project", name: m[1].trim(), category: m[2].trim(), subcategory: m[3].trim() }; } },
+    { kind: "appointment", re: /^NEW_APPOINTMENT:\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "appointment", title: m[1].trim(), when_date: m[2].trim(), when_time: m[3].trim(), location: m[4].trim() }; } },
+    { kind: "chore", re: /^NEW_CHORE:\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "chore", title: m[1].trim(), next_due: m[2].trim(), recurrence_days: m[3].trim() }; } },
+    { kind: "wishlist", re: /^NEW_WISHLIST:\s*(.+?)\s*\|\s*(.*)$/m,
+      build: function (m) { return { kind: "wishlist", title: m[1].trim(), estimated_cost: m[2].trim() }; } }
+  ];
+  // Per-kind: how to label the draft panel, which endpoint "Send as draft"
+  // posts to, and which of the draft's own fields become that POST's body.
+  var DRAFT_KIND_INFO = {
+    project: {
+      endpoint: "{{ url_for('assistant_draft_project') }}",
+      fields: ["name", "category", "subcategory"],
+      label: function (d) { return esc(d.name) + (d.category ? esc(' (' + d.category + (d.subcategory ? ' — ' + d.subcategory : '') + ')') : ''); }
+    },
+    appointment: {
+      endpoint: "{{ url_for('assistant_draft_appointment') }}",
+      fields: ["title", "when_date", "when_time", "location"],
+      label: function (d) { return esc(d.title) + (d.when_date ? esc(' — ' + d.when_date + (d.when_time ? ' ' + d.when_time : '')) : '') + (d.location ? esc(' (' + d.location + ')') : ''); }
+    },
+    chore: {
+      endpoint: "{{ url_for('assistant_draft_chore') }}",
+      fields: ["title", "next_due", "recurrence_days"],
+      label: function (d) { return esc(d.title) + (d.recurrence_days ? esc(' — every ' + d.recurrence_days + 'd') : ''); }
+    },
+    wishlist: {
+      endpoint: "{{ url_for('assistant_draft_wishlist') }}",
+      fields: ["title", "estimated_cost"],
+      label: function (d) { return esc(d.title) + (d.estimated_cost ? esc(' (~$' + d.estimated_cost + ')') : ''); }
+    }
+  };
 
   var draftBody = document.getElementById("draft-body");
   var draftSent = false;
   function renderDraftPanel(draft) {
     if (!draft) {
       draftBody.innerHTML = '<p class="empty" style="margin:0;">Nothing proposed yet — ' +
-        'ask the assistant to help plan a project and a draft will show up here.</p>';
+        'ask the assistant to add or plan something and a draft will show up here.</p>';
       return;
     }
+    var info = DRAFT_KIND_INFO[draft.kind];
+    if (!info) return;
     draftSent = false;
-    var label = esc(draft.name) + (draft.category
-      ? esc(' (' + draft.category + (draft.subcategory ? ' — ' + draft.subcategory : '') + ')') : '');
+    var label = info.label(draft);
     draftBody.innerHTML = '<div style="font-size:0.9rem; margin-bottom:0.4rem;"><strong>' +
       label + '</strong></div>';
     var sendBtn = document.createElement("button");
@@ -153,9 +189,8 @@
     sendBtn.addEventListener("click", function () {
       sendBtn.disabled = true; sendBtn.textContent = "Sending…";
       var data = new URLSearchParams();
-      data.append("name", draft.name); data.append("category", draft.category);
-      data.append("subcategory", draft.subcategory);
-      fetch("{{ url_for('assistant_draft_project') }}", {
+      info.fields.forEach(function (f) { data.append(f, draft[f] || ""); });
+      fetch(info.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json",
                    "X-CSRFToken": window.CSRF_TOKEN },
@@ -178,11 +213,15 @@
   renderDraftPanel({{ initial_draft | tojson }});
 
   function renderAssistantReply(wrap, text) {
-    var match = NEW_PROJECT_RE.exec(text);
-    var shown = match ? (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim() : text;
+    var found = null;
+    for (var i = 0; i < DRAFT_KIND_PATTERNS.length; i++) {
+      var m = DRAFT_KIND_PATTERNS[i].re.exec(text);
+      if (m) { found = { pattern: DRAFT_KIND_PATTERNS[i], match: m }; break; }
+    }
+    var shown = found ? (text.slice(0, found.match.index) + text.slice(found.match.index + found.match[0].length)).trim() : text;
     wrap.innerHTML = '<div style="font-size:0.72rem; opacity:0.7; margin-bottom:0.15rem;">Claude</div>' + esc(shown);
-    if (!match) return;
-    renderDraftPanel({ name: match[1].trim(), category: match[2].trim(), subcategory: match[3].trim() });
+    if (!found) return;
+    renderDraftPanel(found.pattern.build(found.match));
     draftBody.parentNode.scrollIntoView({ block: "nearest" });
   }
 
