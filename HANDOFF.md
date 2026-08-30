@@ -2887,7 +2887,88 @@ own page, and a feasibility question about phone home-screen widgets.
   VPS (including the systemd reload for the gunicorn timeout change) and
   confirmed there too.
 
+**Piece 81 (v0.58): Assistant drafting expanded beyond new projects —
+done.** User: Jake ("just ask the AI to make appointments and stuff for
+me") wants the Assistant able to draft anything he can do himself, not
+just propose a new project. Scoped via AskUserQuestion to Appointments +
+Chores + Wishlist items in this first batch (the most common "just add
+this for me" asks), keeping the existing propose-then-confirm-then-
+approve shape unchanged rather than granting any kind of direct write.
+- **Generalized, not four separate one-offs**: `ASSISTANT_SYSTEM_PROMPT`
+  now teaches `NEW_APPOINTMENT:`/`NEW_CHORE:`/`NEW_WISHLIST:` line
+  conventions alongside the existing `NEW_PROJECT:` one (still ALONE on
+  its own line, still at most one per reply). `_extract_draft_proposal()`
+  (renamed/generalized from Piece 79's `_extract_new_project_proposal()`)
+  and `assistant.html`'s JS both check all 4 patterns and keep whichever
+  is LAST in the text, tagged with a `kind` — the persistent draft panel
+  (Piece 79) already had the right shape for "one current proposal,
+  whatever it is," it just needed the kind threaded through to know which
+  endpoint/label to use.
+- **New DRAFT_KINDS entries** (`appointment.new`/`chore.new`/
+  `wishlist.new`) with their own `_apply_new_appointment`/`_apply_new_
+  chore`/`_apply_new_wishlist` functions (same `payload["values"]`
+  contract as `_apply_new_project`) and three new `/assistant/draft-*`
+  routes mirroring `assistant_draft_project()` exactly — any signed-in
+  person can chat-draft one (not gated to the Assistant-role account),
+  same as the existing project flow. Chat-drafted appointments/chores
+  default to unassigned (visible to the whole household); a wishlist item
+  defaults to the person chatting, since `wishlist_items.household_
+  member_id` is required (whose want-list this is for) unlike the other
+  two's optional assignment.
+- **Real bug caught and fixed while wiring this in**: `approve_draft()`'s
+  `is_recommendation` check (which decides whether `reviewed_by` credits
+  the approving parent vs. the original proposer) used `draft["kind"].
+  startswith("wishlist.")` — the new `wishlist.new` kind would have
+  matched that prefix too, even though creating a new wishlist item is
+  nothing like approving/rejecting an existing one. `_apply_new_wishlist`
+  never reads `actor_name` so this was harmless in practice, but fixed
+  properly anyway (an explicit `("wishlist.approve", "wishlist.reject")`
+  tuple) rather than leaving a landmine for the next kind added under
+  that prefix.
+- Verified via a new `piece81_assistant_draft_expansion_test.py` (6
+  checks: proposal-parsing across mixed kinds keeps the textually-last
+  one, all three new draft routes accept a Child's request and store the
+  right payload shape, a Parent approving each creates the real
+  appointment/chore/wishlist row correctly, and — the regression check
+  that actually matters here — the existing `wishlist.approve`/`reject`
+  recommendation flow still attributes `reviewed_by` to the approving
+  parent exactly as before the `is_recommendation` fix). Full accumulated
+  regression suite from Pieces 79-81 (8 scripts) re-run clean before
+  shipping.
+- Merged `feature/assistant-draft-expansion` → `main` → fast-forwarded
+  `deploy/production-hosting-security` to match; deployed to the live
+  VPS and confirmed there too.
+
 **NOT done yet:**
+- **Mobile search bar reported missing, not reproduced.** User: "On
+  mobile the search bar disappeared." Investigated directly: re-read
+  every base.html/inventory.html diff since it was last confirmed
+  working (Piece 79's screenshot round) — nothing touches the nav search
+  bar or its CSS. Reproduced the exact live code on a mobile-emulated
+  (375×812) local dev server against a real-data copy and confirmed the
+  search bar renders and opens correctly inside the hamburger menu. Also
+  ruled out a stale service-worker cache as the cause — `service_worker.
+  js` is **network-first** (always fetches fresh online, only falls back
+  to cache when offline), so a stale cached page can't explain a
+  persistently missing element for someone who's online. Genuinely
+  couldn't reproduce this from the code — next step is a screenshot from
+  the user's actual phone (which page, hamburger open or closed, logged
+  in or not) before guessing further.
+- **STT/TTS for the Assistant: answered as a feasibility question, not
+  built.** User: "if we can figure out STT and TTS communication that
+  would also be a bonus" (both on Pixel 9a / GrapheneOS). **TTS** is
+  low-risk — the standard `SpeechSynthesis` Web API uses whatever TTS
+  engine is installed on-device, no Google Play Services required; a
+  "🔊 read aloud" button on an assistant reply would be a small, safe
+  addition whenever it's wanted. **STT is a real open question**: the
+  `SpeechRecognition` Web API on Chromium-based browsers (including
+  Vanadium, GrapheneOS's default) has traditionally routed through
+  Google's cloud speech backend, which GrapheneOS deliberately omits by
+  default (no Google Play Services unless the user sandboxes it in
+  themselves) — this may simply not work on their exact phones without
+  the user first choosing to install that layer, and needs testing on
+  the actual hardware before committing to build anything, not assumed
+  to just work because it's "a standard Web API."
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
   no sample export on hand yet. Bank: **Navy Federal Credit Union**.

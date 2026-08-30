@@ -540,16 +540,17 @@ above, independent of it the whole time.
   from each one's first question) or start a fresh one — starting a 6th
   quietly drops the oldest, keeping this a quick-reference tool rather than
   an open-ended chat log.
-- **📝 Propose a new project (Piece 76, reworked Piece 79).** If a
-  conversation clearly shapes up a real new project — a Child working
-  through a school science project with the assistant's help, say — a
-  persistent **draft panel** sits above the chat showing the current
-  proposal (name/category/subcategory), updating as the conversation
+- **📝 Propose a new project, appointment, chore, or wishlist item (Piece
+  76, reworked Piece 79, expanded Piece 81).** If a conversation clearly
+  calls for one of these four — a Child working through a school science
+  project with the assistant's help, or "add a dentist appointment for
+  next Tuesday" — a persistent **draft panel** sits above the chat
+  showing what the assistant understood, updating as the conversation
   refines it and surviving a page reload. A **Send as draft** button adds
   a Pending entry to the same 🗒 Drafts page described below for a parent
-  to approve or discard — nothing is created until then, and the Drafts
-  page itself now shows the category/subcategory alongside the name so a
-  parent isn't approving blind.
+  to approve or discard — nothing is created until then. The assistant
+  proposes at most one per reply, sparingly, only when the conversation
+  actually calls for it — never as a default response to a question.
 - **👀 Parent safety notification (Piece 79).** When a Child talks to the
   assistant — the global 💬 Assistant page or a project's 🧠 Plan tab —
   and the conversation goes idle, every Parent gets a notification: how
@@ -659,6 +660,15 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.58** — **Assistant drafting expanded beyond new projects.** The AI
+  Assistant can now propose an **Appointment**, a **Chore**, or a
+  **Wishlist item** the same way it's proposed a new project since Piece
+  76 — one line in its reply, a persistent draft panel showing what it
+  understood, a "Send as draft" click, then a parent's approval on the
+  Drafts page. Nothing is created until both of those happen. New
+  `appointment.new`/`chore.new`/`wishlist.new` draft kinds reuse the same
+  `drafts` table and Drafts-page approval flow every other draft kind
+  already goes through.
 - **v0.57** — **Weekday recurrence, a project note-add fix, and Assistant
   timeout/truncation fixes.** Chores, Appointments, and standalone
   Requirements can now repeat on specific days of the week ("work Tue and
