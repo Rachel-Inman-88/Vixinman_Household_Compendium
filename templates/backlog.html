@@ -3,9 +3,12 @@
 {% block content %}
 <div class="toolbar">
   <h1>🗂 Idea Backlog <span class="muted" style="font-size:0.95rem; font-weight:400;">— household projects not started yet</span></h1>
-  <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} waiting</span>
+  <div style="display:flex; align-items:center; gap:0.6rem;">
+    <span class="badge {{ 'warn' if open_count else '' }}">{{ open_count }} waiting</span>
+    <a href="{{ url_for('backlog_new_form') }}" class="btn">＋ New idea</a>
+  </div>
 </div>
-<p class="muted" style="margin-top:0;">Someday/maybe projects — repairs, builds, certifications. Add an idea below;
+<p class="muted" style="margin-top:0;">Someday/maybe projects — repairs, builds, certifications. Add an idea;
 start it as a real project when you're ready, or mark it abandoned if it's off the table.</p>
 
 {# ---- filters ---- #}
@@ -35,33 +38,7 @@ start it as a real project when you're ready, or mark it abandoned if it's off t
   </table>
   </div>
   {% else %}
-  <p class="empty">Nothing in the backlog — add an idea below.</p>
+  <p class="empty">Nothing in the backlog — <a href="{{ url_for('backlog_new_form') }}">add an idea</a>.</p>
   {% endif %}
-</div>
-
-{# ---- new idea ---- #}
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">＋ New idea</h2>
-  <form method="post" action="{{ url_for('backlog_new') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-grid">
-      <div class="field wide"><label for="name">Idea *</label>
-        <input id="name" name="name" required placeholder="e.g. Repaint the bedroom"></div>
-      <div class="field"><label for="proposed_by">Proposed by (optional)</label>
-        <select id="proposed_by" name="proposed_by">
-          <option value="">— unspecified —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
-        </select></div>
-      <div class="field"><label for="target_date">Target / someday date (optional)</label>
-        <input id="target_date" name="target_date" type="date"></div>
-      <div class="field"><label for="budget_estimate">Rough budget estimate (optional)</label>
-        <input id="budget_estimate" name="budget_estimate" type="number" step="0.01" min="0"></div>
-      <div class="field"><label for="reminder_date">Custom reminder (optional)</label>
-        <input id="reminder_date" name="reminder_date" type="date"></div>
-      <div class="field wide"><label for="notes">Notes (optional)</label>
-        <input id="notes" name="notes" placeholder="anything else about the idea"></div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Add to backlog</button></div>
-  </form>
 </div>
 {% endblock %}

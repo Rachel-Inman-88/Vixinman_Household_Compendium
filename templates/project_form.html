@@ -2,11 +2,17 @@
 {% block title %}{% if editing_job_id %}Edit project{% else %}New project{% endif %}{% endblock %}
 {% block content %}
 {% if editing_job_id %}
-<h1>Edit “{{ values.get('job_name') or 'Project #' ~ editing_job_id }}”</h1>
+<div class="toolbar">
+  <h1>Edit “{{ values.get('job_name') or 'Project #' ~ editing_job_id }}”</h1>
+  <a href="{{ url_for('project_detail', project_id=editing_job_id) }}" class="btn btn-secondary">← Project</a>
+</div>
 <p class="muted">Saving keeps the current state as a numbered version for
 recordkeeping.</p>
 {% else %}
-<h1>Create a project</h1>
+<div class="toolbar">
+  <h1>Create a project</h1>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Dashboard</a>
+</div>
 {% endif %}
 <form method="post" class="card">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

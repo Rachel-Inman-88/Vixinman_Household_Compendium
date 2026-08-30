@@ -597,7 +597,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.59"
+VERSION = "0.60"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2812,6 +2812,18 @@ def boards_page():
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
+@app.route("/boards/new")
+def board_new_form():
+    """Piece 83: a standalone New-board page, matching the Chores/Habits
+    form pattern (Piece 76/78) instead of an inline card at the bottom of
+    the list -- reached via a "+ New board" button at the top."""
+    db = get_db()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("board_form.html", employees=employees,
+                           priorities=BOARD_PRIORITIES)
+
+
 @app.route("/boards/new", methods=["POST"])
 def board_new():
     title = request.form.get("title", "").strip()
@@ -3649,8 +3661,7 @@ def appointments_page():
     """The Appointments list — scheduled dates/times, not tied to a project.
     Filter by assignee (mine / unassigned / a person / all) and by
     upcoming-vs-all (one-time appointments drop off the upcoming view once
-    marked done). ?prefill_contact=<id> pre-fills the add form from a
-    Contact's "＋ Add appointment" quick-link."""
+    marked done)."""
     db = get_db()
     me = current_user()
     who = request.args.get("who", "mine" if me else "all")
@@ -3673,28 +3684,34 @@ def appointments_page():
         sql += " AND COALESCE(a.completed_at, '') = ''"
     sql += " ORDER BY (a.when_date = ''), a.when_date, a.when_time, a.id"
     appointments = db.execute(sql, params).fetchall()
+    return render_template(
+        "appointments.html", appointments=appointments,
+        who=who, show=show, today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/appointments/new")
+def appointment_new_form():
+    """Piece 83: a standalone New-appointment page, matching the Chores/
+    Habits/Boards form pattern instead of an inline card at the bottom of
+    the list. ?prefill_contact=<id> pre-fills it from a Contact's
+    "＋ Add appointment" quick-link."""
+    db = get_db()
     employees = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
-    edit_id = request.args.get("edit", type=int)
-    edit_appt = db.execute(
-        "SELECT * FROM appointments WHERE id = ?", (edit_id,)
-    ).fetchone() if edit_id else None
     prefill = None
     prefill_contact_id = request.args.get("prefill_contact", type=int)
-    if prefill_contact_id and not edit_appt:
+    if prefill_contact_id:
         contact = db.execute("SELECT * FROM external_helpers WHERE id = ?",
                              (prefill_contact_id,)).fetchone()
         if contact:
             prefill = {"title": f"Appointment — {contact['name']}",
                       "external_helper_id": contact["id"]}
     return render_template(
-        "appointments.html", appointments=appointments, employees=employees,
-        contacts=contacts, who=who, show=show, edit_appt=edit_appt,
+        "appointment_form.html", ea=None, employees=employees, contacts=contacts,
         prefill=prefill, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
-        weekday_options=WEEKDAY_OPTIONS,
-        today=datetime.now().strftime("%Y-%m-%d"))
+        weekday_options=WEEKDAY_OPTIONS, today=datetime.now().strftime("%Y-%m-%d"))
 
 
 def _appointment_form_values():
@@ -3738,6 +3755,22 @@ def appointment_new():
     return redirect(url_for("appointments_page"))
 
 
+@app.route("/appointments/<int:appt_id>/edit")
+def appointment_edit_form(appt_id):
+    db = get_db()
+    ea = db.execute("SELECT * FROM appointments WHERE id = ?", (appt_id,)).fetchone()
+    if ea is None:
+        abort(404)
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    return render_template(
+        "appointment_form.html", ea=ea, employees=employees, contacts=contacts,
+        prefill=None, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
+        weekday_options=WEEKDAY_OPTIONS, today=datetime.now().strftime("%Y-%m-%d"))
+
+
 @app.route("/appointments/<int:appt_id>/edit", methods=["POST"])
 def appointment_edit(appt_id):
     db = get_db()
@@ -3748,7 +3781,7 @@ def appointment_edit(appt_id):
     values = _appointment_form_values()
     if not values["title"]:
         flash("An appointment needs a title.", "error")
-        return redirect(url_for("appointments_page", edit=appt_id))
+        return redirect(url_for("appointment_edit_form", appt_id=appt_id))
     me = current_user()
     db.execute(
         "UPDATE appointments SET title = ?, location = ?, notes = ?,"
@@ -3855,13 +3888,32 @@ def wishlist_page():
         " ORDER BY id DESC").fetchall()
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
-    edit_id = request.args.get("edit", type=int)
-    edit_item = db.execute(
-        "SELECT * FROM wishlist_items WHERE id = ?", (edit_id,)
-    ).fetchone() if edit_id else None
+    return render_template(
+        "wishlist.html", items=items,
+        who=who, show=show,
+        lock_who=(me is not None and me["role"] == "Child"))
+
+
+@app.route("/wishlist/new")
+def wishlist_new_form():
+    """Piece 83: a standalone New-wishlist-item page, matching the Chores/
+    Habits/Boards/Appointments form pattern instead of an inline card at
+    the bottom of the list. ?prefill_item=<id> pre-fills it from an
+    Inventory item's "🎁 Add to wishlist" quick-link."""
+    db = get_db()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    inventory_items = db.execute(
+        "SELECT id, category, make, model FROM inventory_items"
+        " WHERE active = 1 ORDER BY category, make, model").fetchall()
+    projects = db.execute(
+        "SELECT id, job_name FROM projects WHERE status != 'Abandoned'"
+        " ORDER BY id DESC").fetchall()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
     prefill = None
     prefill_item_id = request.args.get("prefill_item", type=int)
-    if prefill_item_id and not edit_item:
+    if prefill_item_id:
         src = db.execute("SELECT * FROM inventory_items WHERE id = ?",
                           (prefill_item_id,)).fetchone()
         if src:
@@ -3870,10 +3922,9 @@ def wishlist_page():
             prefill = {"title": f"More {label}",
                        "inventory_item_id": src["id"]}
     return render_template(
-        "wishlist.html", items=items, employees=employees,
+        "wishlist_form.html", ew=None, employees=employees,
         inventory_items=inventory_items, projects=projects, contacts=contacts,
-        who=who, show=show, edit_item=edit_item, prefill=prefill,
-        lock_who=(me is not None and me["role"] == "Child"))
+        prefill=prefill)
 
 
 def _wishlist_form_values():
@@ -3917,6 +3968,28 @@ def wishlist_new():
     return redirect(url_for("wishlist_page"))
 
 
+@app.route("/wishlist/<int:item_id>/edit")
+def wishlist_edit_form(item_id):
+    db = get_db()
+    ew = db.execute("SELECT * FROM wishlist_items WHERE id = ?", (item_id,)).fetchone()
+    if ew is None:
+        abort(404)
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    inventory_items = db.execute(
+        "SELECT id, category, make, model FROM inventory_items"
+        " WHERE active = 1 ORDER BY category, make, model").fetchall()
+    projects = db.execute(
+        "SELECT id, job_name FROM projects WHERE status != 'Abandoned'"
+        " ORDER BY id DESC").fetchall()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    return render_template(
+        "wishlist_form.html", ew=ew, employees=employees,
+        inventory_items=inventory_items, projects=projects, contacts=contacts,
+        prefill=None)
+
+
 @app.route("/wishlist/<int:item_id>/edit", methods=["POST"])
 def wishlist_edit(item_id):
     db = get_db()
@@ -3926,7 +3999,7 @@ def wishlist_edit(item_id):
     v = _wishlist_form_values()
     if not v["title"]:
         flash("A wishlist item needs a title.", "error")
-        return redirect(url_for("wishlist_page", edit=item_id))
+        return redirect(url_for("wishlist_edit_form", item_id=item_id))
     db.execute(
         "UPDATE wishlist_items SET household_member_id = ?, title = ?,"
         " description = ?, estimated_cost = ?, purchase_url = ?,"
@@ -4594,10 +4667,22 @@ def backlog_page():
     open_count = db.execute(
         "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'"
     ).fetchone()[0]
-    return render_template("backlog.html", ideas=ideas, employees=employees,
+    return render_template("backlog.html", ideas=ideas,
                            show=show, statuses=BACKLOG_STATUSES,
                            open_count=open_count,
                            today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/backlog/new")
+@child_forbidden
+def backlog_new_form():
+    """Piece 83: a standalone New-idea page, matching the Chores/Habits/
+    Boards/Appointments/Wishlist/Contacts form pattern instead of an
+    inline card at the bottom of the list."""
+    db = get_db()
+    employees = db.execute(
+        "SELECT id, name FROM household_members ORDER BY name").fetchall()
+    return render_template("backlog_form.html", employees=employees)
 
 
 @app.route("/backlog/new", methods=["POST"])
@@ -4756,17 +4841,22 @@ def external_helpers_page():
         u = upcoming.get(h["id"])
         h["upcoming_count"] = u["n"] if u else 0
         h["upcoming_next"] = u["next_date"] if u else ""
-    edit_id = request.args.get("edit", type=int)
-    edit_helper = db.execute(
-        "SELECT * FROM external_helpers WHERE id = ?", (edit_id,)
-    ).fetchone() if edit_id else None
     # Piece 76: Individuals / Organizations tabs, instead of one flat list
     # with a Type column -- the two kinds already have different relevant
     # fields (an organization's website/account/renewal info vs. a person's).
     people = [h for h in helpers if h["kind"] != "Organization"]
     orgs = [h for h in helpers if h["kind"] == "Organization"]
     return render_template("external_helpers.html", helpers=helpers,
-                           people=people, orgs=orgs, edit_helper=edit_helper)
+                           people=people, orgs=orgs)
+
+
+@app.route("/external-helpers/new")
+@child_forbidden
+def new_external_helper_form():
+    """Piece 83: a standalone New-contact page, matching the Chores/Habits/
+    Boards/Appointments/Wishlist form pattern instead of an inline card at
+    the bottom of the list."""
+    return render_template("external_helper_form.html", eh=None)
 
 
 @app.route("/external-helpers/new", methods=["POST"])
@@ -4789,6 +4879,15 @@ def new_external_helper():
     return redirect(url_for("external_helpers_page"))
 
 
+@app.route("/external-helpers/<int:helper_id>/edit")
+@child_forbidden
+def edit_external_helper_form(helper_id):
+    eh = get_db().execute("SELECT * FROM external_helpers WHERE id = ?", (helper_id,)).fetchone()
+    if eh is None:
+        abort(404)
+    return render_template("external_helper_form.html", eh=eh)
+
+
 @app.route("/external-helpers/<int:helper_id>/edit", methods=["POST"])
 @child_forbidden
 def edit_external_helper(helper_id):
@@ -4799,7 +4898,7 @@ def edit_external_helper(helper_id):
     v = _helper_form_values()
     if not v["name"]:
         flash("A name is required.", "error")
-        return redirect(url_for("external_helpers_page", edit=helper_id))
+        return redirect(url_for("edit_external_helper_form", helper_id=helper_id))
     db.execute(
         "UPDATE external_helpers SET name = ?, kind = ?, phone = ?, email = ?,"
         " specialty = ?, notes = ?, website = ?, account_number = ?,"
@@ -5269,17 +5368,6 @@ def household_budget_page():
         if t["kind"] in totals:
             totals[t["kind"]] += t["amount"]
 
-    edit_id = request.args.get("edit", type=int)
-    edit_txn = db.execute(
-        "SELECT * FROM household_transactions WHERE id = ?", (edit_id,)
-    ).fetchone() if edit_id else None
-    edit_budget_id = request.args.get("edit_budget", type=int)
-    edit_budget = db.execute(
-        "SELECT * FROM household_budgets WHERE id = ?", (edit_budget_id,)
-    ).fetchone() if edit_budget_id else None
-    contacts = db.execute(
-        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
-
     # Piece 55: at-a-glance reporting -- pie chart of expenses, a forward
     # cash-flow projection, and two historical trend charts, all combining
     # both the household and project ledgers.
@@ -5313,15 +5401,11 @@ def household_budget_page():
 
     return render_template(
         "household_budget.html", budget_rows=budget_rows,
-        transactions=transactions, totals=totals, contacts=contacts,
+        transactions=transactions, totals=totals,
         month=month_str, month_label=month_label, show=show,
-        edit_txn=edit_txn, edit_budget=edit_budget,
-        payment_methods=PAYMENT_METHODS, txn_statuses=TXN_STATUSES,
-        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES,
         trend_months=trend_months, horizon_months=horizon_months,
         expense_pie=expense_pie, cash_flow=cash_flow, cash_flow_bars=cash_flow_bars,
-        income_expense_trend=income_expense_trend, category_trend=category_trend,
-        today=datetime.now().strftime("%Y-%m-%d"))
+        income_expense_trend=income_expense_trend, category_trend=category_trend)
 
 
 def _household_txn_form_values():
@@ -5410,6 +5494,39 @@ def _apply_household_txn(db, payload, ref_id, actor_name, draft_file_stored_name
     return True, "Transaction updated.", None
 
 
+@app.route("/budget/transactions/new")
+@admin_required
+def household_txn_new_form():
+    """Piece 83: a standalone New-transaction page, matching the
+    Chores/Habits form pattern instead of an inline card at the bottom
+    of the Budget list."""
+    db = get_db()
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    return render_template(
+        "household_txn_form.html", et=None, contacts=contacts,
+        payment_methods=PAYMENT_METHODS, txn_statuses=TXN_STATUSES,
+        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES,
+        today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/budget/transactions/<int:txn_id>/edit")
+@admin_required
+def household_txn_edit_form(txn_id):
+    db = get_db()
+    et = db.execute("SELECT * FROM household_transactions WHERE id = ?",
+                    (txn_id,)).fetchone()
+    if et is None:
+        abort(404)
+    contacts = db.execute(
+        "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
+    return render_template(
+        "household_txn_form.html", et=et, contacts=contacts,
+        payment_methods=PAYMENT_METHODS, txn_statuses=TXN_STATUSES,
+        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES,
+        today=datetime.now().strftime("%Y-%m-%d"))
+
+
 @app.route("/budget/transactions/new", methods=["POST"])
 @admin_required
 @draftable("household_txn.new")
@@ -5439,7 +5556,7 @@ def household_txn_edit(txn_id):
     payload, errors = _capture_household_txn()
     if errors:
         flash(" ".join(errors), "error")
-        return redirect(url_for("household_budget_page", edit=txn_id))
+        return redirect(url_for("household_txn_edit_form", txn_id=txn_id))
     payload["receipt_filename"] = _save_household_receipt(txn["receipt_filename"])
     actor = current_user()
     ok, message, _ = _apply_household_txn(db, payload, txn_id, actor["name"] if actor else "")
@@ -5486,7 +5603,7 @@ def household_txn_toggle_paid(txn_id):
     ok, _, _ = _apply_household_txn_toggle_paid(db, {}, txn_id, actor["name"] if actor else "")
     if ok:
         db.commit()
-    return redirect(url_for("household_budget_page", _anchor="txn-form"))
+    return redirect(url_for("household_budget_page"))
 
 
 def _capture_household_budget(**_):
@@ -5509,6 +5626,29 @@ def _apply_household_budget(db, payload, ref_id, actor_name, draft_file_stored_n
         "UPDATE household_budgets SET category = ?, monthly_amount = ? WHERE id = ?",
         (category, amount, ref_id))
     return True, "Budget updated.", None
+
+
+@app.route("/budget/categories/new")
+@admin_required
+def household_budget_category_new_form():
+    """Piece 83: a standalone New-budget-category page, matching the
+    Chores/Habits form pattern instead of an inline card at the bottom
+    of the Budget list."""
+    return render_template(
+        "household_budget_category_form.html", eb=None,
+        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES)
+
+
+@app.route("/budget/categories/<int:budget_id>/edit")
+@admin_required
+def household_budget_category_edit_form(budget_id):
+    eb = get_db().execute(
+        "SELECT * FROM household_budgets WHERE id = ?", (budget_id,)).fetchone()
+    if eb is None:
+        abort(404)
+    return render_template(
+        "household_budget_category_form.html", eb=eb,
+        household_budget_categories=HOUSEHOLD_BUDGET_CATEGORIES)
 
 
 @app.route("/budget/categories/new", methods=["POST"])
@@ -5538,7 +5678,7 @@ def household_budget_edit(budget_id):
     payload, errors = _capture_household_budget()
     if errors:
         flash(" ".join(errors), "error")
-        return redirect(url_for("household_budget_page", edit_budget=budget_id))
+        return redirect(url_for("household_budget_category_edit_form", budget_id=budget_id))
     actor = current_user()
     ok, message, _ = _apply_household_budget(db, payload, budget_id, actor["name"] if actor else "")
     db.commit()
@@ -5632,11 +5772,26 @@ def loans_page():
     accounts = [{"row": a, "balance": loan_balance(db, a["id"], a["original_amount"])["balance"]}
                 for a in db.execute("SELECT * FROM loan_accounts ORDER BY name").fetchall()]
     total_balance = sum(a["balance"] for a in accounts)
-    edit_id = request.args.get("edit", type=int)
-    edit_account = db.execute(
-        "SELECT * FROM loan_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
-    return render_template("loans.html", accounts=accounts, edit_account=edit_account,
-                           total_balance=total_balance)
+    return render_template("loans.html", accounts=accounts, total_balance=total_balance)
+
+
+@app.route("/loans/new")
+@admin_required
+def loan_account_new_form():
+    """Piece 83: a standalone New-loan-account page, matching the
+    Chores/Habits form pattern instead of an inline card at the bottom
+    of the list."""
+    return render_template("loan_account_form.html", ea=None)
+
+
+@app.route("/loans/<int:account_id>/edit")
+@admin_required
+def loan_account_edit_form(account_id):
+    ea = get_db().execute(
+        "SELECT * FROM loan_accounts WHERE id = ?", (account_id,)).fetchone()
+    if ea is None:
+        abort(404)
+    return render_template("loan_account_form.html", ea=ea)
 
 
 @app.route("/loans/new", methods=["POST"])
@@ -5665,7 +5820,7 @@ def loan_account_edit(account_id):
     payload, errors = _capture_loan_account()
     if errors:
         flash(" ".join(errors), "error")
-        return redirect(url_for("loans_page", edit=account_id))
+        return redirect(url_for("loan_account_edit_form", account_id=account_id))
     actor = current_user()
     ok, message, _ = _apply_loan_account(db, payload, account_id, actor["name"] if actor else "")
     db.commit()
@@ -5809,11 +5964,27 @@ def savings_page():
                 for a in db.execute("SELECT * FROM savings_accounts ORDER BY name").fetchall()]
     total_balance = sum(a["balance"] for a in accounts)
     total_goal = sum(a["row"]["goal_amount"] for a in accounts if a["row"]["goal_amount"])
-    edit_id = request.args.get("edit", type=int)
-    edit_account = db.execute(
-        "SELECT * FROM savings_accounts WHERE id = ?", (edit_id,)).fetchone() if edit_id else None
-    return render_template("savings.html", accounts=accounts, edit_account=edit_account,
+    return render_template("savings.html", accounts=accounts,
                            total_balance=total_balance, total_goal=total_goal)
+
+
+@app.route("/savings/new")
+@admin_required
+def savings_account_new_form():
+    """Piece 83: a standalone New-savings-account page, matching the
+    Chores/Habits form pattern instead of an inline card at the bottom
+    of the list."""
+    return render_template("savings_account_form.html", ea=None)
+
+
+@app.route("/savings/<int:account_id>/edit")
+@admin_required
+def savings_account_edit_form(account_id):
+    ea = get_db().execute(
+        "SELECT * FROM savings_accounts WHERE id = ?", (account_id,)).fetchone()
+    if ea is None:
+        abort(404)
+    return render_template("savings_account_form.html", ea=ea)
 
 
 @app.route("/savings/new", methods=["POST"])
@@ -5842,7 +6013,7 @@ def savings_account_edit(account_id):
     payload, errors = _capture_savings_account()
     if errors:
         flash(" ".join(errors), "error")
-        return redirect(url_for("savings_page", edit=account_id))
+        return redirect(url_for("savings_account_edit_form", account_id=account_id))
     actor = current_user()
     ok, message, _ = _apply_savings_account(db, payload, account_id, actor["name"] if actor else "")
     db.commit()

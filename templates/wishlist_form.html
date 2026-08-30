@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit wishlist item" if ew else "New wishlist item" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "✎ Edit wishlist item" if ew else "＋ New wishlist item" }}</h1>
+  <a href="{{ url_for('wishlist_page') }}" class="btn btn-secondary">← Wishlist</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('wishlist_edit', item_id=ew['id']) if ew else url_for('wishlist_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Item *</label>
+        <input id="title" name="title" required value="{{ ew['title'] if ew else (prefill['title'] if prefill else '') }}" placeholder="e.g. New bike helmet"></div>
+      <div class="field"><label for="household_member_id">For</label>
+        {% set default_for = ew['household_member_id'] if ew else (current_user['id'] if current_user else none) %}
+        <select id="household_member_id" name="household_member_id">
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if default_for == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="estimated_cost">Estimated cost (optional)</label>
+        <input id="estimated_cost" name="estimated_cost" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ew['estimated_cost']) if ew and ew['estimated_cost'] is not none else '' }}"></div>
+      <div class="field wide"><label for="purchase_url">Purchase URL (optional)</label>
+        <input id="purchase_url" name="purchase_url" value="{{ ew['purchase_url'] if ew else '' }}" placeholder="https://…"></div>
+      <div class="field wide"><label for="description">Description (optional)</label>
+        <input id="description" name="description" value="{{ ew['description'] if ew else '' }}"></div>
+      <div class="field"><label for="inventory_item_id">More of this Inventory item (optional)</label>
+        {% set cur_item = ew['inventory_item_id'] if ew else (prefill['inventory_item_id'] if prefill else none) %}
+        <select id="inventory_item_id" name="inventory_item_id">
+          <option value="">— none —</option>
+          {% for i in inventory_items %}
+          <option value="{{ i['id'] }}" {% if cur_item == i['id'] %}selected{% endif %}>{{ (i['make'] ~ ' ' ~ i['model'])|trim or i['category'] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="project_id">For a project (optional)</label>
+        <select id="project_id" name="project_id">
+          <option value="">— none —</option>
+          {% for p in projects %}
+          <option value="{{ p['id'] }}" {% if ew and ew['project_id'] == p['id'] %}selected{% endif %}>{{ p["job_name"] or "Project #" ~ p["id"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="external_helper_id">From a contact (optional)</label>
+        <select id="external_helper_id" name="external_helper_id">
+          <option value="">— none —</option>
+          {% for c in contacts %}
+          <option value="{{ c['id'] }}" {% if ew and ew['external_helper_id'] == c['id'] %}selected{% endif %}>{{ c["name"] }}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ew else "＋ Add to wishlist" }}</button>
+      <a href="{{ url_for('wishlist_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

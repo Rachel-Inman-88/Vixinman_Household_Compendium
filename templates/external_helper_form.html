@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit contact" if eh else "New contact" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "✎ Edit contact" if eh else "＋ New contact" }}</h1>
+  <a href="{{ url_for('external_helpers_page') }}" class="btn btn-secondary">← Contacts</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('edit_external_helper', helper_id=eh['id']) if eh else url_for('new_external_helper') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field"><label for="kind">Type</label>
+        <select id="kind" name="kind">
+          <option value="Person" {% if not eh or eh['kind'] != 'Organization' %}selected{% endif %}>Person</option>
+          <option value="Organization" {% if eh and eh['kind'] == 'Organization' %}selected{% endif %}>Organization</option>
+        </select></div>
+      <div class="field wide"><label for="name">Name *</label>
+        <input id="name" name="name" required value="{{ eh['name'] if eh else '' }}" placeholder="e.g. Sandia Electric — Mike, or Sunflower Grocery Co-op"></div>
+      <div class="field"><label for="specialty">Specialty / service type</label>
+        <input id="specialty" name="specialty" value="{{ eh['specialty'] if eh else '' }}" placeholder="e.g. Electrician, or Grocery co-op"></div>
+      <div class="field"><label for="phone">Phone</label>
+        <input id="phone" name="phone" value="{{ eh['phone'] if eh else '' }}"></div>
+      <div class="field"><label for="email">Email</label>
+        <input id="email" name="email" type="email" value="{{ eh['email'] if eh else '' }}"></div>
+      <div class="field wide"><label for="notes">Notes</label>
+        <input id="notes" name="notes" value="{{ eh['notes'] if eh else '' }}" placeholder="anything else worth remembering"></div>
+    </div>
+
+    <div id="org-fields" class="form-grid" style="margin-top:0.6rem;">
+      <div class="field"><label for="website">Website</label>
+        <input id="website" name="website" value="{{ eh['website'] if eh else '' }}" placeholder="https://…"></div>
+      <div class="field"><label for="account_number">Account / member number</label>
+        <input id="account_number" name="account_number" value="{{ eh['account_number'] if eh else '' }}"></div>
+      <div class="field"><label for="renewal_date">Renewal date</label>
+        <input id="renewal_date" name="renewal_date" type="date" value="{{ eh['renewal_date'] if eh else '' }}"></div>
+      <div class="field"><label for="contact_person">Main contact person</label>
+        <input id="contact_person" name="contact_person" value="{{ eh['contact_person'] if eh else '' }}" placeholder="who you deal with there"></div>
+      <div class="field"><label for="contact_phone">Their phone</label>
+        <input id="contact_phone" name="contact_phone" value="{{ eh['contact_phone'] if eh else '' }}"></div>
+      <div class="field"><label for="contact_email">Their email</label>
+        <input id="contact_email" name="contact_email" type="email" value="{{ eh['contact_email'] if eh else '' }}"></div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if eh else "＋ Add contact" }}</button>
+      <a href="{{ url_for('external_helpers_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+<script>
+  (function () {
+    var kind = document.getElementById("kind");
+    var orgFields = document.getElementById("org-fields");
+    function sync() { orgFields.style.display = (kind.value === "Organization") ? "" : "none"; }
+    kind.addEventListener("change", sync);
+    sync();
+  })();
+</script>
+{% endblock %}

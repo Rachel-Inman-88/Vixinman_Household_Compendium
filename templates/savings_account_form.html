@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit savings account" if ea else "New savings account" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "Edit savings account" if ea else "＋ New savings account" }}</h1>
+  <a href="{{ url_for('savings_page') }}" class="btn btn-secondary">← Savings</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('savings_account_edit', account_id=ea['id']) if ea else url_for('savings_account_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="name">Name *</label>
+        <input id="name" name="name" required value="{{ ea['name'] if ea else '' }}" placeholder="e.g. Emergency fund, Vacation fund"></div>
+      <div class="field"><label for="institution">Institution</label>
+        <input id="institution" name="institution" value="{{ ea['institution'] if ea else '' }}"></div>
+      <div class="field"><label for="goal_amount">Goal amount $ <span class="muted">(optional)</span></label>
+        <input id="goal_amount" name="goal_amount" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(ea['goal_amount']) if ea else '' }}"></div>
+      <div class="field"><label for="opened_date">Opened</label>
+        <input id="opened_date" name="opened_date" type="date" value="{{ ea['opened_date'] if ea else '' }}"></div>
+      <div class="field wide"><label for="notes">Notes</label>
+        <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ea else "＋ Add savings account" }}</button>
+      <a href="{{ url_for('savings_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

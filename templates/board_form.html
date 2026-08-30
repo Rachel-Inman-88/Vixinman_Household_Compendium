@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}New board{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>＋ New board</h1>
+  <a href="{{ url_for('boards_page') }}" class="btn btn-secondary">← Boards</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('board_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">To-do *</label>
+        <input id="title" name="title" required placeholder="e.g. Clean the shop bathroom"></div>
+      <div class="field"><label for="assigned_to">Send to (optional)</label>
+        <select id="assigned_to" name="assigned_to">
+          <option value="">— unassigned —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="priority">Priority</label>
+        <select id="priority" name="priority">
+          {% for p in priorities %}<option value="{{ p }}">{{ p or "— none —" }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="due_date">Due (optional)</label>
+        <input id="due_date" name="due_date" type="date"></div>
+      <div class="field"><label for="due_time">Due time (optional)</label>
+        <input id="due_time" name="due_time" type="time"></div>
+      <div class="field wide"><label for="details">Details (optional)</label>
+        <input id="details" name="details" placeholder="anything else about the task"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">＋ Add board</button>
+      <a href="{{ url_for('boards_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

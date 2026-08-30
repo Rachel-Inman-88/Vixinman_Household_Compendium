@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit appointment" if ea else "New appointment" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ "✎ Edit appointment" if ea else "＋ New appointment" }}</h1>
+  <a href="{{ url_for('appointments_page') }}" class="btn btn-secondary">← Appointments</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('appointment_edit', appt_id=ea['id']) if ea else url_for('appointment_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="title">Appointment *</label>
+        <input id="title" name="title" required
+               value="{{ ea['title'] if ea else (prefill['title'] if prefill else '') }}"
+               placeholder="e.g. Dentist — Victor"></div>
+      <div class="field"><label for="household_member_id">Assign to (optional)</label>
+        <select id="household_member_id" name="household_member_id">
+          <option value="">— whole household —</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {% if ea and ea['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="external_helper_id">Related contact (optional)</label>
+        {% set cur_contact = ea['external_helper_id'] if ea else (prefill['external_helper_id'] if prefill else none) %}
+        <select id="external_helper_id" name="external_helper_id">
+          <option value="">— none —</option>
+          {% for c in contacts %}
+          <option value="{{ c['id'] }}" {% if cur_contact == c['id'] %}selected{% endif %}>{{ c["name"] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="location">Location (optional)</label>
+        <input id="location" name="location" value="{{ ea['location'] if ea else '' }}" placeholder="e.g. Dr. Smith's office"></div>
+      <div class="field"><label for="when_date">Date *</label>
+        <input id="when_date" name="when_date" type="date" required value="{{ ea['when_date'] if ea else today }}"></div>
+      <div class="field"><label for="when_time">Time (optional)</label>
+        <input id="when_time" name="when_time" type="time" value="{{ ea['when_time'] if ea else '' }}"></div>
+      {% set ea_weekdays = (ea['recurrence_weekdays'] if ea else '')|weekdays %}
+      <div class="field wide">
+        <label for="recurrence_mode">Repeats</label>
+        <select id="recurrence_mode">
+          <option value="interval" {% if not ea_weekdays %}selected{% endif %}>By interval</option>
+          <option value="weekdays" {% if ea_weekdays %}selected{% endif %}>Specific days of the week</option>
+        </select>
+      </div>
+      <div class="field" id="recurrence-interval-mode"><label for="recurrence_preset">Repeats</label>
+        <select id="recurrence_preset" onchange="if(this.value){document.getElementById('recurrence_days').value=this.value;}">
+          {% for days, label in recurrence_presets %}
+          <option value="{{ days }}" {% if (ea['recurrence_days'] if ea and ea['recurrence_days'] else 0) == days %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="">Custom — enter days →</option>
+        </select>
+      </div>
+      <div class="field" id="recurrence-interval-days"><label for="recurrence_days">…or custom (days, blank/0 = one-time)</label>
+        <input id="recurrence_days" name="recurrence_days" type="number" min="0"
+               value="{{ ea['recurrence_days'] if ea and ea['recurrence_days'] else 0 }}"></div>
+      <div class="field wide" id="recurrence-weekday-mode">
+        <label>Which days</label>
+        <div style="display:flex; gap:0.9rem; flex-wrap:wrap; padding:0.3rem 0;">
+          {% for label, num in weekday_options %}
+          <label style="font-weight:400;"><input type="checkbox" name="recurrence_weekdays" value="{{ num }}"
+                 {% if num in ea_weekdays %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field wide"><label for="notes">Notes (optional)</label>
+        <input id="notes" name="notes" value="{{ ea['notes'] if ea else '' }}" placeholder="anything else about it"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if ea else "＋ Add appointment" }}</button>
+      <a href="{{ url_for('appointments_page') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  var mode = document.getElementById("recurrence_mode");
+  var intervalMode = document.getElementById("recurrence-interval-mode");
+  var intervalDays = document.getElementById("recurrence-interval-days");
+  var weekdayMode = document.getElementById("recurrence-weekday-mode");
+  var weekdayBoxes = weekdayMode.querySelectorAll('input[name="recurrence_weekdays"]');
+  function sync() {
+    var weekly = mode.value === "weekdays";
+    intervalMode.style.display = weekly ? "none" : "";
+    intervalDays.style.display = weekly ? "none" : "";
+    weekdayMode.style.display = weekly ? "" : "none";
+    weekdayBoxes.forEach(function (b) { b.disabled = !weekly; });
+  }
+  mode.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}
