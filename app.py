@@ -599,7 +599,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.66"
+VERSION = "0.67"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1086,7 +1086,7 @@ def _file_route_allowed(project_id, record=None):
 
 # Piece 53: which permission (if any) each Help/FAQ section documents. None
 # = no gate, always shown. "admin" is a sentinel for the generic admin gate
-# (used only by #managers, which has no PERMISSIONS key of its own).
+# (used only by #admins, which has no PERMISSIONS key of its own).
 HELP_SECTION_PERMISSION = {
     "rules": "rules.manage",
     "finance": "finances.manage",
@@ -1094,7 +1094,7 @@ HELP_SECTION_PERMISSION = {
     "loans-help": "finances.manage",
     "savings-help": "finances.manage",
     "people": "household.manage",
-    "managers": "admin",
+    "admins": "admin",
 }
 
 
@@ -1706,7 +1706,7 @@ def login():
         except Exception:  # e.g. scrypt hashing backend unavailable in a frozen build
             ok = False
             flash("This account's password can't be verified on this machine "
-                  "(hashing backend unavailable). Ask a manager to reset it, or "
+                  "(hashing backend unavailable). Ask an admin to reset it, or "
                   "reset the local database.", "error")
             return render_template("login.html", next=request.args.get("next", ""))
         if ok:
@@ -1759,12 +1759,12 @@ def _clear_reset_session():
 def forgot_password():
     """Piece 29.1/29.3: step 1 of self-service reset — identify the account. If
     it has security questions enrolled (and isn't suspended), pick a random
-    subset to ask and move to the answer step; otherwise send them to a manager,
+    subset to ask and move to the answer step; otherwise send them to an admin,
     without confirming whether the username exists."""
     if current_user() is not None:
         return redirect(url_for("home"))
     generic = ("If that account has security questions set up, you'll be asked "
-               "some of them next. If not, ask a manager to reset your password.")
+               "some of them next. If not, ask an admin to reset your password.")
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         user = get_db().execute(
@@ -1789,7 +1789,7 @@ def forgot_password():
 def forgot_password_verify():
     """Piece 29.1/29.3: step 2 — answer the randomly-chosen questions (matched
     exactly, case-sensitive) and set a new password directly. Too many wrong
-    tries auto-locks the account and notifies a supervisor."""
+    tries auto-locks the account and notifies an admin."""
     if current_user() is not None:
         return redirect(url_for("home"))
     uid = session.get("pwreset_uid")
@@ -1803,7 +1803,7 @@ def forgot_password_verify():
     questions = [enrolled[i] for i in ask if i in enrolled]
     if not user or len(questions) != len(ask):
         _clear_reset_session()
-        flash("That reset is no longer valid. Ask a manager for help.", "error")
+        flash("That reset is no longer valid. Ask an admin for help.", "error")
         return redirect(url_for("login"))
     if request.method == "POST":
         # Case-sensitive exact match, like a password.
@@ -3066,7 +3066,7 @@ def board_delete(board_id):
                or (me and board["assigned_to"] == me["id"])
                or (me and (board["created_by"] or "") == me["name"]))
     if not allowed:
-        flash("Only the creator, assignee, or a manager can delete this board.", "error")
+        flash("Only the creator, assignee, or an admin can delete this board.", "error")
         return redirect(url_for("board_detail", board_id=board_id))
     db.execute("DELETE FROM board_notes WHERE board_id = ?", (board_id,))
     db.execute("DELETE FROM board_time WHERE board_id = ?", (board_id,))
@@ -8187,7 +8187,8 @@ def _to_float(v):
 
 @app.route("/work-bag")
 def work_bag():
-    """Piece 27.7: the Work Bag landing — just the projects in the worker's bag.
+    """Piece 27.7: the Work Bag landing — just the projects on the signed-in
+    person's own plate.
     Tapping a project opens its own page (work_bag_job) with that project's tasks, hours,
     receipts and notes. The project list is rendered in the browser from the same
     cached /api/my-tasks data, so the landing keeps working offline."""
@@ -8273,8 +8274,8 @@ def work_bag_load_tasks(project_id):
 
 @app.route("/api/my-tasks")
 def api_my_tasks():
-    """The worker's assigned tasks, their still-pending field edits, and a
-    short submission history — as JSON for the Work Bag."""
+    """The signed-in person's assigned tasks, their still-pending field
+    edits, and a short submission history — as JSON for the Work Bag."""
     user = current_user()
     if user is None:
         return jsonify({"error": "not signed in"}), 401
@@ -8336,9 +8337,10 @@ def api_my_tasks():
 
 @app.route("/api/work-bag/submit", methods=["POST"])
 def api_work_bag_submit():
-    """Save the worker's completed field work as a PENDING submission — a
-    copy in the database that does NOT change the authoritative task data
-    until a manager approves it. Hours are a single self-reported total
+    """Save the signed-in person's completed field work as a PENDING
+    submission — a copy in the database that does NOT change the
+    authoritative task data until someone with the approvals permission
+    signs off on it. Hours are a single self-reported total
     (display-only once approved — Piece 35 dropped the pay-type breakdown
     along with payroll)."""
     user = current_user()
@@ -8382,7 +8384,7 @@ def api_work_bag_submit():
 @app.route("/submissions")
 @admin_required
 def submissions_page():
-    """Manager review of field-work submissions: confirm hours and approve
+    """Approval review of field-work submissions: confirm hours and approve
     (applies the task changes + logs hours) or reject."""
     db = get_db()
     show = request.args.get("show", "pending")

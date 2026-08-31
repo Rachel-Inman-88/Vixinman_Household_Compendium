@@ -42,7 +42,7 @@ button below isn't visible to you, you may not have access to it (ask an admin).
     <a href="#inventory">7. Inventory &amp; Wishlist</a>
     <a href="#people">8. People, roles &amp; permissions</a>
     <a href="#notifications">9. Notifications</a>
-    <a href="#managers">10. For admins</a>
+    <a href="#admins">10. For admins</a>
   </div>
 </div>
 
@@ -463,10 +463,10 @@ button below isn't visible to you, you may not have access to it (ask an admin).
 </div>
 
 <!-- 10 -->
-<div class="card" id="managers">
+<div class="card" id="admins">
   <h2>10. For admins</h2>
   <a class="backtop muted" href="#top">↑ contents</a>
-  {% if help_unlocked('managers') %}
+  {% if help_unlocked('admins') %}
   <ul class="steps">
     <li><strong>🔧 Admin → Log</strong>: the audit log of every change (who/what/when), with passwords redacted.</li>
     <li><strong>🔧 Admin → Trash</strong>: deleted items (an admin restores or purges). Deletes are blocked if data is in use.</li>
