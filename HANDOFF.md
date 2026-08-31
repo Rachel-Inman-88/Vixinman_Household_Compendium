@@ -3324,6 +3324,12 @@ Assistant," mirroring "General Assistant" exactly).
   GrapheneOS without Google Play Services) but the user decided against
   building either after reviewing that answer. Not queued for later
   unless asked again.
+- **Assistant-role account UI review — done.** User's original request
+  (start of Piece 76) was a 3-round review: Parent (Piece 76), Child
+  (Piece 79), then Assistant. The user did the Assistant round
+  themselves via a manual click-through (2026-08-31) and confirmed it's
+  essentially the same as the Parent UI — no findings, no action needed.
+  This closes the 3-round review entirely.
 
 **NOT done yet:**
 - **CSV bank-statement import, blocked on the user.** User: "refine
@@ -3338,21 +3344,6 @@ Assistant," mirroring "General Assistant" exactly).
   row, and remind the user to hand it over next time this comes up. Also
   build a flexible column-mapping fallback alongside the NFCU-specific
   matching, so a format change or a second bank doesn't need a rebuild.
-- **Assistant-role account UI review — not started.** User's original
-  request (start of Piece 76): "beginning with the Parent Dashboard...
-  after a complete run through of the parent UI, we'll verify the Child
-  and Assistant UIs respectively." The Parent round (Piece 76) and the
-  Child round (Piece 79, above) are both done. **Piece 79 improved the AI
-  Assistant chat feature itself** (parent-safety notifications, the
-  persistent draft panel) but that's a different thing from reviewing
-  what an **Assistant-role household member's own account** looks like —
-  logging in as one (Gremory, the real household's Assistant-role
-  account) and screenshot-reviewing their dashboard/nav/gated-tab
-  experience has not happened yet. Expect this to surface its own
-  findings distinct from both the Parent and Child rounds, given
-  Assistant's fairly narrow permission bundle (`rules.manage`/
-  `inventory.manage`/`approvals`/`projects.manage`, see Piece 51) and the
-  drafts-based write-interception layer that role uniquely goes through.
 - **Backup-pull scheduled task silently failing since 2026-08-28
   (2026-08-31, found while checking Pixel 9a readiness below).** The
   VPS's own nightly backups are fine, but `CompendiumVPSBackupPull` (the
