@@ -678,6 +678,39 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.67** — **Legacy-artifact sweep, part 4: internal naming.** Final part
+  of the audit — none of this is user-visible (every label checked was
+  already correct), purely internal identifiers renamed for consistency
+  with what the DB table/UI have called things since Piece 35: `employees`
+  → `members` as the variable/context-key name across `app.py` and 13
+  templates (assignee-picker lists on every assignable form — chores,
+  boards, habits, appointments, wishlist, tasks, backlog, project detail);
+  `notify_employees()` → `notify_members()`; `emp_name`/`_emp_name()` (a
+  SQL alias used in 4 different places) → `member_name`/`_member_name()`;
+  `_employee_uses()` → `_household_member_uses()`; the dashboard's
+  Household-overview object (`gm`) → `overview`; the AI Assistant's
+  `staff_directory` tool → `household_directory`; `license_staffing()` →
+  `license_holders()`. Renamed the four `employee_*.html` template files to
+  `member_*.html`/`members.html`, and the Tasks board's `?employee=` filter
+  query param to `?member=`. Deleted `EMPLOYEE_FIELD_LABELS`, a constant
+  that turned out to be entirely dead — never referenced anywhere. Also
+  swept up the `crew`/`Foreman` code comments deferred from the previous
+  piece, and pruned two solar-permitting-specific keywords ("doc tube",
+  "meter set") out of the still-live `PHOTO_STEP_KEYWORDS` list — the
+  camera-required-task detector was still carrying them from the original
+  BPMN process, though they'd never realistically match a household task
+  title. Fixed a stale comment claiming the ledger still "feeds the
+  QuickBooks reports" (that export was removed pieces ago). **Deliberately
+  left alone**, on purpose, because they're pinned to already-stored data
+  or files on disk, not just naming: the `TRASH_REGISTRY` entity-type
+  strings `"employee"`/`"employee_file"` (renaming these would orphan any
+  already-trashed household-member records) and the `employee_<id>/`
+  upload-directory naming convention (renaming would orphan already-
+  uploaded files) — both already flagged this way in an existing schema.sql
+  comment, not a new decision. Also left the one-time migration code that
+  matches literal old table/column names like `"employees"` and
+  `'%General Manager%'` — that's supposed to say that, it's reading
+  historical data shapes, not describing anything current.
 - **v0.66** — **Condense & restart for the Project Assistant.** A new
   **🧵 Condense & restart** button on a project's 🧠 Plan tab (shown once
   the conversation has at least one message): summarizes the whole
