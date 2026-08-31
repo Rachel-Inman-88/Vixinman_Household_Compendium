@@ -169,6 +169,7 @@ always-on one.
 | `/etc/caddy/Caddyfile` | The **live** Caddy config — a *copy* of `deploy/Caddyfile`, same caveat |
 | `compendium`'s crontab | The nightly backup schedule — lives in the system's cron subsystem, not in git at all. View it with `sudo crontab -u compendium -l` |
 | the `compendium` user | A dedicated, low-privilege system account the app runs as — not `root` |
+| VPS system timezone | `America/Denver` (Piece 84) — **must** match the household's real timezone, since `app.py` computes "today" via plain `datetime.now()` with no timezone conversion of its own. A DigitalOcean droplet defaults to `Etc/UTC`; check with `timedatectl` after any reprovision. See Section 6's troubleshooting entry if dates look a day off. |
 
 ---
 
@@ -279,6 +280,23 @@ exactly `@` for the bare domain (e.g. `jstellarcomp.com`) or the
 specific subdomain you're using (e.g. `home` for
 `home.jstellarcomp.com`) — and confirm which one the Caddyfile is
 actually configured for.
+
+**Dates in the app look a day off, especially in the evening (Piece 84)**
+The app has no timezone logic of its own — every "today"/"this month"
+calculation is plain `datetime.now()`, i.e. whatever timezone the VPS's
+system clock is set to. If the VPS ever gets reprovisioned or its
+timezone drifts back to the DigitalOcean default (`Etc/UTC`), the app's
+notion of "today" flips over at UTC midnight — late afternoon/evening in
+Mountain Time — so chores/appointments due "today," dashboard dates, and
+budget month boundaries will all show tomorrow's date for the rest of
+the evening. Fix:
+```bash
+timedatectl set-timezone America/Denver
+sudo systemctl restart compendium
+```
+Confirm with `timedatectl` (should read `America/Denver (MDT/MST, ...)`,
+not `Etc/UTC`) — no code change needed either way, this is purely a
+server setting.
 
 **Can't log in — "Too many failed attempts, try again in 15 minutes"**
 This is the login rate-limiter working as designed (8 failed attempts
