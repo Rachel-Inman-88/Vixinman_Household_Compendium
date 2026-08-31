@@ -599,7 +599,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.64"
+VERSION = "0.65"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1157,6 +1157,8 @@ VIEW_PERMISSION = {
     "inventory_tool_edit": "inventory.manage",
     "inventory_vehicle_new": "inventory.manage",
     "inventory_vehicle_edit": "inventory.manage",
+    "inventory_maintenance_new": "inventory.manage",
+    "inventory_maintenance_edit": "inventory.manage",
     # Piece 51: household Budget + a project's own billing ledger are
     # finances.manage -- viewing is gated too (not just editing), since a
     # Child must not see finances at all, unlike every other .manage
@@ -1532,6 +1534,10 @@ TRASH_REGISTRY = {
                           "label": lambda r: r["name"] or "Vehicle",
                           "found_in": lambda db, r: "Inventory — Vehicles",
                           "in_use": lambda db, r: []},
+    "inventory_maintenance_task": {"table": "inventory_maintenance_tasks",
+                                   "label": lambda r: r["name"] or "Maintenance task",
+                                   "found_in": lambda db, r: "Inventory — Maintenance",
+                                   "in_use": lambda db, r: []},
 }
 
 
@@ -2427,6 +2433,15 @@ def init_db():
                    " ('inventory_rehaul_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         db.commit()
+    # Piece 88: current_mileage is numeric -- added directly rather than via
+    # ensure_columns() (which always adds TEXT columns), same reasoning as
+    # inventory_items.quantity above. Unguarded (unlike the block above) so
+    # it also reaches a database that already ran inventory_rehaul_v1.
+    try:
+        db.execute(
+            "ALTER TABLE inventory_vehicles ADD COLUMN current_mileage INTEGER")
+    except sqlite3.OperationalError:
+        pass
     # Piece 76: an optional second-level grouping under a category (e.g.
     # category "Hobbies", subcategory "Sewing"/"Clay"/"Beading"). Purely
     # additive -- no meta guard needed, ensure_columns() is already idempotent.
@@ -6756,9 +6771,48 @@ def inventory_page():
     vehicles = db.execute(
         "SELECT * FROM inventory_vehicles WHERE active = 1"
         " ORDER BY category, name").fetchall()
+    # Piece 88: one maintenance schedule across every vehicle and tool,
+    # worst-status-first -- the Navy PMS "single schedule board" shape.
+    maint_rows = db.execute(
+        "SELECT m.*, v.name AS vehicle_name, v.current_mileage AS vehicle_mileage,"
+        " t.name AS tool_name FROM inventory_maintenance_tasks m"
+        " LEFT JOIN inventory_vehicles v ON v.id = m.vehicle_id"
+        " LEFT JOIN inventory_tools t ON t.id = m.tool_id"
+        " WHERE m.active = 1").fetchall()
+    status_rank = {"overdue": 0, "due_soon": 1, "ok": 2}
+    maintenance = []
+    maint_by_vehicle, maint_by_tool = {}, {}
+    for m in maint_rows:
+        status = _maintenance_status(m["next_due"], m["next_due_mileage"], m["vehicle_mileage"])
+        every_bits = []
+        if m["recurrence_days"]:
+            every_bits.append(f"{m['recurrence_days']} days")
+        if m["recurrence_miles"]:
+            every_bits.append(f"{m['recurrence_miles']:,} mi")
+        due_bits = []
+        if m["next_due"]:
+            due_bits.append(m["next_due"])
+        if m["next_due_mileage"] is not None:
+            due_bits.append(f"{m['next_due_mileage']:,} mi")
+        maintenance.append({
+            "id": m["id"], "name": m["name"], "notes": m["notes"],
+            "equipment": m["vehicle_name"] or m["tool_name"] or "—",
+            "vehicle_id": m["vehicle_id"], "status": status,
+            "every_label": " / ".join(every_bits) or "—",
+            "due_label": " · ".join(due_bits) or "—",
+            "last_completed_at": m["last_completed_at"] or None,
+        })
+        bucket = (maint_by_vehicle.setdefault(m["vehicle_id"], {"count": 0, "overdue": 0})
+                  if m["vehicle_id"] else
+                  maint_by_tool.setdefault(m["tool_id"], {"count": 0, "overdue": 0}))
+        bucket["count"] += 1
+        if status == "overdue":
+            bucket["overdue"] += 1
+    maintenance.sort(key=lambda x: (status_rank[x["status"]], x["due_label"]))
     return render_template(
         "inventory.html", sections=sections, tools=tools, vehicles=vehicles,
-        item_total=len(items))
+        maintenance=maintenance, maint_by_vehicle=maint_by_vehicle,
+        maint_by_tool=maint_by_tool, item_total=len(items))
 
 
 def _inventory_category_choices(db):
@@ -6986,6 +7040,8 @@ def _vehicle_form_values():
         "purchase_url": request.form.get("purchase_url", "").strip(),
         "manual_url": request.form.get("manual_url", "").strip(),
         "notes": request.form.get("notes", "").strip(),
+        "current_mileage": (lambda m: int(m) if m is not None else None)(
+            _to_float(request.form.get("current_mileage"))),
     }
 
 
@@ -6999,22 +7055,236 @@ def _apply_inventory_vehicle(db, payload, ref_id, actor_name, draft_file_stored_
     if ref_id is None:
         db.execute(
             "INSERT INTO inventory_vehicles (name, nickname, category, make, model,"
-            " year, description, purchased_from, cost, purchase_url, manual_url, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " year, description, purchased_from, cost, purchase_url, manual_url, notes,"
+            " current_mileage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (v["name"], v["nickname"], v["category"], v["make"], v["model"],
              v["year"], v["description"], v["purchased_from"], v["cost"],
-             v["purchase_url"], v["manual_url"], v["notes"]))
+             v["purchase_url"], v["manual_url"], v["notes"], v["current_mileage"]))
         return True, f"Added: {v['name']}.", None
     if db.execute("SELECT 1 FROM inventory_vehicles WHERE id = ?", (ref_id,)).fetchone() is None:
         return False, "That vehicle no longer exists.", None
     db.execute(
         "UPDATE inventory_vehicles SET name = ?, nickname = ?, category = ?,"
         " make = ?, model = ?, year = ?, description = ?, purchased_from = ?,"
-        " cost = ?, purchase_url = ?, manual_url = ?, notes = ? WHERE id = ?",
+        " cost = ?, purchase_url = ?, manual_url = ?, notes = ?,"
+        " current_mileage = ? WHERE id = ?",
         (v["name"], v["nickname"], v["category"], v["make"], v["model"],
          v["year"], v["description"], v["purchased_from"], v["cost"],
-         v["purchase_url"], v["manual_url"], v["notes"], ref_id))
+         v["purchase_url"], v["manual_url"], v["notes"], v["current_mileage"], ref_id))
     return True, "Vehicle updated.", None
+
+
+# --- Maintenance CRUD (Piece 88) --------------------------------------------
+# Modeled on the Navy's Planned Maintenance System: a task names what has to
+# happen and how often it comes due (by days, by miles, or both for a
+# vehicle); marking one done logs the event and recomputes when it's next
+# due, the same shape Chores already uses for recurrence.
+MAINTENANCE_DUE_SOON_DAYS = 14
+MAINTENANCE_DUE_SOON_MILES = 500
+
+
+def _maintenance_status(next_due, next_due_mileage, current_mileage):
+    """('overdue' / 'due_soon' / 'ok') -- overdue wins if either the date or
+    the mileage measure is past due; due_soon if either is inside its
+    warning window and neither is overdue yet."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    soon_date = (datetime.now() + timedelta(days=MAINTENANCE_DUE_SOON_DAYS)).strftime("%Y-%m-%d")
+    date_state = None
+    if next_due:
+        date_state = "overdue" if next_due < today else ("due_soon" if next_due <= soon_date else "ok")
+    mile_state = None
+    if next_due_mileage is not None and current_mileage is not None:
+        remaining = next_due_mileage - current_mileage
+        mile_state = "overdue" if remaining < 0 else ("due_soon" if remaining <= MAINTENANCE_DUE_SOON_MILES else "ok")
+    states = [s for s in (date_state, mile_state) if s]
+    if not states:
+        return "ok"
+    if "overdue" in states:
+        return "overdue"
+    return "due_soon" if "due_soon" in states else "ok"
+
+
+def _maintenance_form_values():
+    """The equipment picker is one <select> (value "v-3" / "t-5") rather
+    than two separate fields, so exactly one of vehicle_id/tool_id is ever
+    set without extra validation. next_due only defaults to today when a
+    day-based interval is actually in play -- otherwise a mileage-only task
+    would read as "due soon" the instant it's created, from the date
+    placeholder alone. next_due_mileage, left blank, is backfilled from the
+    vehicle's own current_mileage + the interval, same idea."""
+    kind, _, raw_id = request.form.get("equipment", "").partition("-")
+    target_id = int(raw_id) if raw_id.isdigit() else None
+    days_raw = request.form.get("recurrence_days", "").strip()
+    miles_raw = request.form.get("recurrence_miles", "").strip()
+    days = int(_to_float(days_raw)) if days_raw else None
+    miles = int(_to_float(miles_raw)) if (miles_raw and kind == "v") else None
+    next_due = request.form.get("next_due", "").strip() \
+        or (datetime.now().strftime("%Y-%m-%d") if days else "")
+    due_mileage_raw = request.form.get("next_due_mileage", "").strip()
+    next_due_mileage = int(_to_float(due_mileage_raw)) if (due_mileage_raw and kind == "v") else None
+    if next_due_mileage is None and miles and kind == "v" and target_id:
+        current = get_db().execute(
+            "SELECT current_mileage FROM inventory_vehicles WHERE id = ?",
+            (target_id,)).fetchone()
+        if current and current["current_mileage"] is not None:
+            next_due_mileage = current["current_mileage"] + miles
+    return {
+        "vehicle_id": target_id if kind == "v" else None,
+        "tool_id": target_id if kind == "t" else None,
+        "name": request.form.get("name", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+        "recurrence_days": days,
+        "recurrence_miles": miles,
+        "next_due": next_due,
+        "next_due_mileage": next_due_mileage,
+    }
+
+
+def _capture_inventory_maintenance(**_):
+    v = _maintenance_form_values()
+    errors = []
+    if not (v["vehicle_id"] or v["tool_id"]):
+        errors.append("Choose which vehicle or tool this task is for.")
+    if not v["name"]:
+        errors.append("A task name is required.")
+    if not v["recurrence_days"] and not v["recurrence_miles"]:
+        errors.append("Set how often this comes due — by days, or (for a vehicle) by miles.")
+    return {"values": v}, errors
+
+
+def _apply_inventory_maintenance(db, payload, ref_id, actor_name, draft_file_stored_name=None, exclude_id=None):
+    v = payload["values"]
+    if ref_id is None:
+        db.execute(
+            "INSERT INTO inventory_maintenance_tasks (vehicle_id, tool_id, name, notes,"
+            " recurrence_days, recurrence_miles, next_due, next_due_mileage, created_by)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["vehicle_id"], v["tool_id"], v["name"], v["notes"], v["recurrence_days"],
+             v["recurrence_miles"], v["next_due"], v["next_due_mileage"], actor_name))
+        return True, f"Added maintenance task: {v['name']}.", None
+    if db.execute("SELECT 1 FROM inventory_maintenance_tasks WHERE id = ?", (ref_id,)).fetchone() is None:
+        return False, "That maintenance task no longer exists.", None
+    db.execute(
+        "UPDATE inventory_maintenance_tasks SET vehicle_id = ?, tool_id = ?, name = ?,"
+        " notes = ?, recurrence_days = ?, recurrence_miles = ?, next_due = ?,"
+        " next_due_mileage = ? WHERE id = ?",
+        (v["vehicle_id"], v["tool_id"], v["name"], v["notes"], v["recurrence_days"],
+         v["recurrence_miles"], v["next_due"], v["next_due_mileage"], ref_id))
+    return True, "Maintenance task updated.", None
+
+
+def _maintenance_equipment_choices(db):
+    vehicles = db.execute(
+        "SELECT id, name FROM inventory_vehicles WHERE active = 1 ORDER BY name").fetchall()
+    tools = db.execute(
+        "SELECT id, name FROM inventory_tools WHERE active = 1 ORDER BY name").fetchall()
+    return vehicles, tools
+
+
+@app.route("/inventory/maintenance/new", methods=["GET", "POST"])
+@admin_required
+@draftable("inventory.maintenance.new")
+def inventory_maintenance_new():
+    """Add a recurring maintenance task to a vehicle or tool."""
+    db = get_db()
+    if request.method == "POST":
+        payload, errors = _capture_inventory_maintenance()
+        if errors:
+            flash(" ".join(errors), "error")
+            return redirect(url_for("inventory_maintenance_new", equipment=request.form.get("equipment", "")))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_maintenance(db, payload, None, actor["name"] if actor else "")
+        db.commit()
+        flash(message, "" if ok else "error")
+        return redirect(url_for("inventory_page", _anchor="maintenance"))
+    vehicles, tools = _maintenance_equipment_choices(db)
+    return render_template(
+        "inventory_maintenance_form.html", task=None, log=None, vehicles=vehicles, tools=tools,
+        preselect=request.args.get("equipment", ""), today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/inventory/maintenance/<int:task_id>/edit", methods=["GET", "POST"])
+@admin_required
+@draftable("inventory.maintenance.edit", ref_id_kwarg="task_id")
+def inventory_maintenance_edit(task_id):
+    """Update a maintenance task in place."""
+    db = get_db()
+    row = db.execute("SELECT * FROM inventory_maintenance_tasks WHERE id = ?",
+                     (task_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if request.method == "POST":
+        payload, errors = _capture_inventory_maintenance()
+        if errors:
+            flash(" ".join(errors), "error")
+            return redirect(url_for("inventory_maintenance_edit", task_id=task_id))
+        actor = current_user()
+        ok, message, _ = _apply_inventory_maintenance(
+            db, payload, task_id, actor["name"] if actor else "")
+        db.commit()
+        flash(message, "" if ok else "error")
+        return redirect(url_for("inventory_page", _anchor="maintenance"))
+    vehicles, tools = _maintenance_equipment_choices(db)
+    preselect = ("v-%d" % row["vehicle_id"]) if row["vehicle_id"] else ("t-%d" % row["tool_id"])
+    log = db.execute(
+        "SELECT * FROM inventory_maintenance_log WHERE task_id = ?"
+        " ORDER BY performed_at DESC LIMIT 10", (task_id,)).fetchall()
+    return render_template(
+        "inventory_maintenance_form.html", task=dict(row), log=log, vehicles=vehicles,
+        tools=tools, preselect=preselect, today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/inventory/maintenance/<int:task_id>/done", methods=["POST"])
+def inventory_maintenance_done(task_id):
+    """Log a completed service and roll the task's next-due date/mileage
+    forward -- open to anyone signed in, same as chore_done (logging that
+    something happened isn't as sensitive as defining the schedule)."""
+    db = get_db()
+    task = db.execute("SELECT * FROM inventory_maintenance_tasks WHERE id = ?",
+                      (task_id,)).fetchone()
+    if task is None:
+        abort(404)
+    me = current_user()
+    today = datetime.now()
+    mileage_raw = request.form.get("mileage", "").strip()
+    mileage = int(_to_float(mileage_raw)) if mileage_raw else None
+    next_due = (_advance_recurrence(today, task["recurrence_days"], "").strftime("%Y-%m-%d")
+                if task["recurrence_days"] else task["next_due"])
+    next_due_mileage = (mileage + task["recurrence_miles"]
+                        if mileage is not None and task["recurrence_miles"]
+                        else task["next_due_mileage"])
+    db.execute(
+        "INSERT INTO inventory_maintenance_log (task_id, mileage, performed_by, notes)"
+        " VALUES (?, ?, ?, ?)",
+        (task_id, mileage, me["name"] if me else "", request.form.get("notes", "").strip()))
+    db.execute(
+        "UPDATE inventory_maintenance_tasks SET last_completed_at = ?,"
+        " last_completed_mileage = ?, last_completed_by = ?, next_due = ?,"
+        " next_due_mileage = ? WHERE id = ?",
+        (today.strftime("%Y-%m-%d"), mileage, me["name"] if me else "",
+         next_due, next_due_mileage, task_id))
+    if mileage is not None and task["vehicle_id"]:
+        # Keep the vehicle's own odometer reading current from whatever was
+        # logged at the most recent service -- one fewer thing to update by hand.
+        db.execute("UPDATE inventory_vehicles SET current_mileage = ? WHERE id = ?",
+                  (mileage, task["vehicle_id"]))
+    db.commit()
+    flash(f"Marked done: {task['name']}.")
+    return redirect(url_for("inventory_page", _anchor="maintenance"))
+
+
+@app.route("/inventory/maintenance/<int:task_id>/delete", methods=["POST"])
+@delete_required
+def inventory_maintenance_delete(task_id):
+    """Send a maintenance task to the trash (restorable, GM-only). Its log
+    isn't FK-enforced (see schema.sql), so it's cleared explicitly first --
+    same convention as habit_delete()."""
+    db = get_db()
+    db.execute("DELETE FROM inventory_maintenance_log WHERE task_id = ?", (task_id,))
+    ok, msg = trash_item("inventory_maintenance_task", task_id)
+    db.commit()
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("inventory_page", _anchor="maintenance"))
 
 
 @app.route("/inventory/vehicles/new", methods=["GET", "POST"])
@@ -9168,6 +9438,12 @@ DRAFT_KINDS = {
     "inventory.vehicle.edit": {
         "label": "Vehicle edit", "capture": _capture_inventory_vehicle,
         "apply": _apply_inventory_vehicle, "summarize": lambda p: p["values"]["name"]},
+    "inventory.maintenance.new": {
+        "label": "New maintenance task", "capture": _capture_inventory_maintenance,
+        "apply": _apply_inventory_maintenance, "summarize": lambda p: p["values"]["name"]},
+    "inventory.maintenance.edit": {
+        "label": "Maintenance task edit", "capture": _capture_inventory_maintenance,
+        "apply": _apply_inventory_maintenance, "summarize": lambda p: p["values"]["name"]},
     "household_member.new": {
         "label": "New household member", "capture": _capture_household_member,
         "apply": _apply_household_member, "summarize": lambda p: p["values"]["name"]},

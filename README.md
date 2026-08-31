@@ -678,6 +678,23 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.65** — **Maintenance tracking for vehicles and tools.** A new
+  🔧 Maintenance section on the Inventory page — one schedule across every
+  vehicle and tool, modeled on the Navy's Planned Maintenance System: a
+  task names what has to happen (e.g. "Oil change") and how often it comes
+  due, by days, by miles (vehicles only), or both. Each vehicle also gets
+  a **Current mileage** field; leaving a task's mileage-due target blank
+  auto-fills it from the vehicle's current mileage plus the interval, and
+  logging a completed service with an odometer reading keeps the vehicle's
+  own mileage current automatically — one less thing to update by hand.
+  Marking a task done logs it to a per-task service history (date, mileage,
+  who, notes) and rolls the next-due date/mileage forward, the same
+  "recompute on completion" shape Chores already uses. Status reads as
+  overdue/due soon/ok (reusing the app's existing danger/warn badges), and
+  each vehicle/tool row gets a small 🔧 count badge linking into the
+  schedule. Creating and editing tasks is gated by `inventory.manage`
+  (same as adding a vehicle or tool); marking one done is open to anyone
+  signed in, same as a Chore.
 - **v0.64** — **Fixed: "Repeat last" wasn't actually right-aligned on
   phones.** A follow-up correction to v0.63 — the user's original ask
   was about the always-visible **🔁 Repeat last** button (next to Ask/

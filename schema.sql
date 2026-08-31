@@ -707,6 +707,44 @@ CREATE TABLE IF NOT EXISTS inventory_vehicles (
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 88: recurring maintenance for the household's owned equipment,
+-- modeled on the Navy's Planned Maintenance System -- a task defines what
+-- has to happen and how often (by days, by miles, or both for a vehicle),
+-- and next_due/next_due_mileage get recomputed each time it's checked off.
+-- Exactly one of vehicle_id/tool_id is set per task. Same "next_due,
+-- recompute on completion" shape routine_tasks (Chores) already uses.
+CREATE TABLE IF NOT EXISTS inventory_maintenance_tasks (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id              INTEGER REFERENCES inventory_vehicles(id),
+    tool_id                 INTEGER REFERENCES inventory_tools(id),
+    name                    TEXT NOT NULL DEFAULT '',
+    notes                   TEXT DEFAULT '',
+    recurrence_days         INTEGER,          -- NULL = mileage-only interval
+    recurrence_miles        INTEGER,          -- vehicles only; NULL = time-only interval
+    next_due                TEXT DEFAULT '',  -- YYYY-MM-DD
+    next_due_mileage        INTEGER,
+    last_completed_at       TEXT DEFAULT '',
+    last_completed_mileage  INTEGER,
+    last_completed_by       TEXT DEFAULT '',
+    active                  INTEGER NOT NULL DEFAULT 1,
+    created_by              TEXT DEFAULT '',
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per completed maintenance check-off -- the service history log.
+-- Same "log-shaped child table, no FK enforcement" convention as
+-- habit_checkins (deleting a task explicitly clears its own log rows first,
+-- see inventory_maintenance_delete()).
+CREATE TABLE IF NOT EXISTS inventory_maintenance_log (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id        INTEGER NOT NULL,
+    performed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    mileage        INTEGER,
+    performed_by   TEXT DEFAULT '',
+    notes          TEXT DEFAULT '',
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 48: persisted brainstorm chat, scoped to one project (the "🧠 Plan"
 -- tab on project_detail.html). role is 'user' or 'assistant'; author is the
 -- household member's display name for a user turn, blank for an assistant turn.

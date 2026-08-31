@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit maintenance task" if task else "New maintenance task" }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>🔧 {{ "Edit maintenance task" if task else "New maintenance task" }}</h1>
+  <a href="{{ url_for('inventory_page', _anchor='maintenance') }}" class="btn btn-secondary">← Back to Inventory</a>
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('inventory_maintenance_edit', task_id=task['id']) if task else url_for('inventory_maintenance_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field wide"><label for="equipment">Vehicle or tool *</label>
+        <select id="equipment" name="equipment" required>
+          <option value="">— choose —</option>
+          {% if vehicles %}
+          <optgroup label="Vehicles">
+            {% for v in vehicles %}
+            <option value="v-{{ v['id'] }}" {% if preselect == 'v-' ~ v['id'] %}selected{% endif %}>{{ v["name"] }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if tools %}
+          <optgroup label="Tools">
+            {% for t in tools %}
+            <option value="t-{{ t['id'] }}" {% if preselect == 't-' ~ t['id'] %}selected{% endif %}>{{ t["name"] }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+        </select></div>
+      <div class="field wide"><label for="name">Task *</label>
+        <input id="name" name="name" required value="{{ task['name'] if task else '' }}" placeholder="e.g. Oil change, Blade sharpening, Filter replacement"></div>
+      <div class="field"><label for="recurrence_days">Every (days)</label>
+        <input id="recurrence_days" name="recurrence_days" type="number" min="1" value="{{ task['recurrence_days'] if task and task['recurrence_days'] is not none else '' }}" placeholder="e.g. 180"></div>
+      <div class="field" id="mileage-interval-field"><label for="recurrence_miles">…and/or every (miles, vehicles only)</label>
+        <input id="recurrence_miles" name="recurrence_miles" type="number" min="1" value="{{ task['recurrence_miles'] if task and task['recurrence_miles'] is not none else '' }}" placeholder="e.g. 5000"></div>
+      <div class="field"><label for="next_due">Next due (date)</label>
+        <input id="next_due" name="next_due" type="date" value="{{ task['next_due'] if task and task['next_due'] else '' }}" placeholder="leave blank if this is mileage-only"></div>
+      <div class="field" id="mileage-due-field"><label for="next_due_mileage">Next due (mileage, vehicles only)</label>
+        <input id="next_due_mileage" name="next_due_mileage" type="number" min="0" value="{{ task['next_due_mileage'] if task and task['next_due_mileage'] is not none else '' }}" placeholder="e.g. 89000"></div>
+      <div class="field wide"><label for="notes">Notes / procedure (optional)</label>
+        <input id="notes" name="notes" value="{{ task['notes'] if task else '' }}" placeholder="e.g. 5W-30, torque to spec, filter part #"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">{{ "Save changes" if task else "＋ Add task" }}</button>
+      <a href="{{ url_for('inventory_page', _anchor='maintenance') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% if task %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1rem;">Service history</h2>
+  {% if log %}
+  <table>
+    <thead><tr><th>Date</th><th>Mileage</th><th>By</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for l in log %}
+      <tr>
+        <td style="white-space:nowrap;">{{ l["performed_at"][:10] }}</td>
+        <td>{{ l["mileage"] if l["mileage"] is not none else "—" }}</td>
+        <td class="muted">{{ l["performed_by"] or "—" }}</td>
+        <td class="muted">{{ l["notes"] or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted" style="margin:0;">Not logged done yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('inventory_maintenance_delete', task_id=task['id']) }}"
+        onsubmit="return confirm('Move this maintenance task to the trash?');" style="margin:0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-secondary" style="color:#b02a2a !important; border-color:#b02a2a;">🗑 Move to trash</button>
+  </form>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  // Mileage-based fields only make sense for a vehicle -- hidden (and
+  // disabled, so a leftover value from switching equipment isn't silently
+  // submitted) whenever a tool is selected.
+  var sel = document.getElementById("equipment");
+  var mileageFields = [document.getElementById("mileage-interval-field"),
+                        document.getElementById("mileage-due-field")];
+  function sync() {
+    var isVehicle = sel.value.indexOf("v-") === 0;
+    mileageFields.forEach(function (f) {
+      f.style.display = isVehicle ? "" : "none";
+      f.querySelector("input").disabled = !isVehicle;
+    });
+  }
+  sel.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}
