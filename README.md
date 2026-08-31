@@ -678,6 +678,20 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.65** — **Condense & restart for the Project Assistant.** A new
+  **🧵 Condense & restart** button on a project's 🧠 Plan tab (shown once
+  the conversation has at least one message): summarizes the whole
+  conversation, saves that summary as a project note, then clears the chat
+  and reseeds it with the summary as the new first turn. Lets a long
+  brainstorm keep going without every future message re-sending the whole
+  raw history — `project_plan_ask()` already only sends the last 20 turns
+  per request, but condensing keeps the *gist* of everything before that,
+  not just a sliding window of the most recent bit. The summary is also a
+  standing, readable record on the project (via the existing Field notes
+  card) even if you never come back to continue the chat. A Child's
+  not-yet-reported messages are reported to parents immediately if a
+  condense clears them, so this can't be used to dodge the existing
+  Plan-tab safety notifications (Piece 79).
 - **v0.64** — **Fixed: "Repeat last" wasn't actually right-aligned on
   phones.** A follow-up correction to v0.63 — the user's original ask
   was about the always-visible **🔁 Repeat last** button (next to Ask/

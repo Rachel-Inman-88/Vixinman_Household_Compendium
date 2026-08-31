@@ -2939,6 +2939,50 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 89 (v0.65): Condense & restart for the Project Assistant — done.**
+User asked for a way to condense the current Plan-tab conversation, save it
+as a project note, and restart the conversation using the condensed note
+for context, to save context-window size on long brainstorms.
+- New `POST /projects/<id>/plan/condense`: sends the *entire*
+  `project_plan_messages` history (not the 20-turn window
+  `project_plan_ask()` uses per live turn) to a new, purpose-written
+  `PROJECT_PLAN_CONDENSE_SYSTEM_PROMPT` (plain-prose handoff recap, no
+  TASK:/SECTION:/FLAG: lines — those only mean something inside the live
+  chat), saves the result to `project_notes` (reusing the existing table
+  and the Field notes card — no new schema), clears the conversation, then
+  reseeds it with one new assistant-role turn containing the recap, so the
+  next live message already has that context without the user re-pasting
+  anything.
+- **A real safety gap caught before it shipped, not after**: the Plan tab
+  is open to a Child like anyone else, and the household's existing
+  parent-safety feature (`ensure_assistant_safety_notifications()`, Piece
+  79) only ever reports a Child's Plan-tab messages once their
+  conversation goes idle for a while. A naive "just delete the messages"
+  implementation would have let a Child's conversation disappear via
+  Condense before that idle window ever elapsed — a silent bypass of an
+  existing safety guarantee, not a new restriction, but a real regression
+  this feature would otherwise have introduced. Fixed by reporting any
+  not-yet-reported Child messages to every parent *immediately*, right
+  before they're cleared, phrased for the condense event ("condensed &
+  restarted just now") instead of the idle-timeout phrasing — same
+  `notify_employees()`/`_safety_hours_label()` machinery Piece 79 already
+  uses, just triggered on a different event.
+- Front end: a **🧵 Condense & restart** button appears above the chat once
+  it has at least one message, confirms before doing anything (conversation
+  gets cleared, even though the content survives as a note), then updates
+  the chat in place via the same `fetch()`/`bubble()` pattern the rest of
+  this chat already uses — no page reload.
+- Verified live against the real app (not just code review): condensed a
+  real multi-turn conversation with a live Claude call, confirmed the note
+  landed on the project's Field notes card with the right author, the old
+  messages were gone and replaced by exactly one seed turn, the "nothing to
+  condense yet" 400 fires cleanly (and is a no-op — no note, no deletion)
+  for a project with no messages yet, and — the one that mattered most —
+  seeded an unreported Child message, condensed as a different user, and
+  confirmed both parents got a notification before the message was cleared.
+- No schema changes — reuses `project_notes` and `project_plan_messages` as
+  they already exist.
+
 **Piece 87 (v0.64): "Repeat last" alignment fix — done.** User reported
 after using Piece 86 live on their phone: "the retry button is still to
 the left, not the right" — then, on a screenshot exchange, clarified
