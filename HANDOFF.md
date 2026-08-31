@@ -2939,6 +2939,63 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 90 (v0.67): legacy-artifact sweep, part 1 (visible text) — done.**
+User asked for one more full audit of the repo for anything still a
+leftover from the original solar-installation-business codebase ("ECC
+Solar"/"Solbiz"), to be removed or renamed. Ran a thorough read-only
+sweep first (grep across every file, not assuming prior cleanup passes
+caught everything — several hadn't) rather than guessing at scope, then
+agreed with the user to work through the findings as a sequence of small
+pieces rather than one giant change. This piece is part 1: everything a
+person actually sees or reads.
+- **Browser tab title** (`templates/base.html`): every page's `<title>`
+  still ended in "· Vixinman Designs" — the single most visible leftover,
+  already flagged as known-unfixed in `docs/HANDOFF.md`. Now "· Compendium",
+  matching the nav brand and footer.
+- **`LICENSE`**: copyright holder and "internal business use by authorized
+  personnel" framing rewritten for "the Vixinman household"/"authorized
+  family members."
+- **"GM"/"General Manager"**: a live delete-permission error message
+  (`flash("Deleting is limited to the General Manager (or staff granted...")`)
+  and five docstrings ("restorable, GM-only") all referenced a role that
+  doesn't exist in the current permission model (just `is_admin` +
+  `permission_grants`) — reworded to "admin". Left the one *migration*
+  query that matches old data by the literal string `'%General Manager%'`
+  untouched — that one's supposed to say that, it's reading legacy rows.
+- **"the office"**: `add_project_note()`'s docstring and its flash message
+  ("Note saved for the office.") were missed by the earlier office→app
+  wording sweep — fixed to plain household language.
+- **Materials tab placeholder**: `project_detail.html`'s "Add material"
+  form literally suggested `"e.g. 400W panels"` — swapped for generic
+  household examples ("2x4 lumber, roofing shingles").
+- **Help page**: the Boards tutorial said "send it to a teammate" —
+  reworded to household language.
+- **README's own top description** (not the changelog, which is expected
+  to describe past solar-business removal work) still said "Built for
+  Vixinman Designs (New Mexico, statewide)" — a live, current-tense
+  falsehood about who the app is for. Fixed.
+- **Every exported `.ics` calendar file**: PRODID said `-//Vixinman
+  Designs//Compendium//EN`, every event UID ended `@vixinmandesigns`, and
+  a project's target-completion-date event was titled "🔧 Install: ..."
+  even though the UI itself has said "Target/completion date" since Piece
+  41 — the calendar export just never got updated to match. Fixed all
+  four (`my_calendar_ics()`, `project_calendar_ics()`, `_task_events()`).
+- Verified live: fetched a real exported `.ics` file and confirmed the
+  PRODID/UID text, submitted a real field note and confirmed the new flash
+  text, checked the tab title on a fresh page load.
+- **Deliberately not touched this piece** (each is its own follow-up,
+  already scoped with the user): `docs/demo.html`, `docs/DEMO.md`,
+  `docs/The_Uber_Diagram.bpmn`, `docs/reference/*` (a full NM solar-
+  contractor licensing/permit reference set) — confirmed orphaned, unused
+  by any code, next piece just deletes them; the `templates/submissions.html`
+  "worker hours" timesheet-approval UI — user wants the feature kept, just
+  the vocabulary reworded, as its own piece; internal-only naming
+  (`employees` variables/filenames, the dashboard's `gm` variable,
+  `job_name`/`job_creator.db`/`install_date` identifiers) — none of it is
+  user-visible, lower priority, and the database filename specifically
+  needs a coordinated rename across app.py + deploy scripts + desktop
+  scripts + the live VPS file itself, worth its own careful piece.
+
 **Piece 89 (v0.66): Condense & restart for the Project Assistant — done.**
 User asked for a way to condense the current Plan-tab conversation, save it
 as a project note, and restart the conversation using the condensed note

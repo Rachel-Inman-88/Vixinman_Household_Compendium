@@ -9,7 +9,7 @@ ideas each have their own place, so nothing has to live on a project to be track
 
 **Proprietary software — see [LICENSE](LICENSE). Do not distribute.**
 
-Built for Vixinman Designs (New Mexico, statewide). Flask + SQLite + Jinja templates,
+Built for the Vixinman household. Flask + SQLite + Jinja templates,
 pure Python, raw SQL (no ORM, no JS framework). Runs from source or as a
 packaged desktop app. Offline-capable; the database upgrades itself on launch.
 
@@ -678,6 +678,29 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.67** — **Legacy-artifact sweep, part 1: visible/user-facing text.**
+  A fresh full-repo audit turned up a batch of ECC-Solar/old-business
+  leftovers that had survived every prior cleanup pass, specifically the
+  ones a person actually sees or reads: the browser tab title on every
+  page still said "· Vixinman Designs" (fixed to "· Compendium"); `LICENSE`
+  still named the old business as copyright holder and framed the app as
+  "internal business use" (reworded for the household); a delete-permission
+  error message and five docstrings still said "GM"/"General Manager"
+  (there's no such role anymore — reworded to "admin"); the field-notes
+  flash message said "saved for the office" (reworded); the Materials tab's
+  add-item placeholder was literally `"e.g. 400W panels"` (swapped for
+  generic household examples); the Boards help tutorial said "send it to a
+  teammate" (reworded to household language); the README's own top
+  description still said "Built for Vixinman Designs (New Mexico,
+  statewide)"; and every exported `.ics` calendar file embedded
+  `@vixinmandesigns` in its event UIDs and "Vixinman Designs" in its
+  PRODID, with project target dates exported as "🔧 Install: ..." instead
+  of matching the UI's own "Target/completion date" language. First of a
+  multi-part sweep — dead orphaned files (old demo/reference docs, a BPMN
+  diagram of the original solar business, stale `.pyc` files), a vocabulary
+  pass on the field-hours-approval feature, and a deeper internal-naming
+  pass (`employees`→`household_members` variables, `gm`, `job_name`) are
+  each their own follow-up piece.
 - **v0.66** — **Condense & restart for the Project Assistant.** A new
   **🧵 Condense & restart** button on a project's 🧠 Plan tab (shown once
   the conversation has at least one message): summarizes the whole
