@@ -678,6 +678,19 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.62** — **Year-end / tax-season budget summary.** A new "📅 Year
+  summary" report off the Budget page — pick a year, see total income
+  and expense (combining Household Budget with every project's own
+  Billing ledger, same as Piece 55's other reports) plus a full
+  category-by-category breakdown of both. A **⬇ Download CSV** button
+  exports the same breakdown for handing to a tax preparer or dropping
+  into a spreadsheet. Also fixed a real gap from Piece 83: the dedicated
+  New/Edit form pages for Household Budget transactions/categories,
+  Loans, and Savings had been left out of the app's `finances.manage`
+  permission mapping, so a household member holding just that grant
+  (not full admin) could see the "＋ New" buttons on those pages but got
+  bounced when clicking through — now fixed to match the list pages they
+  came from.
 - **v0.61** — **Fixed: dates showing a day ahead in the evening.** The
   app has no timezone logic of its own — every "today"/"this month"
   calculation is plain `datetime.now()`. The live VPS was running on
