@@ -2939,6 +2939,51 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 88 (v0.65): maintenance tracking for vehicles/tools — done.** User
+asked for a section under Inventory (especially Vehicles) for tracking and
+running maintenance, referencing the Navy's Planned Maintenance System.
+- New tables `inventory_maintenance_tasks` (what/how often/next due) and
+  `inventory_maintenance_log` (the service history, same "log-shaped child
+  table, no FK enforcement" convention as `habit_checkins`), plus a new
+  `inventory_vehicles.current_mileage` column.
+- A task's interval can be day-based, mileage-based (vehicles only), or
+  both — same "next_due, recompute on completion" shape Chores' `next_due`/
+  `recurrence_days` already uses, extended with a parallel mileage track.
+  Leaving the mileage-due target blank at creation backfills it from the
+  vehicle's current mileage + interval; marking a task done with an
+  odometer reading rolls both the task's next-due mileage and the
+  vehicle's own `current_mileage` forward together.
+- **A real bug caught during testing, not by inspection**: the first pass
+  put the new `current_mileage` migration inside the `inventory_rehaul_v1`
+  one-time-guarded block (piggybacking on the existing
+  `inventory_vehicles` `ensure_columns()` call there) — which only ever
+  runs once per database, so it silently never reached any database that
+  had already run that migration (i.e. every real household database, and
+  the reused scratch test DB). Only surfaced because verification ran
+  against a pre-existing test database rather than a fresh install; moved
+  to its own unguarded, idempotent `ALTER TABLE ... ADD COLUMN` (same
+  try/except pattern as `inventory_items.quantity`) right after that block.
+- **A second bug caught the same way**: the New-task form's "Next due
+  (date)" field defaulted to today in the HTML itself (mirroring Chores'
+  form), which meant a mileage-only task read as "due soon" the instant it
+  was created, from the date placeholder alone — the backend's "only
+  default next_due when a day-based interval is set" logic never got a
+  chance to apply, since the field was never actually empty on submit.
+  Fixed by leaving the field genuinely blank in the template and letting
+  the backend supply the conditional default.
+- Verified live against the app's real routes (not just template review):
+  created a mixed-interval task, confirmed the mileage backfill, marked a
+  task done and confirmed the log row, the recomputed next-due mileage,
+  and the vehicle's mileage sync all landed correctly in the database, and
+  confirmed permission gating end to end signed in as both a Parent
+  (full CRUD) and a Child (schedule visible and can mark done, but no
+  New-task/Edit controls, and a direct hit on `/inventory/maintenance/new`
+  bounces with the standard "ask an admin" message).
+- No changes to any other page; Inventory's existing search/scroll-sync/
+  restack JS picked up the new Maintenance table automatically since it
+  follows the same `details.sect` + `.inv-scroll` table markup as Vehicles/
+  Tools.
+
 **Piece 87 (v0.64): "Repeat last" alignment fix — done.** User reported
 after using Piece 86 live on their phone: "the retry button is still to
 the left, not the right" — then, on a screenshot exchange, clarified
@@ -3332,6 +3377,12 @@ Assistant," mirroring "General Assistant" exactly).
   This closes the 3-round review entirely.
 
 **NOT done yet:**
+- **Security stress test needed (flagged 2026-08-31, not scoped yet).**
+  User asked for this to be noted for the near future while other work
+  was in progress — no scope decided yet (penetration test? permission-
+  boundary fuzzing across the 3 roles? CSRF/session/auth review? load
+  testing?). Ask before starting what "stress test" should actually
+  cover.
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
   no sample export on hand yet. Bank: **Navy Federal Credit Union**.
