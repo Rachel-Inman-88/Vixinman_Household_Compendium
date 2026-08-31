@@ -3242,6 +3242,37 @@ Assistant," mirroring "General Assistant" exactly).
   requirements/Project-form UI still hasn't had a human click through it in
   a real browser; verification there remains Flask test-client automation
   only.
+- **Home-screen widgets — scoped, not started, no path chosen yet
+  (2026-08-30).** User wants productivity widgets on the household's
+  phone home screens. Confirmed: **all-Android** household, so a
+  sideloaded APK (no Play Store) is acceptable — matters since the Pixel
+  9a runs GrapheneOS with no Google Play Services by default. A **real,
+  always-visible home-screen tile is an explicit long-term/stretch
+  goal**, not the immediate ask. Two approaches compared:
+  - **PWA tier** (small, days of work, no new tech stack): add a proper
+    Web App Manifest — none exists today, so "Add to Home Screen"
+    currently just makes a browser bookmark, not a real standalone-app
+    icon — plus Android's manifest `shortcuts` array (long-press menu →
+    jump straight to "mark a chore done," "add appointment," etc.) plus
+    Web Push notifications wired to the existing notifications inbox.
+    Gets an installable icon, quick-action shortcuts, and proactive
+    nudges — but nothing glanceable shows without at least a tap.
+  - **Native widget app** (large, a genuinely separate Kotlin/Android
+    Studio project, realistically weeks): the only way to get an actual
+    always-on home-screen tile. Requires building a real authenticated
+    JSON API in `app.py` first (today it's server-rendered HTML over
+    session cookies, nothing a native client can poll) — that API work
+    is needed regardless of which native-app approach is chosen. No
+    Play Store auto-update since it's sideloaded — every widget-app
+    change means manually rebuilding and reinstalling the APK on each
+    phone. A real second codebase to maintain going forward.
+  - **Not mutually exclusive**: the PWA tier is worth having either way
+    (better full-screen phone experience on its own), and a future
+    widget app would sit on top of the same JSON API rather than
+    replace the PWA work. Realistic sequencing, if/when picked up: PWA
+    tier first, native widget later as its own scoped project. **No
+    decision made yet on when/whether to start either** — this is
+    purely a saved note, not a commitment to build.
 
 ---
 
