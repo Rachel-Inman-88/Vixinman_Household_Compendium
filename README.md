@@ -678,6 +678,21 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.63** — **Denser tables, a bounded scrollable chat, and a
+  right-aligned Retry.** The app's base text had never been given its
+  own size, so every page — including every table — inherited the
+  browser default (16px), which read as noticeably chunky, especially
+  on the phone-restacked tables Piece 75 already builds automatically
+  for any 3+ column table. Tightened globally: a slightly smaller base
+  font size, less padding in both regular table cells and the
+  phone-restacked card rows, and a smaller label size on those cards —
+  one shared CSS change, so every table in the app benefits without
+  touching individual pages. Also: the General Assistant and each
+  project's own Project Assistant chat now scroll within their own
+  bounded box (capped height, own scrollbar) instead of letting the
+  whole page grow endlessly as a conversation gets longer, and a failed
+  reply's **🔁 Retry** button is now right-aligned instead of sitting
+  immediately next to the error text.
 - **v0.62** — **Year-end / tax-season budget summary.** A new "📅 Year
   summary" report off the Budget page — pick a year, see total income
   and expense (combining Household Budget with every project's own

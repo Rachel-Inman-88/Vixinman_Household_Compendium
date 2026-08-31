@@ -2939,6 +2939,87 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 86 (v0.63): table density + Assistant chat UX — done.** User
+opened "the next leg of the project" with three things at once: (1) a
+quick review that the Assistant-role account's UI is basically the same
+as a Parent's, (2) an open-ended mobile density complaint — "all tables
+[are] too chunky with text that's too big and too much spacing between
+words," and (3) two specific Assistant-chat fixes — right-align the
+🔁 Retry button, and give the chat its own scrollable window so the page
+doesn't grow endlessly.
+- **(1) Assistant-role UI review**: the user did this themselves via a
+  manual click-through and confirmed it's essentially the same as the
+  Parent UI — no findings, no action needed. (My own attempt to do this
+  via the Browser pane hit a real, worth-remembering environment
+  problem — see the note below — and was still unresolved when the user
+  stepped in and finished it manually.)
+- **(2) Table density — root-caused before touching anything.** Every
+  table in the app already gets an automatic phone-friendly treatment
+  (Piece 31.6/75's runtime script in `base.html`: any `<table>` with a
+  proper `<thead>` and 3+ columns is wrapped in a scroll container and,
+  on narrow screens, restacked into labelled `CATEGORY: value` rows —
+  opt-out via a `no-rstack` class, not opt-in). **Correction to my own
+  first-pass investigation, worth remembering**: grepping template
+  files for the literal string `rstack` only found 2 matches
+  (`base.html`'s own CSS, `dashboard.html`) and I initially concluded
+  "only 2 tables ever got mobile treatment" — wrong, because the class
+  is applied dynamically by that runtime script to nearly every
+  qualifying table app-wide, not hardcoded per-template. The REAL
+  problem was simpler: `body` never set its own `font-size`, so
+  literally everything (table cells included) inherited the browser
+  default 16px, and the existing `.rstack`/`th,td` padding values were
+  generous on top of that. Fixed as one shared CSS change in
+  `base.html` rather than 28 per-template edits: `body { font-size:
+  15px }` (was unset/16px), tighter `th,td` padding (0.55rem 0.6rem →
+  0.4rem 0.55rem), tighter `.rstack tr/td` padding and margins, and a
+  slightly smaller data font-size on restacked card rows. Verified
+  visually on both mobile and desktop viewports (Boards, Tasks, Budget's
+  populated category/cash-flow tables) via a real dev-server preview —
+  meaningfully tighter without feeling cramped either width.
+- **(3) Assistant chat UX**: `#chat` (General Assistant) and
+  `#plan-chat` (Project Assistant) now cap at `max-height:55vh` with
+  `overflow-y:auto` plus a border, so a long conversation scrolls inside
+  its own box instead of growing the whole page — the existing
+  `wrap.scrollIntoView({block:"nearest"})` call on each new message
+  already respects the nearest scrolling ancestor, so no JS change was
+  needed there, only added `chat.scrollTop = chat.scrollHeight` on page
+  load so a reopened conversation lands on its most recent message
+  instead of its oldest. The Retry button's container (`#status`/
+  `#plan-status`) switched from `display:block` to a flex row with
+  `margin-left:auto` on the button itself (not `justify-content:
+  space-between` on the container — tested and reverted, since with
+  `flex-wrap` a lone wrapped button under `space-between` snaps to the
+  *left* instead of staying right-aligned; `margin-left:auto` stays
+  right-aligned in both the single-line and wrapped-to-its-own-line
+  cases, confirmed on a 375px viewport).
+- **A real environment problem hit and root-caused, worth remembering
+  for any future dev-server preview in this project**: this repo has
+  **two** `.claude/launch.json` files — one at the repo root (created
+  fresh this piece, later deleted as redundant) and a pre-existing one
+  **one directory up**, at `...\Software\Claude\.claude\launch.json`,
+  registered under the name `compendium-mobile-audit` from the earlier
+  Piece 75 mobile-responsive-audit work. The preview tool was silently
+  using that outer, pre-existing config the entire time regardless of
+  what `name` was requested or what a repo-root `launch.json` said —
+  costing real effort chasing a phantom "wrong password" mystery before
+  realizing two different login attempts were landing against two
+  different, undisturbed copies of the database while a THIRD, actually
+  -live one (`.../scratchpad/mobile_ui_data/job_creator.db`, referenced
+  by that outer config's `mobile_audit_server.py` wrapper) was the real
+  target the whole time. **Confirmed the real production `job_creator.db`
+  was never touched** (mtime unchanged throughout) before figuring this
+  out. **Next time a dev-server preview is needed in this project**:
+  check for `...\Software\Claude\.claude\launch.json` and its
+  `mobile_audit_server.py` wrapper FIRST — it already correctly sets
+  `COMPENDIUM_DATA_DIR` to an isolated scratch folder via `os.environ`
+  in-process (far more reliable than a `.bat` file's `set`, whose
+  propagation through this tool's process-spawning could not be
+  confirmed working) and `runpy.run_path`s the real `app.py` — reuse it
+  rather than rebuilding a preview setup from scratch.
+- No schema or route changes this piece — template/CSS/JS only.
+  Verified via compile + a full Jinja parse sweep; no test-client route
+  sweep needed since `app.py` itself wasn't touched.
+
 **Piece 85 (v0.62): year-end / tax-season budget summary — done.** User
 picked this off the standing "budget reporting — 2 more items still
 open" backlog note; asked what specifically was wanted since nothing

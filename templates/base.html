@@ -25,6 +25,12 @@
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
+      /* Piece 86: base text was never given its own size, so every page
+         inherited the browser default (16px) -- noticeably large for
+         dense tabular data. A modest reduction here cascades to
+         everything that doesn't set its own font-size (table cells,
+         labels, list items) without needing per-template changes. */
+      font-size: 15px;
     }
     header {
       background: var(--brand);
@@ -87,8 +93,8 @@
       margin-bottom: 1rem;
     }
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    th, td { text-align: left; padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
     tr:last-child td { border-bottom: none; }
     .muted { color: var(--muted); }
     .empty { color: var(--muted); padding: 1rem 0; }
@@ -436,12 +442,13 @@
         overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
       table.rstack tr {
         display: block; border: 1px solid var(--border); border-radius: 8px;
-        padding: 0.35rem 0.6rem; margin-bottom: 0.55rem; background: var(--card);
+        padding: 0.25rem 0.55rem; margin-bottom: 0.4rem; background: var(--card);
       }
       table.rstack td {
         display: flex; justify-content: space-between; gap: 1rem;
         align-items: baseline; text-align: right; border: none;
-        padding: 0.3rem 0; border-bottom: 1px dashed var(--border);
+        padding: 0.2rem 0; border-bottom: 1px dashed var(--border);
+        font-size: 0.88rem; line-height: 1.3;
       }
       table.rstack tr td:last-child { border-bottom: none; }
       table.rstack td::before {
