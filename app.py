@@ -15,6 +15,8 @@ then open http://127.0.0.1:5000 in your browser.
 """
 
 import calendar
+import csv
+import io
 import json
 import math
 import os
@@ -597,7 +599,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.61"
+VERSION = "0.62"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1169,6 +1171,17 @@ VIEW_PERMISSION = {
     "household_budget_new": "finances.manage",
     "household_budget_edit": "finances.manage",
     "household_budget_delete": "finances.manage",
+    # Piece 83: the dedicated New/Edit form pages for the above -- missed
+    # in that piece's own conversion (the list routes already had
+    # finances.manage; these fell back to requiring full admin instead
+    # until caught here in Piece 85).
+    "household_txn_new_form": "finances.manage",
+    "household_txn_edit_form": "finances.manage",
+    "household_budget_category_new_form": "finances.manage",
+    "household_budget_category_edit_form": "finances.manage",
+    # Piece 85: the year-end/tax-season summary + its CSV export.
+    "household_budget_year_summary": "finances.manage",
+    "household_budget_year_summary_csv": "finances.manage",
     # Piece 54: Loans and Savings accounts -- reuse finances.manage, the
     # same all-or-nothing "see all money" gate as Budget/project billing.
     "loans_page": "finances.manage",
@@ -1179,10 +1192,16 @@ VIEW_PERMISSION = {
     "loan_entry_new": "finances.manage",
     "loan_entry_delete": "finances.manage",
     "download_loan_statement": "finances.manage",
+    # Piece 83: same gap as household_txn/budget_category above.
+    "loan_account_new_form": "finances.manage",
+    "loan_account_edit_form": "finances.manage",
     "savings_page": "finances.manage",
     "savings_account_new": "finances.manage",
     "savings_account_edit": "finances.manage",
     "savings_account_delete": "finances.manage",
+    # Piece 83: same gap as household_txn/budget_category above.
+    "savings_account_new_form": "finances.manage",
+    "savings_account_edit_form": "finances.manage",
     "savings_account_detail": "finances.manage",
     "savings_entry_new": "finances.manage",
     "savings_entry_delete": "finances.manage",
@@ -5105,6 +5124,32 @@ def _combined_month_totals(db, month_str):
             "net": totals["Income"] - totals["Expense"], "by_category": by_category}
 
 
+def _combined_year_totals(db, year_str):
+    """Combined household + project income/expense totals and per-category
+    breakdown for ONE calendar year, across BOTH ledgers -- the year-level
+    counterpart to _combined_month_totals(), backing the year-end/
+    tax-season summary (Piece 85). Unlike the month version, this breaks
+    down BOTH Income and Expense by category (not just Expense) since a
+    tax-season reference wants to see where money came from too, not just
+    where it went."""
+    totals = {"Income": 0.0, "Expense": 0.0}
+    by_category = {"Income": {}, "Expense": {}}
+    for table in ("household_transactions", "project_transactions"):
+        for r in db.execute(
+                f"SELECT kind, category, COALESCE(SUM(amount), 0) AS total"
+                f" FROM {table} WHERE substr(txn_date, 1, 4) = ?"
+                f" GROUP BY kind, category", (year_str,)).fetchall():
+            if r["kind"] not in totals:
+                continue
+            totals[r["kind"]] += r["total"]
+            cat = r["category"] or "Uncategorized"
+            by_category[r["kind"]][cat] = by_category[r["kind"]].get(cat, 0.0) + r["total"]
+    return {"income": totals["Income"], "expense": totals["Expense"],
+            "net": totals["Income"] - totals["Expense"],
+            "income_by_category": by_category["Income"],
+            "expense_by_category": by_category["Expense"]}
+
+
 def _category_breakdown_series(month_data, top_n=5):
     """Per-month expense-by-category series from month_data (a list of
     (month_str, label, _combined_month_totals()-dict)), capped to the top_n
@@ -5406,6 +5451,44 @@ def household_budget_page():
         trend_months=trend_months, horizon_months=horizon_months,
         expense_pie=expense_pie, cash_flow=cash_flow, cash_flow_bars=cash_flow_bars,
         income_expense_trend=income_expense_trend, category_trend=category_trend)
+
+
+@app.route("/budget/annual-summary")
+@admin_required
+def household_budget_year_summary():
+    """Piece 85: a year-end/tax-season reference -- total income/expense
+    and a per-category breakdown of both, combining household + all
+    project ledgers (matching Piece 55's existing month-level reports),
+    for one calendar year at a time."""
+    year = request.args.get("year", type=int) or datetime.now().year
+    data = _combined_year_totals(get_db(), str(year))
+    income_rows = sorted(data["income_by_category"].items(), key=lambda kv: -kv[1])
+    expense_rows = sorted(data["expense_by_category"].items(), key=lambda kv: -kv[1])
+    return render_template(
+        "household_budget_year_summary.html", year=year, data=data,
+        income_rows=income_rows, expense_rows=expense_rows)
+
+
+@app.route("/budget/annual-summary.csv")
+@admin_required
+def household_budget_year_summary_csv():
+    year = request.args.get("year", type=int) or datetime.now().year
+    data = _combined_year_totals(get_db(), str(year))
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Kind", "Category", "Total"])
+    for kind, by_category in (("Income", data["income_by_category"]),
+                               ("Expense", data["expense_by_category"])):
+        for cat, amt in sorted(by_category.items(), key=lambda kv: -kv[1]):
+            writer.writerow([kind, cat, f"{amt:.2f}"])
+    writer.writerow([])
+    writer.writerow(["Summary", "Total Income", f"{data['income']:.2f}"])
+    writer.writerow(["Summary", "Total Expense", f"{data['expense']:.2f}"])
+    writer.writerow(["Summary", "Net", f"{data['net']:.2f}"])
+    return Response(
+        buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition":
+                 f"attachment; filename=household_budget_{year}_summary.csv"})
 
 
 def _household_txn_form_values():

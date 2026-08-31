@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ year }} Year Summary{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>📅 {{ year }} Year Summary <span class="muted" style="font-size:0.95rem; font-weight:400;">— for tax season, or just a year-end look back</span></h1>
+  <a href="{{ url_for('household_budget_page') }}" class="btn btn-secondary">← Budget</a>
+</div>
+<p class="muted" style="margin-top:0;">Combines Household Budget with every project's own Billing
+ledger — the same "whole household" view Piece 55's other reports use. All statuses, not just Paid.</p>
+
+<div class="card" style="display:flex; gap:0.6rem; align-items:center; padding:0.6rem 0.9rem; flex-wrap:wrap;">
+  <form method="get" style="display:flex; gap:0.5rem; align-items:center;">
+    <label for="year" class="muted" style="font-size:0.85rem;">Year:</label>
+    <input id="year" name="year" type="number" value="{{ year }}" min="2000" max="2999"
+           onchange="this.form.submit()" style="padding:0.3rem; width:6rem;">
+  </form>
+  <a href="{{ url_for('household_budget_year_summary_csv', year=year) }}" class="btn btn-secondary">⬇ Download CSV</a>
+</div>
+
+<div class="card" style="display:flex; gap:1.5rem; flex-wrap:wrap;">
+  <div><span class="muted" style="font-size:0.8rem;">Total income</span><br>
+    <strong style="color:var(--brand); font-size:1.3rem;">${{ data.income|money0 }}</strong></div>
+  <div><span class="muted" style="font-size:0.8rem;">Total expense</span><br>
+    <strong style="color:#b02a2a; font-size:1.3rem;">${{ data.expense|money0 }}</strong></div>
+  <div><span class="muted" style="font-size:0.8rem;">Net</span><br>
+    <strong style="font-size:1.3rem; {{ 'color:#b02a2a;' if data.net < 0 }}">${{ data.net|money0 }}</strong></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Income by category</h2>
+  {% if income_rows %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Category</th><th style="text-align:right;">Total</th></tr></thead>
+    <tbody>
+      {% for cat, amt in income_rows %}
+      <tr><td>{{ cat }}</td><td style="text-align:right;">${{ amt|money0 }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No income recorded for {{ year }}.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Expense by category</h2>
+  {% if expense_rows %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Category</th><th style="text-align:right;">Total</th></tr></thead>
+    <tbody>
+      {% for cat, amt in expense_rows %}
+      <tr><td>{{ cat }}</td><td style="text-align:right;">${{ amt|money0 }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No expenses recorded for {{ year }}.</p>
+  {% endif %}
+</div>
+{% endblock %}
