@@ -2939,6 +2939,50 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 84 (v0.61): live VPS dates a day ahead in the evening — done.**
+User, as a side note while discussing home-screen widgets: "I found a bug
+where the app clock seems to be set a day ahead." Root-caused directly
+rather than guessed at: `app.py` has **zero** timezone logic — every
+"today"/"this month" calculation across all 67 `datetime.now()` call
+sites (chores due today, the dashboard date, appointments, budget month
+boundaries, etc.) is plain server-local time. `timedatectl` on the VPS
+confirmed the box was on DigitalOcean's default `Etc/UTC`, several hours
+ahead of the household's real Mountain Time — so once it passed roughly
+6pm local, the server's calendar day had already rolled to tomorrow.
+Confirmed via AskUserQuestion this is genuinely Mountain Time (an old NM
+county-directory reference from Piece 38-41's now-fully-purged solar
+seed data hinted at it, but that's stale historical context, not
+something to assume from without asking).
+- **Fixed at the server-config level, not in code**: rewriting 67 call
+  sites (or introducing timezone-aware `datetime` objects that then have
+  to interoperate with every existing naive-datetime SQLite string
+  comparison in the app) would have been a much larger, much riskier
+  change for a problem that's actually just "the server's clock is set
+  to the wrong zone." `timedatectl set-timezone America/Denver` on the
+  VPS, confirmed via a direct Python `datetime.now()` check inside the
+  app's own venv (correctly returned local Mountain time, not UTC) —
+  zero application code touched.
+- **Also pinned at the systemd-service level, not just the OS level** —
+  `Environment=TZ=America/Denver` added to `deploy/compendium.service`
+  (and synced to the live `/etc/systemd/system/compendium.service` copy,
+  per this repo's own documented sync pattern from Section 4/6 of
+  `OPERATIONS.md`). This is deliberate defense-in-depth: a future VPS
+  rebuild or restored snapshot would default back to `Etc/UTC` at the OS
+  level, but the gunicorn process itself would still run correct as long
+  as the repo's service file gets deployed normally — the one-time
+  `timedatectl` step doesn't have to be remembered and re-applied by
+  hand.
+- Documented in `OPERATIONS.md`: a new Section 6 troubleshooting entry
+  ("Dates in the app look a day off, especially in the evening") with
+  the exact fix commands, and a new Section 4 glossary row calling out
+  the VPS's timezone as a thing to check after any reprovision.
+- Confirmed no cron jobs or systemd timers on the VPS are app-specific or
+  timezone-sensitive (checked directly — only stock Ubuntu maintenance
+  timers exist), so this fix has no other scheduling side effects to
+  worry about.
+- No schema or `app.py` changes this piece — purely server config +
+  docs. Branch `feature/vps-timezone-fix`, off `main` at v0.60.
+
 **Piece 83 (v0.60): "New [item]" buttons + back-links, consistency pass —
 done.** User: "On any page that has an empty form on the bottom to submit a
 new item (Boards, Chores, etc.) use a 'New [item]' button located at the top
