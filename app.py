@@ -599,7 +599,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.65"
+VERSION = "0.66"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -10091,6 +10091,19 @@ PROJECT_PLAN_SYSTEM_PROMPT = (
     "notes that already exist. Everything else is normal conversational prose."
 )
 
+PROJECT_PLAN_CONDENSE_SYSTEM_PROMPT = (
+    "You are condensing a planning conversation about ONE household project "
+    "into a compact handoff recap, for two audiences at once: a human "
+    "skimming it later as a saved project note, and yourself picking the "
+    "conversation back up fresh with no memory of the raw exchange. Write "
+    "plain prose with short bullet groups where useful -- no markdown "
+    "headers, and no TASK:/SECTION:/FLAG: lines (those only mean something "
+    "inside the live chat, not a note). Cover, briefly: what was discussed, "
+    "any decisions or conclusions reached, and anything still open or "
+    "unresolved that the next conversation should pick up. Be concise -- "
+    "this exists to save space, not to retell the conversation in full."
+)
+
 
 def assistant_settings(db):
     """Current AI-assistant configuration, read from `meta`."""
@@ -10812,6 +10825,89 @@ def project_plan_ask(project_id):
                " VALUES (?, 'assistant', '', ?)", (project_id, answer))
     db.commit()
     return jsonify({"answer": answer})
+
+
+@app.route("/projects/<int:project_id>/plan/condense", methods=["POST"])
+def project_plan_condense(project_id):
+    """Condense the whole "🧠 Plan" conversation into a compact recap, save
+    it as a project note, then clear the conversation and reseed it with
+    that recap as the new first turn -- so a long brainstorm doesn't keep
+    growing the token cost of every future message. (project_plan_ask()
+    already caps the history it sends per-turn at the last 20 messages, but
+    that's a sliding window that loses the earlier arc of a long
+    conversation; a condensed recap keeps the gist of the whole thing in a
+    fraction of the tokens.)
+
+    A Child can use this Plan chat like anyone else, and the household's
+    parent-safety feature (ensure_assistant_safety_notifications()) only
+    ever reports a Child's messages once their conversation goes idle for a
+    while -- so wiping the conversation here would otherwise let one slip
+    out completely unreported. Any not-yet-reported Child messages get
+    reported to parents immediately, right before they're cleared, so this
+    can never be used to dodge that."""
+    project = fetch_project(project_id)
+    db = get_db()
+    cfg = assistant_settings(db)
+    if not assistant_configured(cfg):
+        return jsonify({"error": "No Claude API key is set. "
+                        "An admin can add one under AI settings."}), 400
+    messages = db.execute(
+        "SELECT role, author, content FROM project_plan_messages"
+        " WHERE project_id = ? ORDER BY id", (project_id,)).fetchall()
+    if not messages:
+        return jsonify({"error": "Nothing to condense yet."}), 400
+
+    lines = []
+    for r in messages:
+        who = f"User ({r['author']})" if r["role"] == "user" and r["author"] else (
+            "User" if r["role"] == "user" else "Assistant")
+        lines.append(f"{who}: {r['content']}")
+    context = build_project_plan_context(db, project)
+    prompt = f"PROJECT CONTEXT:\n{context}\n\nFULL CONVERSATION:\n" + "\n".join(lines)
+    try:
+        summary = ai_assistant.ask(cfg["claude_key"], cfg["claude_model"],
+                                   PROJECT_PLAN_CONDENSE_SYSTEM_PROMPT, prompt)
+    except ai_assistant.AssistantError as e:
+        return jsonify({"error": str(e)}), 502
+
+    user = current_user()
+    actor = user["name"] if user else ""
+    today = datetime.now().strftime("%Y-%m-%d")
+    db.execute("INSERT INTO project_notes (project_id, note, author) VALUES (?, ?, ?)",
+               (project_id, f"🧠 Plan recap ({today}):\n\n{summary}", actor))
+
+    # Report any not-yet-reported Child messages to parents right now --
+    # deleting the conversation below must never bypass the idle-based
+    # safety report they'd otherwise eventually get (Piece 79).
+    child_rows = db.execute(
+        "SELECT n.author, n.created_at FROM project_plan_messages n"
+        " JOIN household_members hm ON hm.name = n.author"
+        " WHERE n.project_id = ? AND n.role = 'user'"
+        " AND COALESCE(n.safety_reported, '') != '1' AND hm.role = 'Child'",
+        (project_id,)).fetchall()
+    if child_rows:
+        parents = [r["id"] for r in db.execute(
+            "SELECT id FROM household_members"
+            " WHERE role = 'Parent' AND COALESCE(username,'') != ''").fetchall()]
+        by_author = {}
+        for r in child_rows:
+            by_author.setdefault(r["author"], []).append(r["created_at"])
+        for author, stamps in by_author.items():
+            hours = _safety_hours_label(min(stamps), max(stamps))
+            notify_employees(
+                db, parents,
+                f"👀 {author} spent {hours} on the 🧠 Plan tab for "
+                f"'{project['job_name']}' — condensed & restarted just now "
+                f"({len(stamps)} message{'s' if len(stamps) != 1 else ''}).",
+                link=f"/projects/{project_id}", kind="assistant_safety")
+
+    db.execute("DELETE FROM project_plan_messages WHERE project_id = ?", (project_id,))
+    seed = (f"📋 Picking up from a condensed recap (also saved to this "
+            f"project's notes):\n\n{summary}")
+    db.execute("INSERT INTO project_plan_messages (project_id, role, author, content)"
+               " VALUES (?, 'assistant', '', ?)", (project_id, seed))
+    db.commit()
+    return jsonify({"note": summary, "seed": seed})
 
 
 @app.route("/assistant/settings", methods=["GET", "POST"])
