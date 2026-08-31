@@ -14,11 +14,11 @@
   <form method="get" id="filter_form">
     <div class="form-grid">
       <div class="field">
-        <label for="employee">Who</label>
-        <select id="employee" name="employee">
+        <label for="member">Who</label>
+        <select id="member" name="member">
           <option value="" {% if who == "" %}selected{% endif %}>Everyone</option>
           <option value="unassigned" {% if who == "unassigned" %}selected{% endif %}>— Unassigned —</option>
-          {% for e in employees %}
+          {% for e in members %}
           <option value="{{ e['id'] }}" {% if who == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select>

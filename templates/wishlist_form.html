@@ -15,7 +15,7 @@
       <div class="field"><label for="household_member_id">For</label>
         {% set default_for = ew['household_member_id'] if ew else (current_user['id'] if current_user else none) %}
         <select id="household_member_id" name="household_member_id">
-          {% for e in employees %}
+          {% for e in members %}
           <option value="{{ e['id'] }}" {% if default_for == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select></div>

@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}{{ employee["name"] }}{% endblock %}
+{% block title %}{{ member["name"] }}{% endblock %}
 {% block content %}
 {% set state_class = {"ok": "", "soon": "warn", "expired": "danger", "none": "neutral"} %}
 <div style="margin-bottom: 0.8rem;">
   <a href="{{ url_for('household_members_page') }}" class="btn btn-secondary">← Back to household members</a>
 </div>
 <div class="toolbar">
-  <h1>{{ employee["name"] }}{% if employee["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ employee["nickname"] }}”</span>{% endif %}
-    <span class="badge" style="vertical-align:middle;">{{ employee["role"] }}</span>
-    {% if employee["is_admin"] == "1" %}<span class="badge warn" style="vertical-align:middle;">🔑 Admin</span>{% endif %}</h1>
+  <h1>{{ member["name"] }}{% if member["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ member["nickname"] }}”</span>{% endif %}
+    <span class="badge" style="vertical-align:middle;">{{ member["role"] }}</span>
+    {% if member["is_admin"] == "1" %}<span class="badge warn" style="vertical-align:middle;">🔑 Admin</span>{% endif %}</h1>
   <div style="display:flex; gap:0.5rem;">
     {% if can('household.manage') %}
-    <a href="{{ url_for('edit_household_member', household_member_id=employee['id']) }}" class="btn">Edit</a>
-    <a href="{{ url_for('delete_household_member', household_member_id=employee['id']) }}" class="btn btn-secondary">Remove</a>
+    <a href="{{ url_for('edit_household_member', household_member_id=member['id']) }}" class="btn">Edit</a>
+    <a href="{{ url_for('delete_household_member', household_member_id=member['id']) }}" class="btn btn-secondary">Remove</a>
     {% endif %}
   </div>
 </div>
@@ -28,14 +28,14 @@
 <div class="card">
   <dl class="profile">
     <dt>Role</dt>
-    <dd><span class="badge">{{ employee["role"] }}</span></dd>
+    <dd><span class="badge">{{ member["role"] }}</span></dd>
     <dt>Schedule</dt>
-    <dd style="white-space: pre-line;">{{ employee["schedule"] or "—" }}</dd>
+    <dd style="white-space: pre-line;">{{ member["schedule"] or "—" }}</dd>
   </dl>
-  {% if employee["licenses_certifications"] %}
+  {% if member["licenses_certifications"] %}
   <p class="muted" style="margin:0.8rem 0 0; font-size:0.85rem;">
     <strong>Earlier free-text entry (from before structured tracking):</strong><br>
-    <span style="white-space: pre-line;">{{ employee["licenses_certifications"] }}</span><br>
+    <span style="white-space: pre-line;">{{ member["licenses_certifications"] }}</span><br>
     Re-enter these under Licenses &amp; Certifications so expiry can be tracked.
   </p>
   {% endif %}
@@ -67,7 +67,7 @@
   </div>
   <p class="muted" style="margin:0.5rem 0 0; font-size:0.85rem;">Open a project to
   change a task's status or reassign it, or use the
-  <a href="{{ url_for('tasks_dashboard', employee=employee['id']) }}">task board</a>.</p>
+  <a href="{{ url_for('tasks_dashboard', member=member['id']) }}">task board</a>.</p>
   {% else %}
   <p class="empty">Nothing assigned to this person right now.</p>
   {% endif %}
@@ -95,11 +95,11 @@
         <td>{% if c.documented %}📎 yes{% else %}<span class="muted">—</span>{% endif %}</td>
         <td style="white-space:nowrap;">
           {% if can('household.manage') %}
-          <a href="{{ url_for('household_member_detail', household_member_id=employee['id'], edit_credential=r['id'], _anchor='licenses') }}#credential-form"
+          <a href="{{ url_for('household_member_detail', household_member_id=member['id'], edit_credential=r['id'], _anchor='licenses') }}#credential-form"
              class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
           {% endif %}
           {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_credential', household_member_id=employee['id'], credential_id=r['id']) }}"
+          <form method="post" action="{{ url_for('delete_credential', household_member_id=member['id'], credential_id=r['id']) }}"
                 onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0; display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
@@ -118,7 +118,7 @@
   {% if can('household.manage') %}
   {% set ecr = edit_credential %}
   <form method="post" id="credential-form" style="margin-top:0.9rem;"
-        action="{{ url_for('update_credential', household_member_id=employee['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', household_member_id=employee['id']) }}">
+        action="{{ url_for('update_credential', household_member_id=member['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', household_member_id=member['id']) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h3 style="margin:0 0 0.5rem; font-size:0.95rem;">{{ "Edit license / certification" if ecr else "Add a license / certification" }}</h3>
     <div class="form-grid">
@@ -153,7 +153,7 @@
       </div>
     </div>
     <div class="actions"><button type="submit" class="btn">{{ "Save changes" if ecr else "＋ Add license / certification" }}</button>
-      {% if ecr %}<a href="{{ url_for('household_member_detail', household_member_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
+      {% if ecr %}<a href="{{ url_for('household_member_detail', household_member_id=member['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
   </form>
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
   to a project requirement lets each project page show whether someone in the household
@@ -169,11 +169,11 @@
   <ul style="margin:0 0 0.8rem; padding-left:1.2rem;">
     {% for f in files %}
     <li style="margin-bottom:0.3rem;">
-      <a href="{{ url_for('download_household_member_file', household_member_id=employee['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+      <a href="{{ url_for('download_household_member_file', household_member_id=member['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
       {% if f["credential_name"] %}<span class="badge">{{ f["credential_name"] }}</span>{% endif %}
       <span class="muted">{{ f["uploaded_at"][:10] }}</span>
       {% if can('delete') %}
-      <form method="post" action="{{ url_for('delete_household_member_file', household_member_id=employee['id'], file_id=f['id']) }}"
+      <form method="post" action="{{ url_for('delete_household_member_file', household_member_id=member['id'], file_id=f['id']) }}"
             onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
@@ -186,7 +186,7 @@
   <p class="empty">No document copies on file yet.</p>
   {% endif %}
   {% if can('household.manage') %}
-  <form method="post" action="{{ url_for('upload_household_member_file', household_member_id=employee['id']) }}" enctype="multipart/form-data">
+  <form method="post" action="{{ url_for('upload_household_member_file', household_member_id=member['id']) }}" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
       <div class="field">

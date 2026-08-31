@@ -545,8 +545,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 -- Piece 21: per-project financial ledger — income (deposits/invoices/rebates)
 -- and expenses (materials, permits, labor, subs). Drives the Finance
--- viewport's Payments table and the QuickBooks CSV export. Dollar amounts
--- stored as REAL.
+-- viewport's Payments table. Dollar amounts stored as REAL.
 CREATE TABLE IF NOT EXISTS project_transactions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id  INTEGER NOT NULL REFERENCES projects(id),
@@ -556,7 +555,7 @@ CREATE TABLE IF NOT EXISTS project_transactions (
     amount      REAL NOT NULL DEFAULT 0,
     txn_date    TEXT DEFAULT '',                      -- YYYY-MM-DD
     status      TEXT NOT NULL DEFAULT 'Outstanding',  -- Outstanding / Paid
-    party       TEXT DEFAULT '',                      -- customer (income) or vendor (expense)
+    party       TEXT DEFAULT '',                      -- payer (income) or vendor (expense)
     reference   TEXT DEFAULT '',                      -- invoice / check / PO number
     method      TEXT DEFAULT '',                      -- Cash / Check / Card / ACH / Financing
     doc_type    TEXT DEFAULT '',                      -- Piece 21.5: Receipt / Invoice / Bill (source paperwork)

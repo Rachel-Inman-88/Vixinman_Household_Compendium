@@ -14,7 +14,7 @@
 certifications they hold, and their schedule. Click a name to view or edit
 their record.</p>
 <div class="card">
-  {% if employees %}
+  {% if members %}
   <div style="overflow-x:auto;">
   <table>
     <thead>
@@ -26,7 +26,7 @@ their record.</p>
       </tr>
     </thead>
     <tbody>
-      {% for e in employees %}
+      {% for e in members %}
       {% set s = summary.get(e["id"]) %}
       <tr>
         <td><a href="{{ url_for('household_member_detail', household_member_id=e['id']) }}">{{ e["name"] }}</a>{% if e["nickname"] %} <span class="muted" style="font-size:0.85rem;">“{{ e["nickname"] }}”</span>{% endif %}

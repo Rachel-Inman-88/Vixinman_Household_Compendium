@@ -14,7 +14,7 @@
 {# ---- Executive (household) overview: whole-household snapshot. A Child gets
        the 🙋 My Overview widget below instead (Piece 53, reworked Piece 79) —
        individually focused, not the whole household's pipeline/money/approvals. ---- #}
-{% if gm and not (user and user["role"] == "Child") %}
+{% if overview and not (user and user["role"] == "Child") %}
 <details class="card sect" style="border-left:4px solid var(--brand);">
   <summary>🏠 Household overview</summary>
 
@@ -27,8 +27,8 @@
      per person, their active projects shown as icon+color-coded chips. #}
   <section style="{{ panel }}">
     <div style="{{ panelh }}">Projects by family member</div>
-    {% if gm.member_rows %}
-    {% for row in gm.member_rows %}
+    {% if overview.member_rows %}
+    {% for row in overview.member_rows %}
     <div style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.4rem 0; {% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
       <div style="width:1.8rem; height:1.8rem; border-radius:50%; background:{{ row.color }}; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem; flex-shrink:0;">
         {{ row.name[0] }}
@@ -63,21 +63,21 @@
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem;">
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Unpaid expenses</div>
-        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (gm.money.unpaid_expenses)|money0 }}</div></div>
+        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ (overview.money.unpaid_expenses)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Loans</div>
-        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ (gm.money.loans)|money0 }}</div></div>
+        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ (overview.money.loans)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Income</div>
-        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ (gm.money.income)|money0 }}</div></div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ (overview.money.income)|money0 }}</div></div>
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Savings</div>
-        <div style="font-size:1.25rem; font-weight:800; color:var(--brand-dark);">${{ (gm.money.savings)|money0 }}</div></div>
-      {% set variance = gm.money.estimated - gm.money.actual_expense %}
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand-dark);">${{ (overview.money.savings)|money0 }}</div></div>
+      {% set variance = overview.money.estimated - overview.money.actual_expense %}
       <div style="{{ tile }} padding:0.5rem 0.7rem;">
         <div class="muted" style="font-size:0.78rem;">Anticipated spending <span class="muted" style="font-weight:400;">(est. vs. actual)</span></div>
         <div style="font-size:1.25rem; font-weight:800; color:{{ 'var(--brand)' if variance >= 0 else '#b02a2a' }};">{{ "-" if variance < 0 }}${{ (variance)|abs|money0 }}</div>
-        <div class="muted" style="font-size:0.7rem;">est. ${{ (gm.money.estimated)|money0 }} · actual ${{ (gm.money.actual_expense)|money0 }}</div></div>
+        <div class="muted" style="font-size:0.7rem;">est. ${{ (overview.money.estimated)|money0 }} · actual ${{ (overview.money.actual_expense)|money0 }}</div></div>
     </div>
   </section>
   {% endif %}
@@ -115,17 +115,17 @@
   {# Attention needed #}
   <section style="{{ panel }}">
     <div style="{{ panelh }}">Needs attention</div>
-    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;{% if gm.stalled %} margin-bottom:0.6rem;{% endif %}">
-      <a href="{{ url_for('submissions_page') }}" class="btn {{ 'btn-secondary' if not gm.approvals }}" style="padding:0.3rem 0.7rem; font-size:0.85rem;">🕗 {{ gm.approvals }} approval{{ "s" if gm.approvals != 1 }} waiting</a>
-      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#b02a2a; color:#b02a2a !important;' if gm.overdue }}">⏰ {{ gm.overdue }} overdue task{{ "s" if gm.overdue != 1 }}</span>
-      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#8a5a00; color:#8a5a00 !important;' if gm.stalled }}">🐢 {{ gm.stalled|length }} stalled project{{ "s" if gm.stalled|length != 1 }}</span>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;{% if overview.stalled %} margin-bottom:0.6rem;{% endif %}">
+      <a href="{{ url_for('submissions_page') }}" class="btn {{ 'btn-secondary' if not overview.approvals }}" style="padding:0.3rem 0.7rem; font-size:0.85rem;">🕗 {{ overview.approvals }} approval{{ "s" if overview.approvals != 1 }} waiting</a>
+      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#b02a2a; color:#b02a2a !important;' if overview.overdue }}">⏰ {{ overview.overdue }} overdue task{{ "s" if overview.overdue != 1 }}</span>
+      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#8a5a00; color:#8a5a00 !important;' if overview.stalled }}">🐢 {{ overview.stalled|length }} stalled project{{ "s" if overview.stalled|length != 1 }}</span>
     </div>
-    {% if gm.stalled %}
+    {% if overview.stalled %}
     <div style="overflow-x:auto;">
     <table>
       <thead><tr><th>Stalled project</th><th>Stage</th><th>Last activity</th></tr></thead>
       <tbody>
-        {% for s in gm.stalled %}
+        {% for s in overview.stalled %}
         <tr>
           <td><a href="{{ url_for('project_detail', project_id=s['id']) }}">{{ s["job_name"] or "Project #" ~ s["id"] }}</a></td>
           <td><span class="badge {{ job_status_class.get(s['status'], 'neutral') }}">{{ s["status"] }}</span></td>
@@ -141,12 +141,12 @@
   {# Wrap-up worklist #}
   <section style="{{ panel }} margin-bottom:0;">
     <div style="font-weight:800; margin:0 0 0.5rem; font-size:1.1rem;">🏁 Wrap-up <span class="muted" style="font-weight:400; font-size:0.92rem;">— final walkthrough &amp; close-out</span></div>
-    {% if gm.closing %}
+    {% if overview.closing %}
     <div style="overflow-x:auto;">
     <table>
       <thead><tr><th>Project</th><th>Steps left</th><th>Next step</th></tr></thead>
       <tbody>
-        {% for c in gm.closing %}
+        {% for c in overview.closing %}
         <tr>
           <td><a href="{{ url_for('project_detail', project_id=c.project['id'], _anchor='billing') }}">{{ c.project["job_name"] or "Project #" ~ c.project["id"] }}</a></td>
           <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>

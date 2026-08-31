@@ -145,7 +145,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="owner_id" onchange="this.form.submit()" style="padding:0.2rem;">
           <option value="" {% if not project["owner_id"] %}selected{% endif %}>— No owner —</option>
-          {% for e in employees %}
+          {% for e in members %}
           <option value="{{ e['id'] }}" {% if project["owner_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select>
@@ -353,8 +353,8 @@
           {% if r["instances"] and r["instances"]|length > 1 %}
           <ul class="instances">{% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}</ul>
           {% endif %}
-          {% if r["category"] == "Certification" and license_staffing %}
-            {% set holders = license_staffing.get(r["label"], []) %}
+          {% if r["category"] == "Certification" and license_holders %}
+            {% set holders = license_holders.get(r["label"], []) %}
             <br>
             {% if holders %}
             <span class="muted" style="font-size:0.8rem;">👷 held by:</span>
@@ -549,7 +549,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="household_member_id" onchange="this.form.submit()" style="padding:0.2rem;">
               <option value="" {% if not t["household_member_id"] %}selected{% endif %}>— Unassigned —</option>
-              {% for e in employees %}
+              {% for e in members %}
               <option value="{{ e['id'] }}" {% if t["household_member_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
               {% endfor %}
             </select>
@@ -658,7 +658,7 @@
         <label>Assign to</label>
         <select name="household_member_id">
           <option value="">— Unassigned —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+          {% for e in members %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
         </select>
       </div>
       <div class="field"><label>Due date</label><input type="date" name="due_date"></div>
