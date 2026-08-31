@@ -678,6 +678,29 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.67** — **Legacy-artifact sweep, part 3: the worker-hours vocabulary.**
+  Third part of the audit: the field-work submission/approval feature (the
+  Work Bag's hour-logging + the "Field work approvals" review page) is a
+  real, actively-used feature — kept exactly as it works today, just
+  reworded away from its original crew/payroll framing. "Worker note" is
+  now just "Note"; "logs the worker's hours" is now "logs the reported
+  hours"; several docstrings describing the Work Bag/submission flow
+  ("the worker's bag," "the worker's assigned tasks," "the worker's
+  completed field work") now describe "the signed-in person" instead.
+  Also swept up a related, previously-unflagged batch while in the same
+  vocabulary: five live error/flash messages and the sign-in/password-
+  reset flow said "a manager"/"a supervisor" even though the app has no
+  such role — just `is_admin` + specific permission grants — reworded to
+  "an admin" throughout (login's hashing-backend fallback, both steps of
+  self-service password reset, board deletion). The Help page's "For
+  admins" section had also kept the internal id/anchor `#managers` even
+  though its own visible label already said "For admins" — renamed to
+  `#admins` to match. Left the one migration query that matches *old*
+  stored data by the literal string `'%General Manager%'` untouched (it's
+  supposed to say that). A handful of remaining `crew`/`Foreman` mentions
+  are code comments only (never rendered to a user) describing the
+  Work Bag's field-stage design — rolled into the next, deeper
+  internal-naming piece rather than this one.
 - **v0.66** — **Condense & restart for the Project Assistant.** A new
   **🧵 Condense & restart** button on a project's 🧠 Plan tab (shown once
   the conversation has at least one message): summarizes the whole
