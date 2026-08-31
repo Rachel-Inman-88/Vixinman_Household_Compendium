@@ -131,6 +131,11 @@
     }
     .field { display: flex; flex-direction: column; gap: 0.25rem; }
     .field.wide { grid-column: 1 / -1; }
+    /* Piece 86: the Ask/Send + Repeat-last button field beside a chat's
+       textarea -- content-width on desktop (sits snug next to the
+       textarea), stretched to the full row on phones (mobile media query
+       below) so Repeat-last's margin-left:auto has room to push right. */
+    .ask-actions-field { flex: 0 0 auto; }
     label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
     input, textarea, select {
       font: inherit;
@@ -431,6 +436,12 @@
       .actions .btn { flex: 1 1 auto; text-align: center; }
       /* iOS zooms the page in when a focused field is < 16px — force ≥16px. */
       input, textarea, select { font-size: 16px; }
+      /* Piece 86: the Ask/Send + Repeat-last button row (Assistant chats)
+         sits at content width by default (matches the textarea beside it
+         on desktop) -- once the form wraps on phones, stretch it to the
+         full row so Repeat-last's margin-left:auto has room to push it
+         to the right instead of sitting snug against the primary button. */
+      .ask-actions-field { flex: 1 1 100%; }
     }
     /* Dense (3+ column) tables restack into labelled rows on phones so no
        column is cut off. The label comes from each table's own header via a
