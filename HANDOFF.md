@@ -2939,6 +2939,41 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 91 (v0.67): legacy-artifact sweep, part 2 (dead files) — done.**
+Second part of the audit from Piece 90: everything confirmed orphaned by
+the old solar-installation-business codebase, removed outright.
+- Verified each candidate first, not just trusted the earlier audit's read
+  — grepped the whole repo (`app.py`, every template, every `.md`) for
+  each filename before deleting anything; nothing referenced any of these.
+- **Deleted**: `docs/demo.html` + `docs/DEMO.md` (the old "Job Creator"
+  product's marketing/demo page, "Vixinman Designs internal tool," ~1.4MB
+  with embedded screenshots); `docs/The_Uber_Diagram.bpmn` (909-line BPMN
+  diagram of the original solar business's process, e.g. tasks literally
+  named "Doc Tube and Pictures," "*Meter set by Utility"); `docs/reference/`
+  (5 files, 647 lines — a real NM solar-contractor licensing/permit/
+  utility reference sheet with actual government office contacts);
+  `docs/screenshots/*.png` (6 files depicting the old client→job UI,
+  orphaned once `DEMO.md` — their only referrer — was gone); `docs/
+  HANDOFF.md` (1447 lines, self-labeled at the top "historical... kept as
+  historical build-log detail, not current status," describing build v0.3
+  from before the household reorg even started, fully superseded by the
+  root `HANDOFF.md`).
+- **Local-only cleanup, not a tracked change**: six stale compiled `.pyc`
+  files in the gitignored `__pycache__/` for modules with no remaining
+  source file (`barcodes`, `bpmn_export`, `nm_directory`, `inventory_seed`,
+  `inventory_research`, `loads_seed`) — confirms those modules really are
+  gone, not just unreferenced.
+- **A real judgment call, not an automatic deletion**: `docs/
+  DESKTOP_TROUBLESHOOTING_HANDOFF.md` documents a genuine, still-relevant
+  PyInstaller/Windows-SmartScreen crash-on-launch issue — unrelated to the
+  old solar business, just written while the app was still branded that
+  way. Kept it (it has real ongoing troubleshooting value) and reworded
+  its two old-branding mentions (old repo name `rain-solar/job-creator-app`
+  → the real one, "Vixinman Designs" and "her teammates'" → household
+  framing) in place instead of deleting the whole doc.
+- No live code touched — VERSION bump only. Everything removed is fully
+  recoverable from git history.
+
 **Piece 89 (v0.66): Condense & restart for the Project Assistant — done.**
 User asked for a way to condense the current Plan-tab conversation, save it
 as a project note, and restart the conversation using the condensed note

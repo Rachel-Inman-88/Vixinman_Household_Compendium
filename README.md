@@ -678,6 +678,33 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.67** — **Legacy-artifact sweep, part 2: dead files.** Second part
+  of the full-repo audit: removed everything confirmed orphaned (grepped
+  for any reference from `app.py` or a live template — none found) rather
+  than just guessed-at. Deleted `docs/demo.html` and `docs/DEMO.md` (a
+  marketing/demo page and its companion doc for the old "Job Creator"
+  product, "Vixinman Designs internal tool," complete with client→job→
+  compliance screenshots), `docs/The_Uber_Diagram.bpmn` (a 909-line BPMN
+  process diagram of the original solar-installation business, down to
+  named tasks like "Doc Tube and Pictures" and "*Meter set by Utility"),
+  the five-file `docs/reference/` set (a real NM solar-contractor
+  licensing/permit/utility reference — actual government office names,
+  phone numbers, bureau chiefs), `docs/screenshots/*.png` (six screenshots
+  of the old client/job UI, orphaned once `DEMO.md` was gone), and
+  `docs/HANDOFF.md` (self-labeled "historical... kept as historical
+  build-log detail," fully superseded by the root `HANDOFF.md`, describing
+  build v0.3 from before the household reorg even started). Also cleaned
+  up stale compiled `.pyc` files in `__pycache__/` for six modules that no
+  longer have any source file (`barcodes`, `bpmn_export`, `nm_directory`,
+  `inventory_seed`, `inventory_research`, `loads_seed`) — gitignored, so a
+  local-only cleanup, not a tracked change. **Kept, not deleted**:
+  `docs/DESKTOP_TROUBLESHOOTING_HANDOFF.md` — a genuinely still-useful
+  PyInstaller/Windows-SmartScreen troubleshooting doc, not itself a
+  solar-business artifact; just reworded its two old-branding mentions
+  (old repo name, "Vixinman Designs," "teammates'") in place. Nothing here
+  touches live code — every deleted file was confirmed unreferenced by
+  `app.py` or any template before removal. All of it is still fully
+  recoverable from git history if any of it turns out to have been wanted.
 - **v0.66** — **Condense & restart for the Project Assistant.** A new
   **🧵 Condense & restart** button on a project's 🧠 Plan tab (shown once
   the conversation has at least one message): summarizes the whole
