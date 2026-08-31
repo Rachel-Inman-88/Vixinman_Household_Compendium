@@ -2939,6 +2939,37 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 87 (v0.64): "Repeat last" alignment fix — done.** User reported
+after using Piece 86 live on their phone: "the retry button is still to
+the left, not the right" — then, on a screenshot exchange, clarified
+their actual target was the always-visible **🔁 Repeat last** button
+(next to Ask/Send), which they'd conflated with the error-only Retry
+button (same recycle emoji) — Retry itself was already correct.
+- **Root cause**: the button-row `.field` div sits at `flex:0 0 auto`
+  (content width) so it fits snugly beside the textarea on desktop. On
+  phones, once the form wraps, that div still only takes its own content
+  width rather than the full row — so `margin-left:auto` on Repeat-last
+  had no extra space in its own container to push into. Fixed with a new
+  `.ask-actions-field` class: unstyled (content-width) by default,
+  `flex:1 1 100%` inside the existing `@media (max-width:820px)` block
+  so it only stretches once the form has already wrapped to mobile.
+- **A real, easy-to-repeat mistake caught while fixing this, worth
+  remembering**: the very first attempt added `width:100%` to the inner
+  button-wrapper div while the OUTER `.field` div still carried an
+  inline `style="flex:0 0 auto;"` — inline styles always beat an
+  external stylesheet rule regardless of specificity or media queries,
+  so the fix silently did nothing (confirmed via `getBoundingClientRect()`
+  showing identical numbers before and after). The real fix had to move
+  that `flex` value out of the inline `style` attribute and into the
+  `.ask-actions-field` class itself, so the mobile media-query override
+  could actually take effect.
+- Verified via exact `getBoundingClientRect()` geometry (not just a
+  screenshot) on both the General Assistant and Project Assistant chats,
+  confirming Repeat-last's right edge lines up exactly with its
+  container's right edge on a 375px viewport, and that desktop layout
+  (buttons snug beside the textarea) is unchanged.
+- No schema or route changes — template/CSS only.
+
 **Piece 86 (v0.63): table density + Assistant chat UX — done.** User
 opened "the next leg of the project" with three things at once: (1) a
 quick review that the Assistant-role account's UI is basically the same

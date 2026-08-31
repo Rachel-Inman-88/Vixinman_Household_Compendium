@@ -678,6 +678,16 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.64** — **Fixed: "Repeat last" wasn't actually right-aligned on
+  phones.** A follow-up correction to v0.63 — the user's original ask
+  was about the always-visible **🔁 Repeat last** button (next to Ask/
+  Send), not the error-only Retry button, which was already correctly
+  positioned. On a phone-width screen the button row wasn't stretching
+  to the full width, so there was no room for the right-alignment to
+  push into. Fixed with a mobile-only rule so Repeat last now sits flush
+  against the right edge with visible space from Ask/Send, while desktop
+  (where the buttons already sit snug next to the question box) is
+  unchanged.
 - **v0.63** — **Denser tables, a bounded scrollable chat, and a
   right-aligned Retry.** The app's base text had never been given its
   own size, so every page — including every table — inherited the
