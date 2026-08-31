@@ -2939,6 +2939,55 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 85 (v0.62): year-end / tax-season budget summary — done.** User
+picked this off the standing "budget reporting — 2 more items still
+open" backlog note; asked what specifically was wanted since nothing
+further had ever been specified. Confirmed via 2 rounds of
+AskUserQuestion: a **year-end/tax-season** report (not net-worth
+tracking or per-project profitability), combining **household + all
+project ledgers** (matching Piece 55's existing month-level reports,
+not household-only), with **on-screen view + CSV download** (not
+screen-only).
+- New `_combined_year_totals(db, year_str)` — the year-level counterpart
+  to Piece 55's `_combined_month_totals()`, but breaks down **both**
+  Income and Expense by category (the month version only does Expense)
+  since a tax reference needs to see where money came from too, not
+  just where it went.
+- New `/budget/annual-summary` page (`household_budget_year_summary()`)
+  — year picker, total income/expense/net, two category tables — plus
+  `/budget/annual-summary.csv` (`household_budget_year_summary_csv()`)
+  exporting the same breakdown via Python's `csv` module (not
+  hand-joined strings, so a category name containing a comma still
+  round-trips correctly) plus three summary rows (Total Income/Expense/
+  Net). Linked from a new "📅 Year summary" button on the Budget page.
+- **A real, unrelated permission gap found and fixed while wiring this
+  page's `VIEW_PERMISSION` entry**: Piece 83's dedicated New/Edit form
+  routes for Household Budget transactions/categories, Loans, and
+  Savings (`household_txn_new_form`, `household_budget_category_edit_
+  form`, `loan_account_new_form`, `savings_account_edit_form`, etc.)
+  were decorated `@admin_required` but never added to `VIEW_PERMISSION`
+  — since that decorator falls back to requiring **full admin**
+  (`_is_admin()`) for any endpoint not in the dict, a household member
+  holding only the `finances.manage` grant (not full admin) could see
+  the "＋ New" buttons on those list pages perfectly fine but got
+  silently bounced to `/home` clicking through to the actual form. Added
+  all 8 missing entries. Confirmed via test: gave a non-admin test
+  account a bare `finances.manage` grant and verified all 4 previously-
+  broken routes now correctly return 200 (were 302 before the fix),
+  while a plain Child account (no grants) is still correctly blocked —
+  the fix closes a real gap without loosening the actual security
+  boundary.
+- Verified via a scratch test script with **synthetic transactions
+  injected into an isolated DB copy** (the real database still has zero
+  logged transactions — confirmed again, same as Piece 74's finding) —
+  25 checks: year totals/category breakdowns correct across both
+  ledgers, a transaction dated in the adjacent year correctly excluded,
+  the CSV's content-type/rows/summary lines, an empty year rendering
+  cleanly instead of crashing, and the full permission-boundary matrix
+  above. Plus a 60-route smoke sweep (zero 500s).
+- No schema changes. Branch `feature/year-end-budget-summary`, off
+  `main` at v0.61.
+
 **Piece 84 (v0.61): live VPS dates a day ahead in the evening — done.**
 User, as a side note while discussing home-screen widgets: "I found a bug
 where the app clock seems to be set a day ahead." Root-caused directly
@@ -3192,23 +3241,41 @@ Assistant," mirroring "General Assistant" exactly).
   Assistant's fairly narrow permission bundle (`rules.manage`/
   `inventory.manage`/`approvals`/`projects.manage`, see Piece 51) and the
   drafts-based write-interception layer that role uniquely goes through.
-- **Budget reporting — 2 more items still open.** Piece 55 built the pie
-  chart, cash-flow projection, and both trend charts the user asked for by
-  name; the user's own "among others" phrasing implied more might be
-  wanted — nothing further has been specified. Ask before assuming what's
-  still missing.
-- **Pixel 9a beta-test readiness** — 2 of the 3 original blockers are
-  done now (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`; Piece
-  75: the mobile-responsive UI audit, see above). Still open: a real-data
-  readiness check on `job_creator.db` itself before starting an actual
-  project in it. Note: this app already has some PWA/offline infrastructure
-  (`/sw.js`, `/offline`, Work Bag's offline support since Piece 26) —
-  check what already works there before assuming more offline support
-  needs building from scratch. **Also still open**: Jacob (household
-  roster, no login credentials yet) needs a username + password set
-  before he can actually sign in and beta-test — an admin (household.manage)
-  sets this via Family → his profile → edit; not something to set on his
-  behalf without him choosing the password directly.
+- **Backup-pull scheduled task silently failing since 2026-08-28
+  (2026-08-31, found while checking Pixel 9a readiness below).** The
+  VPS's own nightly backups are fine, but `CompendiumVPSBackupPull` (the
+  LAN-side task that pulls those snapshots down daily at 6am,
+  Section 5 of `OPERATIONS.md`) has failed every day since it was
+  created — `schtasks` showed `Last Result: -2147020576`
+  (`0x800710E0`, "the operator or administrator has refused the
+  request"). Root cause: `LogonType: InteractiveToken` with only a
+  single fixed 6am `CalendarTrigger` and no retry — if the laptop is
+  asleep, locked, or logged out at exactly 6am, Windows just refuses the
+  run and doesn't try again until the next day. **Attempted fix, blocked
+  by a tool-environment permission wall, not a real Windows
+  restriction**: adding a second `LogonTrigger` (fires when the user
+  logs on, as a catch-all alongside the 6am shot) via both
+  `Set-ScheduledTask` and `schtasks /create /xml ... /f` was refused
+  with "Access is denied" from this session's PowerShell tool — the same
+  class of non-interactive-process restriction `OPERATIONS.md` already
+  documents for this exact task (the OneDrive `-2147024891` gotcha in
+  Section 5). Handed the user a ready-to-run PowerShell snippet to add
+  the trigger themselves in a normal interactive window, where it should
+  not hit the same wall. **Confirm next time this comes up** that the
+  user actually ran it and that `lan_backups/` has resumed getting daily
+  files.
+- **Pixel 9a beta-test readiness — done (2026-08-31).** All 3 original
+  blockers now closed: Piece 56 (LAN reachability), Piece 75 (mobile-
+  responsive UI audit), and the real-data readiness check on
+  `job_creator.db` — confirmed clean (`PRAGMA integrity_check`: ok, zero
+  FK violations, every past migration flag consistent, no leftover demo
+  data) and, more to the point, already 3+ weeks into genuine real usage
+  (7 real projects, 53 tasks, 8 boards — not test data) with no
+  data-integrity issues surfacing beyond the now-fixed Piece 84 timezone
+  bug. Jacob's login credentials are also confirmed set. The backup-task
+  finding above was surfaced *during* this check but is tracked
+  separately since it's a Windows-scheduler reliability issue, not a
+  `job_creator.db` one.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
