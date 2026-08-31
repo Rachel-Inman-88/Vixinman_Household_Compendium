@@ -20,6 +20,7 @@
       <div class="field"><label>Make</label><input name="make" value="{{ vehicle['make'] if vehicle else '' }}"></div>
       <div class="field"><label>Model</label><input name="model" value="{{ vehicle['model'] if vehicle else '' }}"></div>
       <div class="field"><label>Year</label><input name="year" value="{{ vehicle['year'] if vehicle else '' }}" placeholder="e.g. 2019"></div>
+      <div class="field"><label>Current mileage</label><input name="current_mileage" type="number" min="0" step="1" value="{{ vehicle['current_mileage'] if vehicle and vehicle['current_mileage'] is not none else '' }}" placeholder="e.g. 84210"></div>
       <div class="field wide"><label>Description</label><input name="description" value="{{ vehicle['description'] if vehicle else '' }}"></div>
       <div class="field"><label>Purchased from</label><input name="purchased_from" value="{{ vehicle['purchased_from'] if vehicle else '' }}" placeholder="e.g. the dealership"></div>
       <div class="field"><label>Cost $</label><input name="cost" type="number" step="0.01" min="0" value="{{ '%.2f'|format(vehicle['cost']) if vehicle and vehicle['cost'] is not none else '' }}"></div>

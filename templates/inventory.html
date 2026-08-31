@@ -116,7 +116,10 @@
         <td>{{ t["model"] or "—" }}</td>
         <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ (t["cost"])|money }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a>{% endif %}</td>
+        <td style="white-space:nowrap;">
+          {% set mb = maint_by_tool.get(t["id"]) %}
+          {% if mb %}<a href="{{ url_for('inventory_page', _anchor='maintenance') }}" class="inv-edit" style="margin-right:0.35rem; text-decoration:none; font-size:0.8rem;" title="Maintenance">🔧 {{ mb.count }}{% if mb.overdue %} <span class="badge danger" style="padding:0 0.3rem;">{{ mb.overdue }}</span>{% endif %}</a>{% endif %}
+          {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -133,7 +136,7 @@
   </div>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
-    <thead><tr><th>Vehicle</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th></th></tr></thead>
+    <thead><tr><th>Vehicle</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Mileage</th><th></th></tr></thead>
     <tbody>
       {% for v in vehicles %}
       <tr>
@@ -143,13 +146,57 @@
         <td>{{ v["make"] or "—" }}</td>
         <td>{{ v["model"] or "—" }}</td>
         <td>{{ v["year"] or "—" }}</td>
-        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a>{% endif %}</td>
+        <td>{{ v["current_mileage"] if v["current_mileage"] is not none else "—" }}</td>
+        <td style="white-space:nowrap;">
+          {% set mb = maint_by_vehicle.get(v["id"]) %}
+          {% if mb %}<a href="{{ url_for('inventory_page', _anchor='maintenance') }}" class="inv-edit" style="margin-right:0.35rem; text-decoration:none; font-size:0.8rem;" title="Maintenance">🔧 {{ mb.count }}{% if mb.overdue %} <span class="badge danger" style="padding:0 0.3rem;">{{ mb.overdue }}</span>{% endif %}</a>{% endif %}
+          {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
   <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Use <strong>＋ New vehicle</strong> to add a car, truck, trailer, or other vehicle, or ✎ to edit.</p>
+</details>
+
+<details class="card sect" id="maintenance">
+  <summary>🔧 Maintenance <span class="sect-count">{{ maintenance|length }}</span></summary>
+  <div class="inv-toolbar">
+    <span class="inv-legend">One schedule across every vehicle and tool — modeled on the Navy's Planned Maintenance System.</span>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_maintenance_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New task</a>{% endif %}
+  </div>
+  {% if maintenance %}
+  <div class="inv-scrolltop" data-scrollfor="tbl-maintenance"><div></div></div>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table" id="tbl-maintenance">
+    <thead><tr><th>Equipment</th><th>Task</th><th>Every</th><th>Next due</th><th>Last done</th><th></th></tr></thead>
+    <tbody>
+      {% for m in maintenance %}
+      <tr>
+        <td style="white-space:nowrap;">{{ m.equipment }}</td>
+        <td>{{ m.name }}
+          {% if m.notes %}<span title="{{ m.notes }}" style="cursor:help;">ℹ️</span>{% endif %}</td>
+        <td class="muted" style="white-space:nowrap;">{{ m.every_label }}</td>
+        <td style="white-space:nowrap;">{{ m.due_label }}
+          {% if m.status == "overdue" %} <span class="badge danger">overdue</span>
+          {% elif m.status == "due_soon" %} <span class="badge warn">due soon</span>{% endif %}</td>
+        <td class="muted" style="white-space:nowrap;">{{ m.last_completed_at or "—" }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{{ url_for('inventory_maintenance_done', task_id=m.id) }}" style="display:inline-flex; gap:0.3rem; align-items:center; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if m.vehicle_id %}<input type="number" name="mileage" placeholder="odometer" style="width:5.5rem; padding:0.15rem 0.3rem; font-size:0.78rem;">{% endif %}
+            <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Done</button>
+          </form>
+          {% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_maintenance_edit', task_id=m.id) }}" title="Edit">✎</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0.4rem 0 0;">No maintenance tasks yet. Use <strong>＋ New task</strong> to schedule the first one (e.g. an oil change every 5,000 miles).</p>
+  {% endif %}
 </details>
 
 <script>
