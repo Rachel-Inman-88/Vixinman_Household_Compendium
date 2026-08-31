@@ -10,7 +10,7 @@
   </div>
 </div>
 <p class="muted">Completed field work submitted from the Work Bag. Approving
-applies the task changes and logs the worker's hours as authoritative;
+applies the task changes and logs the reported hours as authoritative;
 rejecting discards it. Nothing here counts in the system until you approve it.</p>
 
 {% if subs %}
@@ -28,7 +28,7 @@ rejecting discards it. Nothing here counts in the system until you approve it.</
       <dt>Approved hours</dt><dd>{{ s["approved_hours"] if s["approved_hours"] is not none else "—" }}</dd>
       <dt>Reviewed by</dt><dd>{{ s["reviewed_by"] or "—" }}{% if s["reviewed_at"] %} · {{ s["reviewed_at"][:16] }}{% endif %}</dd>
       {% endif %}
-      {% if s["note"] %}<dt>Worker note</dt><dd>{{ s["note"] }}</dd>{% endif %}
+      {% if s["note"] %}<dt>Note</dt><dd>{{ s["note"] }}</dd>{% endif %}
     </dl>
     {% set items = items_by_sub.get(s["id"], []) %}
     {% if items %}

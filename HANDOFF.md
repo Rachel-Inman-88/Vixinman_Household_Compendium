@@ -2939,6 +2939,48 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 92 (v0.69): legacy-artifact sweep, part 3 (worker-hours vocab) —
+done.** Third part of the audit. User's call on `templates/submissions.html`
++ the Work Bag's hour-logging (a real crew-hours-submission-and-approval
+feature, still fully intact): keep the feature working exactly as it does
+today, just reword the crew/payroll-flavored vocabulary.
+- `templates/submissions.html`: "Worker note" → "Note"; "logs the worker's
+  hours as authoritative" → "logs the reported hours as authoritative".
+- `app.py` docstrings for the Work Bag/submission routes (`work_bag()`,
+  `api_my_tasks()`, `api_work_bag_submit()`, `submissions_page()`): "the
+  worker's bag" / "The worker's assigned tasks" / "Save the worker's
+  completed field work" / "Manager review of..." / "until a manager
+  approves it" → all reworded around "the signed-in person" and "someone
+  with the approvals permission", matching how the feature is actually
+  gated (there's no manager role — it's the `approvals` permission).
+- **Found a related batch the original audit missed**, while re-grepping
+  this same vocabulary family more broadly than just "worker": five live
+  error/flash messages and both password-reset docstrings said "a
+  manager"/"a supervisor" — `login()`'s hashing-backend-unavailable
+  fallback, `forgot_password()`'s docstring + its generic flash text,
+  `forgot_password_verify()`'s docstring + its "reset is no longer valid"
+  flash, and `board_delete()`'s permission-denied flash (whose own
+  adjacent code comment already correctly said "an admin" — just the
+  flash text itself was stale). All reworded to "an admin", matching the
+  real permission model (`is_admin` + `permission_grants`, no such thing
+  as a manager/supervisor role). Deliberately left `app.py:2145`'s
+  migration query alone — it matches *old* stored data via the literal
+  string `'%General Manager%'`, which is correct, not a leftover.
+- **Also found and fixed**: the Help page's "For admins" section (id=10)
+  had visible text that already said "For admins" but its internal anchor
+  id was still `#managers` (`HELP_SECTION_PERMISSION` dict key, the
+  `<div id="managers">`, and its `href="#managers"` link) — renamed the
+  identifier to `#admins`/`"admins"` throughout so the internal name
+  matches what it's always displayed as.
+- Verified live: loaded the renamed `#admins` help anchor, confirmed the
+  account page and the (empty, but rendering) Field work approvals page
+  show the new wording.
+- **Deliberately not touched this piece**: a handful of `crew`/`Foreman`
+  mentions that are code-comment-only (e.g. the `FIELD_STAGES` block's own
+  explanatory comment, a couple of docstrings never rendered to a user) —
+  rolled into the next piece (deeper internal naming), since fixing those
+  means touching the same handful of lines that piece will already be in.
+
 **Piece 91 (v0.68): legacy-artifact sweep, part 2 (dead files) — done.**
 Second part of the audit from Piece 90: everything confirmed orphaned by
 the old solar-installation-business codebase, removed outright.
