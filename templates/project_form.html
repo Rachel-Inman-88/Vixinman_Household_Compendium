@@ -57,7 +57,7 @@ recordkeeping.</p>
       <label for="owner_id">Owner <span class="muted">(defaults to you — reassign anytime after creation)</span></label>
       <select id="owner_id" name="owner_id">
         <option value="">— No owner —</option>
-        {% for e in employees %}
+        {% for e in members %}
         <option value="{{ e['id'] }}" {% if values.get('owner_id')|string == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
         {% endfor %}
       </select>

@@ -15,7 +15,7 @@
       <div class="field"><label for="proposed_by">Proposed by (optional)</label>
         <select id="proposed_by" name="proposed_by">
           <option value="">— unspecified —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+          {% for e in members %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
         </select></div>
       <div class="field"><label for="target_date">Target / someday date (optional)</label>
         <input id="target_date" name="target_date" type="date"></div>

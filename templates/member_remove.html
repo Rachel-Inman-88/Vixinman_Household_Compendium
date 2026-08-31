@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Remove {{ employee["name"] }}{% endblock %}
+{% block title %}Remove {{ member["name"] }}{% endblock %}
 {% block content %}
 <div class="toolbar">
   <h1>Remove household member</h1>
-  <a href="{{ url_for('household_member_detail', household_member_id=employee['id']) }}" class="btn btn-secondary">← Cancel</a>
+  <a href="{{ url_for('household_member_detail', household_member_id=member['id']) }}" class="btn btn-secondary">← Cancel</a>
 </div>
 <div class="card">
   <p style="margin-top:0;">You're about to remove
-    <strong>{{ employee["name"] }}</strong>{% if employee["nickname"] %} “{{ employee["nickname"] }}”{% endif %}
+    <strong>{{ member["name"] }}</strong>{% if member["nickname"] %} “{{ member["nickname"] }}”{% endif %}
     from Compendium. They'll be sent to the <strong>🗑 Trash</strong>, where an
     admin can restore them or delete them permanently.</p>
 
@@ -33,7 +33,7 @@
     <div class="actions">
       <button type="submit" class="btn"{% if sub_count %} disabled title="Resolve field-work submissions first"{% endif %}
               onsubmit="return confirm('Remove this household member? They will be sent to the Trash.');">Remove</button>
-      <a href="{{ url_for('household_member_detail', household_member_id=employee['id']) }}" class="btn btn-secondary">Cancel</a>
+      <a href="{{ url_for('household_member_detail', household_member_id=member['id']) }}" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
 </div>

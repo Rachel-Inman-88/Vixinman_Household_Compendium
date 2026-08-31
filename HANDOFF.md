@@ -2939,6 +2939,81 @@ approve shape unchanged rather than granting any kind of direct write.
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Piece 93 (v0.70): legacy-artifact sweep, part 4 (internal naming) —
+done.** Final part of the four-part audit. Nothing here is user-visible —
+every label checked was already correct household framing — this is
+purely internal identifier consistency: matching what the DB table
+(`household_members`, since Piece 35) and every visible label already
+call things.
+- **The big one**: `employees` as a Python variable/template-context name
+  → `members`, across `app.py` (49 occurrences) and 13 templates that
+  build an assignee-picker `<select>` (chores, boards, habits,
+  appointments, wishlist, tasks, backlog, project detail). Used a
+  word-boundary sed pass excluding the one-time-migration block
+  (lines 2071-2144, which legitimately matches the literal old
+  `"employees"` table/column names on a pre-Piece-35 database) so that
+  block's historical-data-matching strings weren't touched.
+- Renamed the four `templates/employee_*.html` files to
+  `member_*.html`/`members.html`, and updated every `render_template()`
+  call + context key to match (`employee=member` → `member=member`, etc.).
+- `notify_employees()` → `notify_members()`; `emp_name`/`_emp_name()` (a
+  SQL alias reused in 4 different queries: license badges, field
+  submissions, password requests) → `member_name`/`_member_name()`;
+  `_employee_uses()` → `_household_member_uses()`; the dashboard's
+  Household-overview object (`gm`, matched against 17 references in
+  `dashboard.html`) → `overview`; the AI Assistant's `staff_directory` tool
+  → `household_directory`; `license_staffing()` → `license_holders()`.
+  Also renamed the Tasks board's `?employee=` filter query param to
+  `?member=` (only 2 places built/read it, both in this repo, so safe to
+  move together).
+- **Found and deleted `EMPLOYEE_FIELD_LABELS`**, a constant that turned
+  out to be entirely dead — defined once, referenced nowhere else in the
+  whole codebase. Also found and deleted three similarly-dead
+  `ACTION_LABELS` entries (`new_employee`/`edit_employee`/`delete_employee`)
+  whose keys no longer match any real view-function name (those routes
+  are `new_household_member`/etc. now) — they were silently falling
+  through to `ACTION_LABELS`' own auto-prettify fallback, which happens
+  to already produce a fine label, so this was a correctness no-op, just
+  dead weight.
+- Swept up the `crew`/`Foreman` code comments deferred from Piece 92 (all
+  comment-only, never rendered). While there, pruned two
+  solar-permitting-specific keywords ("doc tube", "meter set") out of the
+  still-*live* `PHOTO_STEP_KEYWORDS` list — inherited from the original
+  BPMN process, and while they'd never realistically match a real
+  household task title, the matching logic itself is live code, not a
+  comment. Fixed a stale `schema.sql`/`app.py` comment pair claiming the
+  ledger still "feeds the QuickBooks reports" (that export was removed
+  pieces ago) and a "customer (income)" comment that didn't match the
+  already-fixed live "Payer" label.
+- **Deliberately left alone, on purpose, not missed**: the `TRASH_REGISTRY`
+  entity-type strings `"employee"`/`"employee_file"` and the
+  `employee_<id>/` upload-directory naming — both are pinned to
+  already-stored data (a trashed record's `entity_type` column, or files
+  genuinely sitting on disk under that path today), not just naming, and
+  an existing `schema.sql` comment already documents this exact
+  path convention as "deliberately left unrenamed." Also left the
+  one-time migration code matching literal old data by string (the
+  `"employees"` table name, `'%General Manager%'`) — correct as-is, it's
+  reading historical shapes, not describing anything current.
+- **Explicitly not attempted this piece, flagged for the user separately**:
+  `job_name`/`install_date` as actual **database columns** (not just
+  Python variable names — renaming these means a real `ALTER TABLE
+  RENAME COLUMN` migration touching live data, plus updating ~90+ SQL
+  query references) and the `job_creator.db` filename itself (the live
+  file the production VPS's gunicorn process has open right now). Both
+  are a materially different risk class than everything else in this
+  piece — genuine schema/production-data changes, not in-memory renames —
+  and carry zero user-visible benefit (nobody ever sees a column name or
+  a database filename). Held for an explicit decision rather than done
+  unilaterally.
+- Verified live against the real app: household members list, a member's
+  detail page, the Tasks board's `?member=` filter round-trip (built the
+  link from a member's profile, followed it, confirmed the right person
+  pre-selected), the dashboard's Household overview card (money/stalled/
+  closing/approvals tiles, all reading from the renamed `overview`
+  object), the Accounts page, and an assignee-picker dropdown on a chore
+  form — all render correctly post-rename.
+
 **Piece 92 (v0.69): legacy-artifact sweep, part 3 (worker-hours vocab) —
 done.** Third part of the audit. User's call on `templates/submissions.html`
 + the Work Bag's hour-logging (a real crew-hours-submission-and-approval

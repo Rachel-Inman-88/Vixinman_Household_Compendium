@@ -17,7 +17,7 @@ rejecting discards it. Nothing here counts in the system until you approve it.</
   {% for s in subs %}
   <div class="card">
     <div class="toolbar" style="margin-bottom:0.4rem;">
-      <h2 style="margin:0; font-size:1.05rem;">{{ s["emp_name"] }}
+      <h2 style="margin:0; font-size:1.05rem;">{{ s["member_name"] }}
         <span class="badge {{ sc[s['status']] }}">{{ s["status"] }}</span></h2>
       <span class="muted" style="font-size:0.85rem;">submitted {{ s["submitted_at"][:16] }}</span>
     </div>

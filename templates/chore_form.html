@@ -15,7 +15,7 @@
       <div class="field"><label for="household_member_id">Assign to (optional)</label>
         <select id="household_member_id" name="household_member_id">
           <option value="">— unassigned —</option>
-          {% for e in employees %}
+          {% for e in members %}
           <option value="{{ e['id'] }}" {% if ec and ec['household_member_id'] == e['id'] %}selected{% endif %}>{{ e["name"] }}</option>
           {% endfor %}
         </select></div>

@@ -81,7 +81,7 @@ def ensure_backlog_reminders(db):
             (this_month,)).rowcount
         db.commit()
         if claimed:
-            notify_employees(
+            notify_members(
                 db, recipients,
                 f"🗂 Time to review the household idea backlog"
                 f" ({backlog_count} waiting).",
@@ -98,7 +98,7 @@ def ensure_backlog_reminders(db):
         db.commit()
         if not claimed:
             continue
-        notify_employees(
+        notify_members(
             db, recipients, f"💡 Reminder: {idea['name']}",
             link=f"/backlog/{idea['id']}", kind="backlog_idea")
         db.commit()
@@ -148,7 +148,7 @@ def ensure_routine_task_reminders(db):
         db.commit()
         if not claimed:
             continue
-        notify_employees(
+        notify_members(
             db, recipients, f"🔁 Chore due: {chore['title']}",
             link="/chores", kind="chore")
         db.commit()
@@ -182,7 +182,7 @@ def ensure_appointment_reminders(db):
         if not claimed:
             continue
         when = appt["when_date"] + (f" {appt['when_time']}" if appt["when_time"] else "")
-        notify_employees(
+        notify_members(
             db, recipients, f"📅 Appointment: {appt['title']} ({when})",
             link="/appointments", kind="appointment")
         db.commit()
@@ -214,7 +214,7 @@ def ensure_requirement_reminders(db):
         db.commit()
         if not claimed:
             continue
-        notify_employees(
+        notify_members(
             db, recipients, f"📋 Requirement due: {req['label']}",
             link="/rules", kind="requirement")
         db.commit()
@@ -281,7 +281,7 @@ def ensure_assistant_safety_notifications(db):
             continue   # still active -- not idle yet
         ids = [r["id"] for r in rows]
         hours = _safety_hours_label(min(r["created_at"] for r in rows), newest)
-        notify_employees(
+        notify_members(
             db, parents,
             f"👀 {g['child_name']} spent {hours} on the 💬 Assistant "
             f"({len(rows)} message{'s' if len(rows) != 1 else ''}).",
@@ -311,7 +311,7 @@ def ensure_assistant_safety_notifications(db):
         ids = [r["id"] for r in rows]
         hours = _safety_hours_label(min(r["created_at"] for r in rows), newest)
         job_name = g["job_name"] or f"Project #{project_id}"
-        notify_employees(
+        notify_members(
             db, parents,
             f"👀 {author} spent {hours} on the 🧠 Plan tab for '{job_name}' "
             f"({len(rows)} message{'s' if len(rows) != 1 else ''}).",
@@ -358,10 +358,10 @@ PROJECT_FIELD_LABELS = {
     "estimated_cost": "Money invested / budget",
 }
 
-# Employee directory (Piece 8). The core fields on a person's record:
-# who they are, what they do, and when they work. Their licenses and
-# certifications are structured rows in employee_credentials (Piece 8.1),
-# managed on the profile page.
+# Household member directory (Piece 8). The core fields on a person's
+# record: who they are, what they do, and when they work. Their licenses
+# and certifications are structured rows in household_member_credentials
+# (Piece 8.1), managed on the profile page.
 # Piece 19.3: names are entered as first/last (+ optional nickname); `name`
 # is the composed "First Last" display value kept for everything that reads it.
 HOUSEHOLD_MEMBER_FIELDS = ["name", "first_name", "last_name", "nickname",
@@ -402,14 +402,10 @@ SECURITY_QUESTIONS_ASK = 2        # how many (randomly chosen) to answer on rese
 SECURITY_RESET_MAX_ATTEMPTS = 5   # wrong tries before the account auto-locks
 
 
-EMPLOYEE_FIELD_LABELS = {
-    "name": "Name", "first_name": "First name", "last_name": "Last name",
-    "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
-}
 # Columns a user fills in when adding a license/certification.
 CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes"]
 # A credential within this many days of its expiry date is flagged
-# "expiring soon" on the employee and project pages.
+# "expiring soon" on the household member and project pages.
 EXPIRY_SOON_DAYS = 60
 # Piece 35: the household's role set, replacing the 28-role solar org chart.
 # A household member holds exactly one role (was comma-separated multiple
@@ -557,9 +553,9 @@ RECEIPT_CATEGORIES = ["Materials", "Meals", "Tools and Supplies", "Overhead"]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 
 # Piece 21.5: source-document type for a ledger entry, so scanned/received
-# paperwork feeds the QuickBooks reports under the right account flow:
-#   Invoice — money we bill a customer (A/R, Income)
-#   Bill    — money a vendor bills us (A/P, Expense)
+# paperwork is filed under the right side of the ledger:
+#   Invoice — money owed to the household (Income)
+#   Bill    — money the household owes a vendor (Expense)
 #   Receipt — proof of a payment already made (an expense paid at the counter)
 # A blank doc type is a plain ledger note with no paperwork behind it.
 DOC_TYPES = ["Receipt", "Invoice", "Bill"]
@@ -599,7 +595,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.69"
+VERSION = "0.70"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -610,17 +606,14 @@ ALLOWED_EXTENSIONS = {
 # as project_files tagged with FIELD_PHOTO_LABEL and the originating task.
 PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "heic", "gif"}
 FIELD_PHOTO_LABEL = "Field Photo"
-# Piece 21.8: every pipeline step that requires photographic documentation gets
-# the Work Bag camera button — not only the ones with "photo"/"picture" in the
-# name. These substrings are chosen to hit exactly the photo steps in the BPMN
-# process and nothing else: the site visit, the install itself, the crew
-# walkthrough, doc tube, the meter set, and the re-inspection of corrections
-# ("install walkthrough" and "re-inspect" are used, rather than bare
-# "walkthrough"/"inspect", so the Sales final walkthrough and the CID inspection
-# don't get a camera they don't need).
+# Piece 21.8: any task whose title suggests it needs photographic
+# documentation gets the Work Bag camera button — not only ones with
+# "photo"/"picture" in the name. "install walkthrough" and "re-inspect" are
+# used (rather than bare "walkthrough"/"inspect") so a routine final
+# walkthrough or inspection task doesn't get a camera button it doesn't need.
 PHOTO_STEP_KEYWORDS = (
     "photo", "picture", "site visit", "site installation",
-    "install walkthrough", "doc tube", "meter set", "re-inspect",
+    "install walkthrough", "re-inspect",
 )
 
 
@@ -687,12 +680,12 @@ STAGE_ORDER = ["Planning", "Prep", "In Progress", "Wrap-up", "Done"]
 # Short labels for the tight per-project progress widget (Piece 20.2).
 STAGE_SHORT = {"Planning": "Plan", "Prep": "Prep",
                "In Progress": "Progress", "Wrap-up": "Wrap-up", "Done": "Done"}
-# Piece 21.6: the stages a crew physically works on site. The Work Bag and the
-# Foreman's "My tasks" show only these — office/scheduling steps stay on the
-# dashboards where they belong. Wrap-up stays included post-merge: it still
-# holds genuine field work (inspection sign-off, meter-set fixes) alongside
-# office tasks; my_tasks is already scoped to the viewer's own assignments
-# first, so this doesn't leak unrelated work onto an installer's list.
+# Piece 21.6: the stages where hands-on, on-site work happens. The Work Bag
+# and the "My tasks" list show only these — planning/scheduling steps stay
+# on the dashboards where they belong. Wrap-up stays included post-merge: it
+# still holds genuine on-site work (inspection sign-off, final fixes)
+# alongside planning tasks; my_tasks is already scoped to the viewer's own
+# assignments first, so this doesn't leak unrelated work onto their list.
 FIELD_STAGES = {"In Progress", "Wrap-up"}
 
 
@@ -761,7 +754,7 @@ if os.environ.get("COMPENDIUM_BEHIND_PROXY"):
 # Piece 72: CSRF protection (Flask-WTF) -- the app's biggest remaining
 # security gap once internet-facing, flagged but deliberately deferred in
 # Piece 69. WTF_CSRF_TIME_LIMIT defaults to 1 hour, which would silently
-# break the Work Bag's offline queue (Piece 26) -- a crew can go hours
+# break the Work Bag's offline queue (Piece 26) -- someone can go hours
 # without signal before flushing queued submissions -- so it's tied to
 # the session's own 12-hour lifetime instead, matching that existing
 # design intent rather than Flask-WTF's shorter default.
@@ -835,8 +828,7 @@ ACTION_LABELS = {
     "edit_project": "Edit project", "add_rule": "Add rule", "delete_rule": "Delete rule",
     "backlog_new": "Add backlog idea", "backlog_edit": "Edit backlog idea",
     "backlog_start": "Start idea as a project", "backlog_delete": "Delete backlog idea",
-    "new_employee": "Add employee", "edit_employee": "Edit employee",
-    "delete_employee": "Delete employee", "upload_file": "Upload project document",
+    "upload_file": "Upload project document",
     "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
     "set_task_due": "Change task due date",
     "cancel_project": "Cancel project (mark Abandoned)", "reopen_project": "Reopen project",
@@ -953,7 +945,7 @@ def _seed_role_default_grants(db, member_id, role):
                 " granted_by) VALUES (?, ?, ?)", (member_id, perm, "role default"))
 
 
-def notify_employees(db, recipient_ids, message, link="", kind=""):
+def notify_members(db, recipient_ids, message, link="", kind=""):
     """Piece 29.3: drop an in-app notification to each recipient household
     member id."""
     for rid in dict.fromkeys(recipient_ids):   # de-dupe, preserve order
@@ -1023,7 +1015,7 @@ def notify_stage_turnover(db, project, new_status, exclude_id=None):
     if not recipients:
         return
     jobname = project["job_name"] or f"Project #{project['id']}"
-    notify_employees(
+    notify_members(
         db, recipients, f"📋 {jobname} turned over to {new_status}.",
         link=url_for("project_detail", project_id=project["id"]), kind="stage")
 
@@ -1394,12 +1386,12 @@ def _project_name(db, jid):
     return (r["job_name"] if r and r["job_name"] else f"Project #{jid}")
 
 
-def _emp_name(db, eid):
+def _member_name(db, eid):
     r = db.execute("SELECT name FROM household_members WHERE id = ?", (eid,)).fetchone()
     return r["name"] if r else f"Household member #{eid}"
 
 
-def _employee_uses(db, eid):
+def _household_member_uses(db, eid):
     uses = []
     n = _count(db, "SELECT COUNT(*) FROM project_tasks WHERE household_member_id = ?", (eid,))
     if n:
@@ -1513,15 +1505,15 @@ TRASH_REGISTRY = {
                         "found_in": lambda db, r: "Contacts",
                         "in_use": lambda db, r: _contact_uses(db, r["id"])},
     "credential": {"table": "household_member_credentials", "label": lambda r: r["name"],
-                   "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Credentials",
+                   "found_in": lambda db, r: f"{_member_name(db, r['household_member_id'])} — Credentials",
                    "in_use": lambda db, r: []},
     "employee_file": {"table": "household_member_files", "label": lambda r: r["original_name"],
-                      "found_in": lambda db, r: f"{_emp_name(db, r['household_member_id'])} — Documents",
+                      "found_in": lambda db, r: f"{_member_name(db, r['household_member_id'])} — Documents",
                       "in_use": lambda db, r: [],
                       "file": lambda r: UPLOADS_DIR / f"employee_{r['household_member_id']}" / r["stored_name"]},
     "employee": {"table": "household_members", "label": lambda r: r["name"],
                  "found_in": lambda db, r: "Household Members",
-                 "in_use": lambda db, r: _employee_uses(db, r["id"])},
+                 "in_use": lambda db, r: _household_member_uses(db, r["id"])},
     "inventory_item": {"table": "inventory_items",
                        "label": lambda r: f"{r['make']} {r['model']}".strip() or r["category"],
                        "found_in": lambda db, r: f"Inventory — {r['category']}",
@@ -1741,7 +1733,7 @@ def _notify_failed_reset(db, user):
     recipients = [r["id"] for r in db.execute(
         "SELECT id FROM household_members WHERE is_admin = '1'"
         " AND COALESCE(username,'') != '' AND id != ?", (user["id"],)).fetchall()]
-    notify_employees(
+    notify_members(
         db, recipients,
         f"🔒 {user['name']} had {SECURITY_RESET_MAX_ATTEMPTS} failed"
         " password-reset attempts. They'll need their password reset directly.",
@@ -2110,7 +2102,7 @@ def init_db():
     ensure_columns(db, "projects", PROJECT_FIELDS + ["status", "install_date"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
     ensure_columns(db, "project_transactions", ["doc_type"])
-    # Piece 21.7: tie crew-captured field photos back to the task they document.
+    # Piece 21.7: tie field photos back to the task they document.
     ensure_columns(db, "project_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
     ensure_columns(db, "project_files", ["txn_id"])
@@ -2251,9 +2243,9 @@ def init_db():
                    " ('rule_category_relabel_v1', '1')"
                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     # Piece 27.1: sample client/project seed removed for production. A fresh
-    # database now starts with NO clients, projects, tasks, or sample employees
-    # — only the reference databases (staff roster, inventory, calculator
-    # catalog, rules, pay types) seed. (History has the old demo data.)
+    # database now starts with NO clients, projects, tasks, or sample household
+    # members — only the reference databases (inventory, calculator catalog,
+    # rules) seed. (History has the old demo data.)
     if db.execute("SELECT COUNT(*) FROM resource_rules").fetchone()[0] == 0:
         insert_seed_rules(db, SEED_RULES)
         db.commit()
@@ -2747,12 +2739,12 @@ def credential_status(expires):
     return ("ok", f"expires {expires}")
 
 
-def license_staffing():
-    """For each License requirement label, the employees who hold a
+def license_holders():
+    """For each License requirement label, the household members who hold a
     matching credential (tied via rule_label), each with its expiry state.
-    Drives the 'who on staff is licensed' badges on project pages."""
+    Drives the 'who holds this license' badges on project pages."""
     rows = get_db().execute(
-        "SELECT c.rule_label, c.expires, e.name AS emp_name"
+        "SELECT c.rule_label, c.expires, e.name AS member_name"
         " FROM household_member_credentials c"
         " JOIN household_members e ON e.id = c.household_member_id"
         " WHERE c.rule_label != ''"
@@ -2762,7 +2754,7 @@ def license_staffing():
     for r in rows:
         state, _ = credential_status(r["expires"])
         staffing.setdefault(r["rule_label"], []).append(
-            {"name": r["emp_name"], "state": state})
+            {"name": r["member_name"], "state": state})
     return staffing
 
 
@@ -2784,7 +2776,7 @@ def _notify_board_assignee(db, board_id, title, assignee_id, actor):
                      (assignee_id,)).fetchone()
     if not row or not row["u"]:
         return
-    notify_employees(
+    notify_members(
         db, [assignee_id],
         f"📋 To-do sent to you: “{title}”"
         + (f" — from {actor['name']}" if actor else "") + ".",
@@ -2800,7 +2792,7 @@ def _notify_board_collaborator(db, board_id, title, collaborator_id, actor):
                      (collaborator_id,)).fetchone()
     if not row or not row["u"]:
         return
-    notify_employees(
+    notify_members(
         db, [collaborator_id],
         f"🤝 Added as a collaborator on: “{title}”"
         + (f" — by {actor['name']}" if actor else "") + ".",
@@ -2836,11 +2828,11 @@ def boards_page():
     sql += (" ORDER BY (b.status = 'Done'), (b.due_date = ''), b.due_date, b.due_time,"
             " b.id DESC")
     boards = db.execute(sql, params).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     open_count = db.execute(
         "SELECT COUNT(*) FROM boards WHERE status != 'Done'").fetchone()[0]
-    return render_template("boards.html", boards=boards, employees=employees,
+    return render_template("boards.html", boards=boards, members=members,
                            who=who, show=show, task_statuses=TASK_STATUSES,
                            priorities=BOARD_PRIORITIES, open_count=open_count,
                            today=datetime.now().strftime("%Y-%m-%d"))
@@ -2852,9 +2844,9 @@ def board_new_form():
     form pattern (Piece 76/78) instead of an inline card at the bottom of
     the list -- reached via a "+ New board" button at the top."""
     db = get_db()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("board_form.html", employees=employees,
+    return render_template("board_form.html", members=members,
                            priorities=BOARD_PRIORITIES)
 
 
@@ -2905,12 +2897,12 @@ def board_detail(board_id):
         "SELECT bc.id, bc.household_member_id, m.name FROM board_collaborators bc"
         " JOIN household_members m ON m.id = bc.household_member_id"
         " WHERE bc.board_id = ? ORDER BY m.name", (board_id,)).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("board_detail.html", board=board, notes=notes,
                            times=times, total_hours=total_hours,
                            collaborators=collaborators,
-                           employees=employees, task_statuses=TASK_STATUSES,
+                           members=members, task_statuses=TASK_STATUSES,
                            priorities=BOARD_PRIORITIES,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
@@ -3149,7 +3141,7 @@ def _notify_chore_assignee(db, title, assignee_id, actor):
                      (assignee_id,)).fetchone()
     if not row or not row["u"]:
         return
-    notify_employees(
+    notify_members(
         db, [assignee_id],
         f"🔁 Chore assigned to you: “{title}”"
         + (f" — from {actor['name']}" if actor else "") + ".",
@@ -3176,7 +3168,7 @@ def chores_page():
         params.append(int(who))
     sql += " ORDER BY (c.next_due = ''), c.next_due, c.id"
     chores = db.execute(sql, params).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     # Piece 76: group into collapsible Daily/Weekly/Monthly/Quarterly/Yearly
     # buckets by recurrence interval -- each keeps the existing due-date order.
@@ -3186,7 +3178,7 @@ def chores_page():
     bucket_groups = [(label, buckets[label]) for label in
                      ("Daily", "Weekly", "Monthly", "Quarterly", "Yearly") if buckets[label]]
     return render_template("chores.html", bucket_groups=bucket_groups,
-                           chore_total=len(chores), employees=employees, who=who,
+                           chore_total=len(chores), members=members, who=who,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -3211,9 +3203,9 @@ def chore_new_form():
     card at the bottom of the Chores list) -- reached via a "+ New chore"
     button at the top instead."""
     db = get_db()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("chore_form.html", ec=None, employees=employees,
+    return render_template("chore_form.html", ec=None, members=members,
                            recurrence_presets=CHORE_RECURRENCE_PRESETS,
                            weekday_options=WEEKDAY_OPTIONS,
                            today=datetime.now().strftime("%Y-%m-%d"))
@@ -3247,9 +3239,9 @@ def chore_edit_form(chore_id):
                     (chore_id,)).fetchone()
     if ec is None:
         abort(404)
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("chore_form.html", ec=ec, employees=employees,
+    return render_template("chore_form.html", ec=ec, members=members,
                            recurrence_presets=CHORE_RECURRENCE_PRESETS,
                            weekday_options=WEEKDAY_OPTIONS,
                            today=datetime.now().strftime("%Y-%m-%d"))
@@ -3457,9 +3449,9 @@ def habits_page():
         h = dict(h)
         h.update(_habit_progress(db, h, today))
         habits.append(h)
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("habits.html", habits=habits, employees=employees,
+    return render_template("habits.html", habits=habits, members=members,
                            who=who, today=today)
 
 
@@ -3528,9 +3520,9 @@ def habit_new_form():
     db = get_db()
     me = current_user()
     lock_to_self = me is not None and me["role"] == "Child"
-    employees = [] if lock_to_self else db.execute(
+    members = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("habit_form.html", eh=None, employees=employees,
+    return render_template("habit_form.html", eh=None, members=members,
                             lock_to_self=lock_to_self, me=me,
                             weekday_options=WEEKDAY_OPTIONS)
 
@@ -3563,9 +3555,9 @@ def habit_edit_form(habit_id):
         abort(404)
     me = current_user()
     lock_to_self = me is not None and me["role"] == "Child"
-    employees = [] if lock_to_self else db.execute(
+    members = [] if lock_to_self else db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("habit_form.html", eh=eh, employees=employees,
+    return render_template("habit_form.html", eh=eh, members=members,
                             lock_to_self=lock_to_self, me=me,
                             weekday_options=WEEKDAY_OPTIONS)
 
@@ -3686,7 +3678,7 @@ def _notify_appointment_assignee(db, title, assignee_id, actor):
                      (assignee_id,)).fetchone()
     if not row or not row["u"]:
         return
-    notify_employees(db, [assignee_id], f"📅 Appointment assigned to you: {title}",
+    notify_members(db, [assignee_id], f"📅 Appointment assigned to you: {title}",
                      link="/appointments", kind="appointment")
 
 
@@ -3730,7 +3722,7 @@ def appointment_new_form():
     the list. ?prefill_contact=<id> pre-fills it from a Contact's
     "＋ Add appointment" quick-link."""
     db = get_db()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
@@ -3743,7 +3735,7 @@ def appointment_new_form():
             prefill = {"title": f"Appointment — {contact['name']}",
                       "external_helper_id": contact["id"]}
     return render_template(
-        "appointment_form.html", ea=None, employees=employees, contacts=contacts,
+        "appointment_form.html", ea=None, members=members, contacts=contacts,
         prefill=prefill, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
         weekday_options=WEEKDAY_OPTIONS, today=datetime.now().strftime("%Y-%m-%d"))
 
@@ -3795,12 +3787,12 @@ def appointment_edit_form(appt_id):
     ea = db.execute("SELECT * FROM appointments WHERE id = ?", (appt_id,)).fetchone()
     if ea is None:
         abort(404)
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
     return render_template(
-        "appointment_form.html", ea=ea, employees=employees, contacts=contacts,
+        "appointment_form.html", ea=ea, members=members, contacts=contacts,
         prefill=None, recurrence_presets=APPOINTMENT_RECURRENCE_PRESETS,
         weekday_options=WEEKDAY_OPTIONS, today=datetime.now().strftime("%Y-%m-%d"))
 
@@ -3912,7 +3904,7 @@ def wishlist_page():
         sql += " AND w.status = 'Pending'"
     sql += " ORDER BY (w.status = 'Pending') DESC, w.created_at DESC"
     items = db.execute(sql, params).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     inventory_items = db.execute(
         "SELECT id, category, make, model FROM inventory_items"
@@ -3935,7 +3927,7 @@ def wishlist_new_form():
     the bottom of the list. ?prefill_item=<id> pre-fills it from an
     Inventory item's "🎁 Add to wishlist" quick-link."""
     db = get_db()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     inventory_items = db.execute(
         "SELECT id, category, make, model FROM inventory_items"
@@ -3956,7 +3948,7 @@ def wishlist_new_form():
             prefill = {"title": f"More {label}",
                        "inventory_item_id": src["id"]}
     return render_template(
-        "wishlist_form.html", ew=None, employees=employees,
+        "wishlist_form.html", ew=None, members=members,
         inventory_items=inventory_items, projects=projects, contacts=contacts,
         prefill=prefill)
 
@@ -4008,7 +4000,7 @@ def wishlist_edit_form(item_id):
     ew = db.execute("SELECT * FROM wishlist_items WHERE id = ?", (item_id,)).fetchone()
     if ew is None:
         abort(404)
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     inventory_items = db.execute(
         "SELECT id, category, make, model FROM inventory_items"
@@ -4019,7 +4011,7 @@ def wishlist_edit_form(item_id):
     contacts = db.execute(
         "SELECT id, name FROM external_helpers ORDER BY name").fetchall()
     return render_template(
-        "wishlist_form.html", ew=ew, employees=employees,
+        "wishlist_form.html", ew=ew, members=members,
         inventory_items=inventory_items, projects=projects, contacts=contacts,
         prefill=None)
 
@@ -4467,7 +4459,7 @@ def dashboard():
         " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
         " ORDER BY last", (cutoff,)).fetchall()
     closing_jobs = _closing_worklist(db)
-    gm = {"member_rows": member_rows, "money": money,
+    overview = {"member_rows": member_rows, "money": money,
           "approvals": db.execute(
               "SELECT COUNT(*) FROM field_submissions"
               " WHERE status = 'Pending'").fetchone()[0],
@@ -4497,7 +4489,7 @@ def dashboard():
         progress_by_job=progress_by_job,
         permits_by_job=permits_by_job,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
-        gm=gm, closing_jobs=closing_jobs,
+        overview=overview, closing_jobs=closing_jobs,
         my_notes=my_notes, my_wishlist=my_wishlist,
         job_status_class=PROJECT_STATUS_CLASS,
         my_bag_project_ids=my_bag_project_ids,
@@ -4696,7 +4688,7 @@ def backlog_page():
         sql += " AND i.status = 'Backlog'"
     sql += " ORDER BY (i.reminder_date = ''), i.reminder_date, i.created_at DESC"
     ideas = db.execute(sql).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     open_count = db.execute(
         "SELECT COUNT(*) FROM household_ideas WHERE status = 'Backlog'"
@@ -4714,9 +4706,9 @@ def backlog_new_form():
     Boards/Appointments/Wishlist/Contacts form pattern instead of an
     inline card at the bottom of the list."""
     db = get_db()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
-    return render_template("backlog_form.html", employees=employees)
+    return render_template("backlog_form.html", members=members)
 
 
 @app.route("/backlog/new", methods=["POST"])
@@ -4751,10 +4743,10 @@ def backlog_detail(idea_id):
         (idea_id,)).fetchone()
     if idea is None:
         abort(404)
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     return render_template("backlog_detail.html", idea=idea,
-                           employees=employees, statuses=BACKLOG_STATUSES)
+                           members=members, statuses=BACKLOG_STATUSES)
 
 
 @app.route("/backlog/<int:idea_id>/edit", methods=["POST"])
@@ -6196,7 +6188,7 @@ def render_project_form(values, editing_job_id=None):
         project_categories=PROJECT_CATEGORIES,
         project_subcategories=PROJECT_SUBCATEGORIES,
         editing_job_id=editing_job_id,
-        employees=get_db().execute("SELECT id, name FROM household_members ORDER BY name").fetchall(),
+        members=get_db().execute("SELECT id, name FROM household_members ORDER BY name").fetchall(),
     )
 
 
@@ -6353,18 +6345,18 @@ def project_detail(project_id):
         for heading, items in groups
     ]
 
-    # Piece 10: tasks for this project, plus the crew list for the assignee
-    # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
+    # Piece 10: tasks for this project, plus the household member list for
+    # the assignee picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
     # (household_member_id NULL) still show.
     tasks = db.execute(
         "SELECT t.*, e.name AS assignee_name FROM project_tasks t"
         " LEFT JOIN household_members e ON e.id = t.household_member_id"
         " WHERE t.project_id = ? ORDER BY t.sort_order, t.id", (project_id,)
     ).fetchall()
-    employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
-    # Piece 68: this project's owner name, looked up from the employees
+    members = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
+    # Piece 68: this project's owner name, looked up from the members
     # list already fetched above rather than a second query.
-    owner_name = next((e["name"] for e in employees if e["id"] == project["owner_id"]), None)
+    owner_name = next((e["name"] for e in members if e["id"] == project["owner_id"]), None)
     # Piece 67: group tasks under their section (one level deep) for the
     # Tasks tab, same style as dashboard()'s by_stage grouping -- the
     # template just loops, no grouping logic in Jinja.
@@ -6414,7 +6406,7 @@ def project_detail(project_id):
 
     billing = project_billing(db, project_id)
 
-    # Piece 21.9: field notes the crew left from the Work Bag, newest first.
+    # Piece 21.9: field notes left from the Work Bag, newest first.
     project_notes = db.execute(
         "SELECT * FROM project_notes WHERE project_id = ? ORDER BY id DESC",
         (project_id,)).fetchall()
@@ -6431,8 +6423,8 @@ def project_detail(project_id):
         project_notes=project_notes, can_see_files=can_see_files,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
-        material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
-        tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        material_statuses=MATERIAL_STATUSES, license_holders=license_holders(),
+        tasks=tasks, members=members, task_statuses=TASK_STATUSES,
         owner_name=owner_name,
         sections=sections, task_groups=task_groups, ungrouped_tasks=ungrouped_tasks,
         job_statuses=PROJECT_STATUSES, job_status_class=PROJECT_STATUS_CLASS,
@@ -7415,7 +7407,7 @@ def _apply_cancel_project(db, payload, ref_id, actor_name, draft_file_stored_nam
     recipients = project_involved_ids(db, project, exclude_id=exclude_id)
     if recipients:
         jobname = project["job_name"] or f"Project #{project['id']}"
-        notify_employees(
+        notify_members(
             db, recipients,
             f"🚫 {jobname} was cancelled (Abandoned). Reason: “{reason}”.",
             link=url_for("project_detail", project_id=project["id"]), kind="job_cancelled")
@@ -7661,8 +7653,8 @@ def delete_material(project_id, material_id):
 
 # -------------------------------------------------------------------- tasks
 def _task_assignee(project_id):
-    """Read and validate an household_member_id from the form: blank means
-    unassigned, a real employee id is kept, anything else is rejected."""
+    """Read and validate a household_member_id from the form: blank means
+    unassigned, a real household member id is kept, anything else is rejected."""
     raw = request.form.get("household_member_id", "").strip()
     if not raw:
         return None
@@ -8079,8 +8071,8 @@ def tasks_dashboard():
     person (or the unassigned pile) and to open vs. all. The home for
     'what am I supposed to be doing' across every project."""
     db = get_db()
-    employees = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
-    who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
+    members = db.execute("SELECT id, name FROM household_members ORDER BY name").fetchall()
+    who = request.args.get("member", "")   # "" (all) / "unassigned" / an id
     show = request.args.get("show", "open")  # open / all
     sql = ("SELECT t.*, j.job_name, j.id AS project_id,"
            " e.name AS assignee_name FROM project_tasks t"
@@ -8138,7 +8130,7 @@ def tasks_dashboard():
                 (g["job_name"] or "").lower())
     groups = sorted(grouped.values(), key=_group_key)
     return render_template(
-        "tasks.html", groups=groups, task_total=len(tasks), employees=employees,
+        "tasks.html", groups=groups, task_total=len(tasks), members=members,
         who=who, show=show, task_statuses=TASK_STATUSES, counts=counts,
         overdue=overdue, today=today)
 
@@ -8390,7 +8382,7 @@ def submissions_page():
     show = request.args.get("show", "pending")
     where = "WHERE s.status = 'Pending'" if show == "pending" else ""
     subs = db.execute(
-        "SELECT s.*, e.name AS emp_name FROM field_submissions s"
+        "SELECT s.*, e.name AS member_name FROM field_submissions s"
         " JOIN household_members e ON e.id = s.household_member_id"
         f" {where} ORDER BY (s.status='Pending') DESC, s.id DESC LIMIT 100"
     ).fetchall()
@@ -8659,7 +8651,7 @@ def complete_photo_task(task_id):
 
 @app.route("/work-bag/photos/<int:file_id>/delete", methods=["POST"])
 def delete_task_photo(file_id):
-    """Remove a field photo the crew took (scoped to FIELD_PHOTO_LABEL, so this
+    """Remove a field photo (scoped to FIELD_PHOTO_LABEL, so this
     can't touch requirement documents — those stay admin-only via delete_file)."""
     db = get_db()
     rec = db.execute("SELECT * FROM project_files WHERE id = ? AND rule_label = ?",
@@ -8781,7 +8773,7 @@ def rules_page():
         " WHERE r.field_name = '' AND COALESCE(r.recurrence_days, '') != ''"
         " ORDER BY (r.next_due = ''), r.next_due"
     ).fetchall()
-    employees = db.execute(
+    members = db.execute(
         "SELECT id, name FROM household_members ORDER BY name").fetchall()
     # Piece 41 (fixed-vocabulary Piece 44): suggest real values for the
     # "…matches this value" field instead of leaving it blind free text.
@@ -8797,7 +8789,7 @@ def rules_page():
         edit_rule=edit_rule, category_headings=CATEGORY_HEADINGS,
         job_fields=[f for f in PROJECT_FIELDS if f != "job_name"],
         field_labels=PROJECT_FIELD_LABELS, categories=RULE_CATEGORIES,
-        recurring=recurring, employees=employees,
+        recurring=recurring, members=members,
         project_categories=PROJECT_CATEGORIES, distinct_types=distinct_types,
         distinct_locations=distinct_locations, weekday_options=WEEKDAY_OPTIONS,
         today=datetime.now().strftime("%Y-%m-%d"),
@@ -9041,7 +9033,7 @@ def render_household_member_form(values, household_member_id=None, username="",
         values["first_name"] = parts[0]
         values["last_name"] = parts[1] if len(parts) > 1 else ""
     return render_template(
-        "employee_form.html", values=values, roles=HOUSEHOLD_ROLES,
+        "member_form.html", values=values, roles=HOUSEHOLD_ROLES,
         household_member_id=household_member_id, username=username,
         is_admin_checked=(str(is_admin_checked or "") == "1"),
         duplicate_warning=duplicate_warning,
@@ -9065,7 +9057,7 @@ def household_members_page():
             s["expired"] += 1
         elif state == "soon":
             s["soon"] += 1
-    return render_template("employees.html", employees=members, summary=summary)
+    return render_template("members.html", members=members, summary=summary)
 
 
 @app.route("/accounts")
@@ -9082,7 +9074,7 @@ def accounts_page():
     without_login = [m for m in members if not (m["username"] or "")]
     admin_count = sum(1 for m in with_login if str(m["is_admin"] or "") == "1")
     pending = db.execute(
-        "SELECT pr.*, m.name AS emp_name, m.username FROM password_requests pr"
+        "SELECT pr.*, m.name AS member_name, m.username FROM password_requests pr"
         " JOIN household_members m ON m.id = pr.household_member_id"
         " WHERE pr.status = 'Pending' ORDER BY pr.requested_at").fetchall()
     # Piece 19.2: flag usernames that collide case-insensitively — now that
@@ -9296,7 +9288,7 @@ def household_member_detail(household_member_id):
             "SELECT * FROM household_member_credentials WHERE id = ? AND household_member_id = ?",
             (request.args.get("edit_credential", type=int), household_member_id)).fetchone()
     return render_template(
-        "employee_detail.html", employee=member, role=member["role"],
+        "member_detail.html", member=member, role=member["role"],
         credentials=credentials, files=files, license_labels=license_labels,
         cred_names=[c["row"]["name"] for c in credentials],
         assigned_tasks=assigned_tasks, task_statuses=TASK_STATUSES,
@@ -9757,7 +9749,7 @@ def delete_household_member(household_member_id):
         reason = request.form.get("reason", "").strip()
         if not reason:
             flash("A reason is required to remove a household member.", "error")
-            return render_template("employee_remove.html", employee=member,
+            return render_template("member_remove.html", member=member,
                                    task_count=task_count,
                                    sub_count=sub_count), 400
         if sub_count:
@@ -9784,7 +9776,7 @@ def delete_household_member(household_member_id):
               if ok else msg, "" if ok else "error")
         return redirect(url_for("household_members_page") if ok
                         else url_for("household_member_detail", household_member_id=household_member_id))
-    return render_template("employee_remove.html", employee=member,
+    return render_template("member_remove.html", member=member,
                            task_count=task_count,
                            sub_count=sub_count)
 
@@ -10463,7 +10455,7 @@ def build_assistant_tools(db, user):
                        f"{' — ' + r['who'] if r['who'] else ' — unassigned'}")
         return "\n".join(out)
 
-    def staff_directory(args):
+    def household_directory(args):
         role = (args.get("role") or "").strip()
         where, params = ["1=1"], []
         if role:
@@ -10502,12 +10494,12 @@ def build_assistant_tools(db, user):
              "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
              "limit": {"type": "integer", "description": "max rows (default 30)"}}},
          "run": list_tasks},
-        {"name": "staff_directory",
+        {"name": "household_directory",
          "description": "List household members and their role. Optional role filter"
                         " (Parent/Child/Assistant).",
          "parameters": {"type": "object", "properties": {
              "role": {"type": "string", "description": "filter by role name"}}},
-         "run": staff_directory},
+         "run": household_directory},
     ]
 
 
@@ -10896,7 +10888,7 @@ def project_plan_condense(project_id):
             by_author.setdefault(r["author"], []).append(r["created_at"])
         for author, stamps in by_author.items():
             hours = _safety_hours_label(min(stamps), max(stamps))
-            notify_employees(
+            notify_members(
                 db, parents,
                 f"👀 {author} spent {hours} on the 🧠 Plan tab for "
                 f"'{project['job_name']}' — condensed & restarted just now "

@@ -31,7 +31,7 @@
         <label>Send this to-do to</label>
         <select name="assigned_to">
           <option value="">— unassigned —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}" {% if board["assigned_to"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>{% endfor %}
+          {% for e in members %}<option value="{{ e['id'] }}" {% if board["assigned_to"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>{% endfor %}
         </select>
       </div>
       <button type="submit" class="btn">Send</button>
@@ -64,7 +64,7 @@
         <label>Add a collaborator</label>
         <select name="household_member_id">
           <option value="">— choose —</option>
-          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+          {% for e in members %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
         </select>
       </div>
       <button type="submit" class="btn">Add</button>
