@@ -428,7 +428,7 @@
   <form method="post" action="{{ url_for('add_material', project_id=project['id']) }}" style="margin-top:0.8rem;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
-      <div class="field"><label>Item *</label><input name="item" required placeholder="e.g. 400W panels"></div>
+      <div class="field"><label>Item *</label><input name="item" required placeholder="e.g. 2x4 lumber, roofing shingles"></div>
       <div class="field"><label>Quantity</label><input name="quantity" placeholder="20"></div>
       <div class="field"><label>Unit</label><input name="unit" placeholder="ea / ft / rolls"></div>
       <div class="field"><label>Supplier</label><input name="supplier"></div>
