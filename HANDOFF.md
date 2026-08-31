@@ -3153,36 +3153,18 @@ Assistant," mirroring "General Assistant" exactly).
   `deploy/production-hosting-security` to match; deployed to the live
   VPS and confirmed there too.
 
+**Resolved / closed, moved out of the active list (2026-08-31):**
+- **Mobile search bar "missing" — not a bug.** Never reproducible from
+  the code (see the investigation notes in git history if ever needed
+  again). User found it themselves: it's inside the hamburger menu, not
+  missing. Closed, no code change needed.
+- **STT/TTS for the Assistant — dropped, no longer wanted.** Feasibility
+  was answered (TTS easy via `SpeechSynthesis`; STT questionable on
+  GrapheneOS without Google Play Services) but the user decided against
+  building either after reviewing that answer. Not queued for later
+  unless asked again.
+
 **NOT done yet:**
-- **Mobile search bar reported missing, not reproduced.** User: "On
-  mobile the search bar disappeared." Investigated directly: re-read
-  every base.html/inventory.html diff since it was last confirmed
-  working (Piece 79's screenshot round) — nothing touches the nav search
-  bar or its CSS. Reproduced the exact live code on a mobile-emulated
-  (375×812) local dev server against a real-data copy and confirmed the
-  search bar renders and opens correctly inside the hamburger menu. Also
-  ruled out a stale service-worker cache as the cause — `service_worker.
-  js` is **network-first** (always fetches fresh online, only falls back
-  to cache when offline), so a stale cached page can't explain a
-  persistently missing element for someone who's online. Genuinely
-  couldn't reproduce this from the code — next step is a screenshot from
-  the user's actual phone (which page, hamburger open or closed, logged
-  in or not) before guessing further.
-- **STT/TTS for the Assistant: answered as a feasibility question, not
-  built.** User: "if we can figure out STT and TTS communication that
-  would also be a bonus" (both on Pixel 9a / GrapheneOS). **TTS** is
-  low-risk — the standard `SpeechSynthesis` Web API uses whatever TTS
-  engine is installed on-device, no Google Play Services required; a
-  "🔊 read aloud" button on an assistant reply would be a small, safe
-  addition whenever it's wanted. **STT is a real open question**: the
-  `SpeechRecognition` Web API on Chromium-based browsers (including
-  Vanadium, GrapheneOS's default) has traditionally routed through
-  Google's cloud speech backend, which GrapheneOS deliberately omits by
-  default (no Google Play Services unless the user sandboxes it in
-  themselves) — this may simply not work on their exact phones without
-  the user first choosing to install that layer, and needs testing on
-  the actual hardware before committing to build anything, not assumed
-  to just work because it's "a standard Web API."
 - **CSV bank-statement import, blocked on the user.** User: "refine
   finances," ordered CSV import first among 4 finance workstreams, but has
   no sample export on hand yet. Bank: **Navy Federal Credit Union**.
