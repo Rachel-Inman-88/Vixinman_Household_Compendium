@@ -1,9 +1,9 @@
 # Handoff — Compendium Desktop won't launch on some devices
 
-**For:** a fresh Claude thread helping Rachel (Vixinman Designs, non-technical, Windows,
-GitHub Desktop) get the Compendium demo running on her teammates' machines.
-**Repo:** `rain-solar/job-creator-app` · app is Flask + SQLite + Jinja, packaged
-for Windows with PyInstaller. **Please read this whole doc before advising.**
+**For:** a fresh Claude thread helping Rachel (non-technical, Windows,
+GitHub Desktop) get the Compendium desktop app running on another household device.
+**Repo:** `Rachel-Inman-88/Vixinman_Household_Compendium` · app is Flask + SQLite + Jinja,
+packaged for Windows with PyInstaller. **Please read this whole doc before advising.**
 
 ---
 
