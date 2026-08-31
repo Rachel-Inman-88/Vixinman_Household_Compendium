@@ -224,6 +224,14 @@
   <p class="muted" style="margin-top:0;">Think through how to finish this project — the assistant
     can suggest tasks and you decide what to keep. It's <strong>read-only</strong>: nothing is saved
     unless you click ➕ or 💾 yourself. Needs an internet connection.</p>
+  {% if plan_messages %}
+  <div style="display:flex; justify-content:flex-end; margin-bottom:0.4rem;">
+    <button type="button" id="plan-condense-btn" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.78rem;"
+            title="Summarize this conversation into a project note, then start a fresh conversation with that summary for context">
+      🧵 Condense &amp; restart
+    </button>
+  </div>
+  {% endif %}
   <div id="plan-chat" style="display:flex; flex-direction:column; gap:0.7rem; min-height:6rem;
        max-height:55vh; overflow-y:auto; margin-bottom:0.8rem; padding:0.2rem 0.5rem 0.2rem 0.2rem;
        border:1px solid var(--border); border-radius:8px;">
@@ -1161,6 +1169,39 @@
     box.value = "";
     doSend(q, false);
   });
+
+  // Piece 89: condense the whole conversation into a project note, then
+  // clear it and reseed with that recap as the fresh first turn -- keeps
+  // future turns cheap without losing the arc of what was already covered.
+  var condenseBtn = document.getElementById("plan-condense-btn");
+  var condenseUrl = "{{ url_for('project_plan_condense', project_id=project['id']) }}";
+  if (condenseBtn) {
+    condenseBtn.addEventListener("click", function () {
+      if (!confirm("Summarize this conversation into a project note, then start fresh? "
+                   + "The current conversation will be cleared (the summary is saved as a note first).")) return;
+      if (!navigator.onLine) { msg("You're offline — condensing needs an internet connection.", "error"); return; }
+      condenseBtn.disabled = true; condenseBtn.textContent = "Condensing…";
+      fetch(condenseUrl, {
+        method: "POST",
+        headers: { "Accept": "application/json", "X-CSRFToken": window.CSRF_TOKEN },
+        body: ""
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) {
+            msg(res.d.error || "Couldn't condense the conversation.", "error");
+          } else {
+            chat.querySelectorAll(".plan-bubble").forEach(function (b) { b.remove(); });
+            lastAttempt = null; lastQuestion = null; repeatBtn.disabled = true;
+            bubble("Assistant", res.d.seed, "assistant");
+            msg("Condensed — saved to this project's notes, and the conversation restarted.", "");
+          }
+        }).catch(function () {
+          msg("Couldn't reach the assistant. Check your connection and try again.", "error");
+        }).finally(function () {
+          condenseBtn.disabled = false; condenseBtn.textContent = "🧵 Condense & restart";
+        });
+    });
+  }
 })();
 </script>
 {% endblock %}
