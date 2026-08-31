@@ -678,6 +678,18 @@ are in Prep?"*, *"What are my open tasks?"*, *"How many overdue tasks are there?
 
 ## Build history (high level)
 
+- **v0.61** — **Fixed: dates showing a day ahead in the evening.** The
+  app has no timezone logic of its own — every "today"/"this month"
+  calculation is plain `datetime.now()`. The live VPS was running on
+  `Etc/UTC`, several hours ahead of the household's actual Mountain
+  Time — so once evening hit locally, the server's calendar day had
+  already flipped to tomorrow, and anything computed as "today" (chores
+  due today, the dashboard date, appointments, budget month boundaries)
+  quietly showed the wrong day. Fixed by setting the VPS's system
+  timezone to `America/Denver` and pinning it again at the gunicorn
+  service level (`TZ=America/Denver` in `deploy/compendium.service`) so
+  a future server rebuild can't silently regress to UTC. No app code
+  changed — this was a server-configuration bug, not a logic bug.
 - **v0.60** — **"New" buttons and back-links, consistently.** Every
   top-level list page that used to end in an empty inline "add one"
   card (Boards, Appointments, Wishlist, Contacts, Idea Backlog,
