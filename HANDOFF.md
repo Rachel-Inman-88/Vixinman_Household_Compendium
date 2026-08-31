@@ -3241,18 +3241,41 @@ Assistant," mirroring "General Assistant" exactly).
   Assistant's fairly narrow permission bundle (`rules.manage`/
   `inventory.manage`/`approvals`/`projects.manage`, see Piece 51) and the
   drafts-based write-interception layer that role uniquely goes through.
-- **Pixel 9a beta-test readiness** — 2 of the 3 original blockers are
-  done now (Piece 56: LAN reachability, `COMPENDIUM_HOST=0.0.0.0`; Piece
-  75: the mobile-responsive UI audit, see above). Still open: a real-data
-  readiness check on `job_creator.db` itself before starting an actual
-  project in it. Note: this app already has some PWA/offline infrastructure
-  (`/sw.js`, `/offline`, Work Bag's offline support since Piece 26) —
-  check what already works there before assuming more offline support
-  needs building from scratch. **Also still open**: Jacob (household
-  roster, no login credentials yet) needs a username + password set
-  before he can actually sign in and beta-test — an admin (household.manage)
-  sets this via Family → his profile → edit; not something to set on his
-  behalf without him choosing the password directly.
+- **Backup-pull scheduled task silently failing since 2026-08-28
+  (2026-08-31, found while checking Pixel 9a readiness below).** The
+  VPS's own nightly backups are fine, but `CompendiumVPSBackupPull` (the
+  LAN-side task that pulls those snapshots down daily at 6am,
+  Section 5 of `OPERATIONS.md`) has failed every day since it was
+  created — `schtasks` showed `Last Result: -2147020576`
+  (`0x800710E0`, "the operator or administrator has refused the
+  request"). Root cause: `LogonType: InteractiveToken` with only a
+  single fixed 6am `CalendarTrigger` and no retry — if the laptop is
+  asleep, locked, or logged out at exactly 6am, Windows just refuses the
+  run and doesn't try again until the next day. **Attempted fix, blocked
+  by a tool-environment permission wall, not a real Windows
+  restriction**: adding a second `LogonTrigger` (fires when the user
+  logs on, as a catch-all alongside the 6am shot) via both
+  `Set-ScheduledTask` and `schtasks /create /xml ... /f` was refused
+  with "Access is denied" from this session's PowerShell tool — the same
+  class of non-interactive-process restriction `OPERATIONS.md` already
+  documents for this exact task (the OneDrive `-2147024891` gotcha in
+  Section 5). Handed the user a ready-to-run PowerShell snippet to add
+  the trigger themselves in a normal interactive window, where it should
+  not hit the same wall. **Confirm next time this comes up** that the
+  user actually ran it and that `lan_backups/` has resumed getting daily
+  files.
+- **Pixel 9a beta-test readiness — done (2026-08-31).** All 3 original
+  blockers now closed: Piece 56 (LAN reachability), Piece 75 (mobile-
+  responsive UI audit), and the real-data readiness check on
+  `job_creator.db` — confirmed clean (`PRAGMA integrity_check`: ok, zero
+  FK violations, every past migration flag consistent, no leftover demo
+  data) and, more to the point, already 3+ weeks into genuine real usage
+  (7 real projects, 53 tasks, 8 boards — not test data) with no
+  data-integrity issues surfacing beyond the now-fixed Piece 84 timezone
+  bug. Jacob's login credentials are also confirmed set. The backup-task
+  finding above was surfaced *during* this check but is tracked
+  separately since it's a Windows-scheduler reliability issue, not a
+  `job_creator.db` one.
 - **Visual theme.** `templates/base.html` still uses the original green
   (`--brand: #1a6e3c`, `--brand-dark: #12522c`). The target aesthetic is
   **parchment / illuminated-manuscript**: natural paper-fiber background, ornate
