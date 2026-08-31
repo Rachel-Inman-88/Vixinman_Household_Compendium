@@ -599,7 +599,7 @@ SEED_BATCH_SQL = {}
 # is running. Bumped with each update. Reset to semantic versioning
 # (starting at 0.1) with the Vixinman household rebrand, replacing the
 # old solar-business "Piece N.N" build counter.
-VERSION = "0.66"
+VERSION = "0.67"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1374,11 +1374,11 @@ def save_access(member_id):
 
 # ===================== Piece 17.1: soft-delete / trash / in-use checks ======
 def delete_required(view):
-    """Deletion is GM-only or granted (the 'delete' permission)."""
+    """Deletion is admin-only or granted (the 'delete' permission)."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not has_permission("delete"):
-            flash("Deleting is limited to the General Manager (or staff granted "
+            flash("Deleting is limited to an admin (or someone granted "
                   "the Delete permission).", "error")
             return redirect(request.referrer or url_for("home"))
         return view(*args, **kwargs)
@@ -4532,7 +4532,7 @@ def build_ics(calname, events):
     re-import update instead of dupe."""
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
-             "PRODID:-//Vixinman Designs//Compendium//EN", "CALSCALE:GREGORIAN",
+             "PRODID:-//Compendium//Compendium//EN", "CALSCALE:GREGORIAN",
              "METHOD:PUBLISH", _ics_fold("X-WR-CALNAME:" + _ics_escape(calname))]
     for e in events:
         try:
@@ -4574,7 +4574,7 @@ def _task_events(rows):
         desc = f"Status: {t['status']}"
         if t["pipeline_status"]:
             desc += f"\nStage: {t['pipeline_status']}"
-        events.append({"uid": f"compendium-task-{t['id']}@vixinmandesigns",
+        events.append({"uid": f"compendium-task-{t['id']}@compendium",
                        "date": t["due_date"], "summary": f"{t['title']} — {project}",
                        "description": desc})
     return events
@@ -4602,12 +4602,12 @@ def my_calendar_ics():
         params = [user["id"]]
     events = _task_events(db.execute(tsql, params).fetchall())
     for j in db.execute(jsql, params).fetchall():
-        events.append({"uid": f"compendium-install-{j['id']}@vixinmandesigns",
+        events.append({"uid": f"compendium-install-{j['id']}@compendium",
                        "date": j["install_date"],
-                       "summary": f"🔧 Install: {j['job_name'] or 'Project #' + str(j['id'])}",
+                       "summary": f"🔧 Target: {j['job_name'] or 'Project #' + str(j['id'])}",
                        "description": ""})
     for a in db.execute(asql, params).fetchall():
-        events.append({"uid": f"compendium-appt-{a['id']}@vixinmandesigns",
+        events.append({"uid": f"compendium-appt-{a['id']}@compendium",
                        "date": a["when_date"], "time": a["when_time"] or None,
                        "summary": f"📅 {a['title']}",
                        "description": a["location"] or ""})
@@ -4626,9 +4626,9 @@ def project_calendar_ics(project_id):
         (project["job_name"], project_id)).fetchall()
     events = _task_events(rows)
     if project["install_date"]:
-        events.append({"uid": f"compendium-install-{project_id}@vixinmandesigns",
+        events.append({"uid": f"compendium-install-{project_id}@compendium",
                        "date": project["install_date"],
-                       "summary": f"🔧 Install: {project['job_name'] or 'Project #' + str(project_id)}",
+                       "summary": f"🔧 Target: {project['job_name'] or 'Project #' + str(project_id)}",
                        "description": ""})
     label = project["job_name"] or f"Project #{project_id}"
     return _ics_response(f"Compendium — {label}", events, f"compendium-project-{project_id}.ics")
@@ -6636,7 +6636,7 @@ def _workbag_redirect(anchor=None):
 def add_project_note():
     """Piece 21.9: jot a free-form note about a project from the Work Bag. Each note
     keeps its own timestamp (datetime('now'), the same clock the audit log uses)
-    and author, so the office can read the field's notes later.
+    and author, so the rest of the household can read the note later.
 
     Piece 80: also reachable directly from a project's own page (its Field
     notes card previously had no add-note control at all, only a display
@@ -6660,7 +6660,7 @@ def add_project_note():
     db.execute("INSERT INTO project_notes (project_id, note, author) VALUES (?, ?, ?)",
                (int(project_id), note, user["name"]))
     db.commit()
-    flash("Note saved for the office.")
+    flash("Note saved.")
     return _redirect_back()
 
 
@@ -6925,7 +6925,7 @@ def inventory_item_edit(item_id):
 @app.route("/inventory/items/<int:item_id>/delete", methods=["POST"])
 @delete_required
 def inventory_item_delete(item_id):
-    """Send an inventory item to the trash (restorable, GM-only)."""
+    """Send an inventory item to the trash (restorable, admin-only)."""
     ok, msg = trash_item("inventory_item", item_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page"))
@@ -7018,7 +7018,7 @@ def inventory_tool_edit(tool_id):
 @app.route("/inventory/tools/<int:tool_id>/delete", methods=["POST"])
 @delete_required
 def inventory_tool_delete(tool_id):
-    """Send a tool to the trash (restorable, GM-only)."""
+    """Send a tool to the trash (restorable, admin-only)."""
     ok, msg = trash_item("inventory_tool", tool_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="tools"))
@@ -7276,7 +7276,7 @@ def inventory_maintenance_done(task_id):
 @app.route("/inventory/maintenance/<int:task_id>/delete", methods=["POST"])
 @delete_required
 def inventory_maintenance_delete(task_id):
-    """Send a maintenance task to the trash (restorable, GM-only). Its log
+    """Send a maintenance task to the trash (restorable, admin-only). Its log
     isn't FK-enforced (see schema.sql), so it's cleared explicitly first --
     same convention as habit_delete()."""
     db = get_db()
@@ -7330,7 +7330,7 @@ def inventory_vehicle_edit(vehicle_id):
 @app.route("/inventory/vehicles/<int:vehicle_id>/delete", methods=["POST"])
 @delete_required
 def inventory_vehicle_delete(vehicle_id):
-    """Send a vehicle to the trash (restorable, GM-only)."""
+    """Send a vehicle to the trash (restorable, admin-only)."""
     ok, msg = trash_item("inventory_vehicle", vehicle_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="vehicles"))
@@ -8658,7 +8658,7 @@ def complete_photo_task(task_id):
 @app.route("/work-bag/photos/<int:file_id>/delete", methods=["POST"])
 def delete_task_photo(file_id):
     """Remove a field photo the crew took (scoped to FIELD_PHOTO_LABEL, so this
-    can't touch requirement documents — those stay GM-only via delete_file)."""
+    can't touch requirement documents — those stay admin-only via delete_file)."""
     db = get_db()
     rec = db.execute("SELECT * FROM project_files WHERE id = ? AND rule_label = ?",
                      (file_id, FIELD_PHOTO_LABEL)).fetchone()
